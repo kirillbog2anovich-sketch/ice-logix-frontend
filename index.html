@@ -58,6 +58,28 @@
 
     <div class="mt-6">
       <button id="orderBtn" class="w-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg">
+<!-- Блок калькулятора -->
+<div id="calculatorBlock" class="mt-6 p-4 bg-white/10 backdrop-blur-md rounded-xl">
+  <h2 class="text-white text-lg font-bold mb-3">🧮 Калькулятор стоимости</h2>
+  <label class="text-white/70 text-sm">Ссылка на товар</label>
+  <input type="text" id="productUrl" class="w-full mt-1 p-2 rounded-lg bg-white/20 text-white border border-white/30" placeholder="https://poizon.com/...">
+  
+  <label class="text-white/70 text-sm block mt-3">Вес (кг)</label>
+  <input type="range" id="weightSlider" min="0.1" max="30" step="0.1" value="1" class="w-full mt-1">
+  <div class="flex justify-between text-white/70 text-sm mt-1">
+    <span>0.1 кг</span>
+    <span id="weightValue">1.0 кг</span>
+    <span>30 кг</span>
+  </div>
+  
+  <button id="calcBtn" class="mt-4 w-full bg-cyan-500 text-white py-2 rounded-lg">Рассчитать</button>
+  
+  <div id="calcResult" class="mt-4 hidden">
+    <p class="text-white">Примерная стоимость: <span id="totalPrice" class="font-bold text-cyan-400">0</span> ❄️</p>
+    <p class="text-white/70 text-xs mt-1">*Окончательная цена после взвешивания на складе</p>
+    <button id="createOrderBtn" class="mt-3 w-full bg-blue-600 text-white py-2 rounded-lg">Оформить заказ (75% предоплата)</button>
+  </div>
+</div>
         ✨ Создать заказ
       </button>
     </div>
@@ -113,6 +135,80 @@
   document.getElementById('orderBtn').addEventListener('click', () => {
     tg.showAlert('Калькулятор будет добавлен позже');
   });
+// --- Калькулятор и создание заказа ---
+const weightSlider = document.getElementById('weightSlider');
+const weightValue = document.getElementById('weightValue');
+const calcBtn = document.getElementById('calcBtn');
+const calcResultDiv = document.getElementById('calcResult');
+const totalPriceSpan = document.getElementById('totalPrice');
+const createOrderBtn = document.getElementById('createOrderBtn');
+const productUrlInput = document.getElementById('productUrl');
+
+// Показываем текущий вес
+weightSlider.addEventListener('input', () => {
+  const val = parseFloat(weightSlider.value);
+  weightValue.innerText = val.toFixed(1) + ' кг';
+});
+
+// Мок-расчёт (позже заменим на реальный парсинг)
+calcBtn.addEventListener('click', async () => {
+  const url = productUrlInput.value.trim();
+  if (!url) {
+    tg.showAlert('Вставьте ссылку на товар');
+    return;
+  }
+  const weight = parseFloat(weightSlider.value);
+  // Пока используем заглушку: цена товара 520 юаней (пример)
+  const priceCNY = 520;
+  const rate = 0.45; // курс юаня к BYN
+  const deliveryTariff = 12; // BYN за кг
+  const total = (priceCNY * rate) + (weight * deliveryTariff);
+  totalPriceSpan.innerText = total.toFixed(2);
+  calcResultDiv.classList.remove('hidden');
+  // Сохраняем данные в глобальные переменные для последующего создания заказа
+  window.tempOrder = { url, weight, priceCNY, total };
+});
+
+// Создание заказа в Supabase
+createOrderBtn.addEventListener('click', async () => {
+  if (!window.tempOrder) {
+    tg.showAlert('Сначала рассчитайте стоимость');
+    return;
+  }
+  const { url, weight, priceCNY, total } = window.tempOrder;
+  const user = tg.initDataUnsafe?.user;
+  if (!user) {
+    tg.showAlert('Ошибка авторизации');
+    return;
+  }
+  try {
+    // Вставляем заказ в таблицу orders
+    const { data, error } = await supabase
+      .from('orders')
+      .insert({
+        user_id: user.id,
+        source_url: url,
+        weight_estimated: weight,
+        price_original: priceCNY,
+        price_byn: priceCNY * 0.45,
+        delivery_cost_estimated: weight * 12,
+        prepayment_amount: total * 0.75, // 75% предоплата
+        status: 'pending'
+      })
+      .select();
+    if (error) throw error;
+    tg.showAlert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${(total * 0.75).toFixed(2)} ❄️`);
+    // Очистить форму и результат
+    productUrlInput.value = '';
+    weightSlider.value = 1;
+    weightValue.innerText = '1.0 кг';
+    calcResultDiv.classList.add('hidden');
+    window.tempOrder = null;
+  } catch (err) {
+    console.error(err);
+    tg.showAlert('Ошибка при создании заказа');
+  }
+});
 </script>
 </body>
 </html>
