@@ -6,8 +6,7 @@
   <title>ICE LOGIX</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <!-- Загружаем Supabase с проверкой -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="console.error('Supabase JS не загрузился!')"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <style>
     body { background: #0F172A; }
   </style>
@@ -87,147 +86,146 @@
   </div>
 
   <script>
-    (function() {
-      // Ждём загрузки supabase
-      function init() {
-        if (!window.supabase || !window.supabase.createClient) {
-          console.error('Supabase не загружен. Проверьте интернет или попробуйте позже.');
-          // Можно вывести сообщение пользователю
-          const balanceEl = document.getElementById('balance');
-          if (balanceEl) balanceEl.innerText = 'Ошибка загрузки';
+    // Ждём загрузку Supabase и Telegram
+    function waitForLibraries(callback) {
+      if (window.supabase && window.supabase.createClient && window.Telegram && window.Telegram.WebApp) {
+        callback();
+      } else {
+        setTimeout(() => waitForLibraries(callback), 100);
+      }
+    }
+
+    waitForLibraries(function() {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+
+      const user = tg.initDataUnsafe?.user;
+      const userId = user ? user.id : null;
+      const userName = user ? (user.first_name || user.username) : 'Гость';
+      document.getElementById('userName').innerText = userName;
+
+      const SUPABASE_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
+      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      // Баланс
+      async function loadBalance() {
+        if (!userId) {
+          document.getElementById('balance').innerText = '0 ❄️';
           return;
         }
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('ices_balance')
+            .eq('user_id', userId)
+            .maybeSingle();
+          if (error) throw error;
+          const balance = data ? data.ices_balance : 0;
+          document.getElementById('balance').innerText = balance + ' ❄️';
+        } catch (err) {
+          console.error('Ошибка баланса:', err);
+          document.getElementById('balance').innerText = '0 ❄️';
+        }
+      }
+      loadBalance();
 
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
+      // Элементы
+      const weightSlider = document.getElementById('weightSlider');
+      const weightValue = document.getElementById('weightValue');
+      const calcBtn = document.getElementById('calcBtn');
+      const calcResultDiv = document.getElementById('calcResult');
+      const totalPriceSpan = document.getElementById('totalPrice');
+      const createOrderBtn = document.getElementById('createOrderBtn');
+      const productUrlInput = document.getElementById('productUrl');
 
-        const user = tg.initDataUnsafe?.user;
-        const userId = user ? user.id : null;
-        const userName = user ? (user.first_name || user.username) : 'Гость';
-        const nameEl = document.getElementById('userName');
-        if (nameEl) nameEl.innerText = userName;
+      if (weightSlider && weightValue) {
+        weightSlider.addEventListener('input', () => {
+          weightValue.innerText = parseFloat(weightSlider.value).toFixed(1) + ' кг';
+        });
+      }
 
-        const SUPABASE_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      if (calcBtn) {
+        calcBtn.addEventListener('click', () => {
+          const url = productUrlInput ? productUrlInput.value.trim() : '';
+          if (!url) {
+            tg.showAlert('Вставьте ссылку на товар');
+            return;
+          }
+          const weight = parseFloat(weightSlider ? weightSlider.value : 1);
+          const priceCNY = 520;
+          const rate = 0.45;
+          const deliveryTariff = 12;
+          const total = (priceCNY * rate) + (weight * deliveryTariff);
+          if (totalPriceSpan) totalPriceSpan.innerText = total.toFixed(2);
+          if (calcResultDiv) calcResultDiv.classList.remove('hidden');
+          window.tempOrder = { url, weight, priceCNY, total };
+          tg.showAlert('Расчёт выполнен. Теперь можно оформить заказ.');
+        });
+      }
 
-        // Баланс
-        async function loadBalance() {
+      if (createOrderBtn) {
+        createOrderBtn.addEventListener('click', async () => {
+          console.log('=== Кнопка "Оформить заказ" нажата ===');
+          // Проверяем, что tempOrder существует
+          if (!window.tempOrder) {
+            console.log('tempOrder отсутствует');
+            tg.showAlert('Сначала рассчитайте стоимость');
+            return;
+          }
+          const { url, weight, priceCNY, total } = window.tempOrder;
+          console.log('Данные заказа:', { url, weight, priceCNY, total, userId });
           if (!userId) {
-            const bal = document.getElementById('balance');
-            if (bal) bal.innerText = '0 ❄️';
+            console.log('userId отсутствует');
+            tg.showAlert('Ошибка авторизации');
             return;
           }
           try {
+            const orderData = {
+              user_id: userId,
+              source_url: url,
+              weight_estimated: weight,
+              price_original: priceCNY,
+              price_byn: priceCNY * 0.45,
+              delivery_cost_estimated: weight * 12,
+              prepayment_amount: total * 0.75,
+              status: 'pending'
+            };
+            console.log('Отправляем в Supabase:', orderData);
             const { data, error } = await supabase
-              .from('users')
-              .select('ices_balance')
-              .eq('user_id', userId)
-              .maybeSingle();
-            if (error) throw error;
-            const balance = data ? data.ices_balance : 0;
-            const balEl = document.getElementById('balance');
-            if (balEl) balEl.innerText = balance + ' ❄️';
+              .from('orders')
+              .insert(orderData)
+              .select();
+            if (error) {
+              console.error('Ошибка Supabase:', error);
+              tg.showAlert('Ошибка при создании заказа: ' + error.message);
+              return;
+            }
+            console.log('Заказ создан успешно:', data);
+            tg.showAlert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${(total * 0.75).toFixed(2)} ❄️`);
+            // Очистка формы
+            if (productUrlInput) productUrlInput.value = '';
+            if (weightSlider) weightSlider.value = 1;
+            if (weightValue) weightValue.innerText = '1.0 кг';
+            if (calcResultDiv) calcResultDiv.classList.add('hidden');
+            window.tempOrder = null;
           } catch (err) {
-            console.error(err);
-            const balEl = document.getElementById('balance');
-            if (balEl) balEl.innerText = '0 ❄️';
+            console.error('Исключение при создании заказа:', err);
+            tg.showAlert('Ошибка при создании заказа. Подробности в консоли.');
           }
-        }
-        loadBalance();
-
-        // Элементы калькулятора
-        const weightSlider = document.getElementById('weightSlider');
-        const weightValue = document.getElementById('weightValue');
-        const calcBtn = document.getElementById('calcBtn');
-        const calcResultDiv = document.getElementById('calcResult');
-        const totalPriceSpan = document.getElementById('totalPrice');
-        const createOrderBtn = document.getElementById('createOrderBtn');
-        const productUrlInput = document.getElementById('productUrl');
-
-        if (weightSlider && weightValue) {
-          weightSlider.addEventListener('input', () => {
-            const val = parseFloat(weightSlider.value);
-            weightValue.innerText = val.toFixed(1) + ' кг';
-          });
-        }
-
-        if (calcBtn) {
-          calcBtn.addEventListener('click', () => {
-            const url = productUrlInput ? productUrlInput.value.trim() : '';
-            if (!url) {
-              tg.showAlert('Вставьте ссылку на товар');
-              return;
-            }
-            const weight = parseFloat(weightSlider ? weightSlider.value : 1);
-            const priceCNY = 520; // заглушка
-            const rate = 0.45;
-            const deliveryTariff = 12;
-            const total = (priceCNY * rate) + (weight * deliveryTariff);
-            if (totalPriceSpan) totalPriceSpan.innerText = total.toFixed(2);
-            if (calcResultDiv) calcResultDiv.classList.remove('hidden');
-            window.tempOrder = { url, weight, priceCNY, total };
-            tg.showAlert('Расчёт выполнен. Теперь можно оформить заказ.');
-          });
-        }
-
-        if (createOrderBtn) {
-          createOrderBtn.addEventListener('click', async () => {
-            if (!window.tempOrder) {
-              tg.showAlert('Сначала рассчитайте стоимость');
-              return;
-            }
-            const { url, weight, priceCNY, total } = window.tempOrder;
-            if (!userId) {
-              tg.showAlert('Ошибка авторизации');
-              return;
-            }
-            try {
-              const { data, error } = await supabase
-                .from('orders')
-                .insert({
-                  user_id: userId,
-                  source_url: url,
-                  weight_estimated: weight,
-                  price_original: priceCNY,
-                  price_byn: priceCNY * 0.45,
-                  delivery_cost_estimated: weight * 12,
-                  prepayment_amount: total * 0.75,
-                  status: 'pending'
-                })
-                .select();
-              if (error) throw error;
-              tg.showAlert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${(total * 0.75).toFixed(2)} ❄️`);
-              // Очистка
-              if (productUrlInput) productUrlInput.value = '';
-              if (weightSlider) weightSlider.value = 1;
-              if (weightValue) weightValue.innerText = '1.0 кг';
-              if (calcResultDiv) calcResultDiv.classList.add('hidden');
-              window.tempOrder = null;
-            } catch (err) {
-              console.error(err);
-              tg.showAlert('Ошибка при создании заказа. Проверьте консоль.');
-            }
-          });
-        }
-
-        const orderBtn = document.getElementById('orderBtn');
-        if (orderBtn) {
-          orderBtn.addEventListener('click', () => {
-            const calcBlock = document.querySelector('.mt-6.p-4.bg-white\\/10');
-            if (calcBlock) calcBlock.scrollIntoView({ behavior: 'smooth' });
-            else tg.showAlert('Калькулятор будет здесь');
-          });
-        }
+        });
       }
 
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-      } else {
-        init();
+      const orderBtn = document.getElementById('orderBtn');
+      if (orderBtn) {
+        orderBtn.addEventListener('click', () => {
+          const calcBlock = document.querySelector('.mt-6.p-4.bg-white\\/10');
+          if (calcBlock) calcBlock.scrollIntoView({ behavior: 'smooth' });
+          else tg.showAlert('Калькулятор будет здесь');
+        });
       }
-    })();
+    });
   </script>
 </body>
 </html>
