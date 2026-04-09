@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>ICE LOGIX</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { background: #0F172A; }
+  </style>
+</head>
+<body class="text-white">
+  <div class="min-h-screen p-4 pb-20 bg-gradient-to-b from-slate-900 to-black">
+    <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+      <div class="flex justify-between items-center">
+        <div>
+          <p class="text-sm text-white/70">Привет,</p>
+          <h1 class="text-xl font-bold" id="userName">Гость</h1>
+        </div>
+        <div class="text-right">
+          <p class="text-sm text-white/70">Баланс</p>
+          <p class="text-xl font-bold text-cyan-400" id="balance">0 ❄️</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4">
+      <h2 class="text-white text-lg font-bold mb-2">❄️ Находки дня</h2>
+      <div class="flex gap-3 overflow-x-auto pb-2">
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 w-40 shrink-0">
+          <div class="w-full h-32 bg-slate-700 rounded-lg"></div>
+          <p class="text-white font-bold mt-2">Nike Dunk Low</p>
+          <p class="text-cyan-400 text-sm">520 ❄️</p>
+          <button class="mt-2 w-full bg-cyan-500 text-white py-1 rounded-lg text-sm">Хочу!</button>
+        </div>
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 w-40 shrink-0">
+          <div class="w-full h-32 bg-slate-700 rounded-lg"></div>
+          <p class="text-white font-bold mt-2">Jordan 1 Retro</p>
+          <p class="text-cyan-400 text-sm">780 ❄️</p>
+          <button class="mt-2 w-full bg-cyan-500 text-white py-1 rounded-lg text-sm">Хочу!</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 mt-4">
+      <div class="bg-white/10 backdrop-blur-md rounded-xl p-3">
+        <p class="text-white/70 text-xs">Курс ¥</p>
+        <p class="text-white text-xl font-bold">0.45 BYN</p>
+      </div>
+      <div class="bg-white/10 backdrop-blur-md rounded-xl p-3">
+        <p class="text-white/70 text-xs">Поставка</p>
+        <p class="text-white text-xl font-bold">8 дн</p>
+      </div>
+    </div>
+
+    <div class="mt-6">
+      <button id="orderBtn" class="w-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg">
+        ✨ Создать заказ
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    const user = tg.initDataUnsafe?.user;
+    if (user) {
+      document.getElementById('userName').innerText = user.first_name || user.username;
+    }
+
+    // Заглушка баланса (потом подключим через API)
+    document.getElementById('balance').innerText = '0 ❄️';
+
+    document.getElementById('orderBtn').addEventListener('click', () => {
+      tg.showAlert('Калькулятор будет здесь');
+    });
+  </script>
+</body>
+</html>
