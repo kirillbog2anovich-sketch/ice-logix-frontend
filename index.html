@@ -2,121 +2,21 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>ICE LOGIX</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ICE LOGIX - Тест</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-  <style>
-    body { background: #0F172A; }
-    .status-badge { padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-    .status-pending { background: #f59e0b; color: #000; }
-    .status-paid { background: #10b981; color: #fff; }
-    .status-shipped { background: #3b82f6; color: #fff; }
-    .status-delivered { background: #8b5cf6; color: #fff; }
-    .status-cancelled { background: #ef4444; color: #fff; }
-  </style>
 </head>
-<body class="text-white">
-  <div id="app" class="min-h-screen p-4 pb-20 bg-gradient-to-b from-slate-900 to-black">
-    <p id="debug" class="text-yellow-300 text-sm mb-2">Загрузка...</p>
+<body class="bg-slate-900 text-white">
+  <div class="p-4">
+    <h1 class="text-2xl font-bold">ICE LOGIX</h1>
+    <p class="mt-2">Это простой тест. Если вы это видите — HTML работает.</p>
+    <button id="testBtn" class="mt-4 bg-cyan-500 px-4 py-2 rounded">Нажми меня</button>
   </div>
-
   <script>
-    // --- ОТЛАДКА: выводим всё, что происходит ---
-    const debugDiv = document.getElementById('debug');
-    function log(msg) {
-      console.log(msg);
-      if (debugDiv) debugDiv.innerHTML += '<br>' + msg;
-    }
-
-    log('Скрипт начал работу');
-
-    // --- Конфигурация ---
-    const OWNER_IDS = [6107097715, 804027583]; // ЗАМЕНИ НА СВОИ ID
-    log('OWNER_IDS = ' + JSON.stringify(OWNER_IDS));
-
-    // --- Инициализация Telegram ---
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
-    log('Telegram WebApp инициализирован');
-
-    const user = tg.initDataUnsafe?.user;
-    const userId = user ? user.id : null;
-    const userName = user ? (user.first_name || user.username) : 'Гость';
-    const isOwner = userId && OWNER_IDS.includes(userId);
-    log(`userId = ${userId}, isOwner = ${isOwner}, userName = ${userName}`);
-
-    // --- Supabase ---
-    const SUPABASE_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    log('Supabase клиент создан');
-
-    // --- Функция загрузки баланса ---
-    async function loadBalance() {
-      log('loadBalance вызвана');
-      if (!userId) return 0;
-      try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('ices_balance')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (error) throw error;
-        const balance = data ? data.ices_balance : 0;
-        log(`Баланс загружен: ${balance}`);
-        return balance;
-      } catch (err) {
-        log(`Ошибка загрузки баланса: ${err.message}`);
-        return 0;
-      }
-    }
-
-    // --- Функция рендеринга ---
-    async function renderApp() {
-      log('renderApp вызвана');
-      const balance = await loadBalance();
-      const appDiv = document.getElementById('app');
-      if (!appDiv) {
-        log('Ошибка: div с id="app" не найден');
-        return;
-      }
-      
-      // Простая заглушка, чтобы увидеть, что рендер работает
-      appDiv.innerHTML = `
-        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-          <div class="flex justify-between items-center">
-            <div>
-              <p class="text-sm text-white/70">Привет,</p>
-              <h1 class="text-xl font-bold">${userName}</h1>
-            </div>
-            <div class="text-right">
-              <p class="text-sm text-white/70">Баланс</p>
-              <p class="text-xl font-bold text-cyan-400">${balance} ❄️</p>
-            </div>
-          </div>
-        </div>
-        <div class="mt-4 p-4 bg-white/10 backdrop-blur-md rounded-xl">
-          <p class="text-white">Если вы это видите — рендер работает!</p>
-          ${isOwner ? '<button id="adminTestBtn" class="mt-2 bg-cyan-500 px-3 py-1 rounded">Тест админки</button>' : ''}
-        </div>
-      `;
-      
-      if (isOwner) {
-        const testBtn = document.getElementById('adminTestBtn');
-        if (testBtn) {
-          testBtn.onclick = () => alert('Админ-кнопка работает');
-        }
-      }
-      log('Рендер завершён');
-    }
-
-    // --- Запуск ---
-    renderApp().catch(err => {
-      log(`Ошибка в renderApp: ${err.message}`);
-    });
+    console.log('Скрипт работает');
+    document.getElementById('testBtn').onclick = function() {
+      alert('Кнопка работает!');
+    };
   </script>
 </body>
 </html>
