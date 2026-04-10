@@ -201,7 +201,7 @@
         }
       }
 
-            // --- Рендер админки (с трек-номером) ---
+                  // --- Рендер админки (с трек-номером) ---
       async function renderAdmin() {
         if (!isOwner) return '<p class="text-center mt-10">Доступ запрещён</p>';
         try {
@@ -247,6 +247,7 @@
             </div>
           `;
         } catch (err) {
+          console.error(err);
           return '<p class="text-center mt-10 text-red-400">Ошибка загрузки</p>';
         }
       }
@@ -339,11 +340,11 @@
           if (adminBtn) adminBtn.onclick = () => showScreen('admin');
         }
         
-        if (screen === 'myOrders' || screen === 'admin') {
+                if (screen === 'admin') {
           const backBtn = document.getElementById('backHomeBtn');
           if (backBtn) backBtn.onclick = () => showScreen('home');
           
-          // Обновление статуса в админке
+          // Обновление статуса
           document.querySelectorAll('.update-status-btn').forEach(btn => {
             btn.onclick = async () => {
               const orderId = btn.getAttribute('data-order-id');
@@ -358,24 +359,29 @@
               }
             };
           });
-        }
-      }
-
+          
           // Сохранение трек-номера
           document.querySelectorAll('.update-tracking-btn').forEach(btn => {
             btn.onclick = async () => {
               const orderId = btn.getAttribute('data-order-id');
               const trackingInput = document.getElementById(`tracking_${orderId}`);
               const trackingNumber = trackingInput ? trackingInput.value.trim() : '';
+              console.log('Сохраняем трек для заказа', orderId, 'номер:', trackingNumber);
               try {
-                await supabase.from('orders').update({ tracking_number_cn: trackingNumber }).eq('id', orderId);
+                const { error } = await supabase
+                  .from('orders')
+                  .update({ tracking_number_cn: trackingNumber })
+                  .eq('id', orderId);
+                if (error) throw error;
                 alert('Трек-номер сохранён');
                 await showScreen('admin');
               } catch (err) {
+                console.error(err);
                 alert('Ошибка: ' + err.message);
               }
             };
           });
+        }
       
       // --- Старт ---
       showScreen('home');
