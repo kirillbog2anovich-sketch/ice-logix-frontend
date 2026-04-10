@@ -9,143 +9,300 @@
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <style>
     body { background: #0F172A; }
+    /* Стили для админ-панели */
+    .admin-card { transition: all 0.2s ease; }
+    .admin-card:hover { transform: translateY(-2px); }
+    .status-badge { padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+    .status-pending { background: #f59e0b; color: #000; }
+    .status-paid { background: #10b981; color: #fff; }
+    .status-shipped { background: #3b82f6; color: #fff; }
+    .status-delivered { background: #8b5cf6; color: #fff; }
+    .status-cancelled { background: #ef4444; color: #fff; }
   </style>
 </head>
 <body class="text-white">
-  <div class="min-h-screen p-4 pb-20 bg-gradient-to-b from-slate-900 to-black">
-    <!-- Шапка -->
-    <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-      <div class="flex justify-between items-center">
-        <div>
-          <p class="text-sm text-white/70">Привет,</p>
-          <h1 class="text-xl font-bold" id="userName">Гость</h1>
-        </div>
-        <div class="text-right">
-          <p class="text-sm text-white/70">Баланс</p>
-          <p class="text-xl font-bold text-cyan-400" id="balance">0 ❄️</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Карусель -->
-    <div class="mt-4">
-      <h2 class="text-white text-lg font-bold mb-2">❄️ Находки дня</h2>
-      <div class="flex gap-3 overflow-x-auto pb-2">
-        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 w-40 shrink-0">
-          <div class="w-full h-32 bg-slate-700 rounded-lg"></div>
-          <p class="text-white font-bold mt-2">Nike Dunk Low</p>
-          <p class="text-cyan-400 text-sm">520 ❄️</p>
-          <button class="mt-2 w-full bg-cyan-500 text-white py-1 rounded-lg text-sm">Хочу!</button>
-        </div>
-        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 w-40 shrink-0">
-          <div class="w-full h-32 bg-slate-700 rounded-lg"></div>
-          <p class="text-white font-bold mt-2">Jordan 1 Retro</p>
-          <p class="text-cyan-400 text-sm">780 ❄️</p>
-          <button class="mt-2 w-full bg-cyan-500 text-white py-1 rounded-lg text-sm">Хочу!</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Виджеты -->
-    <div class="grid grid-cols-2 gap-3 mt-4">
-      <div class="bg-white/10 backdrop-blur-md rounded-xl p-3">
-        <p class="text-white/70 text-xs">Курс ¥</p>
-        <p class="text-white text-xl font-bold">0.45 BYN</p>
-      </div>
-      <div class="bg-white/10 backdrop-blur-md rounded-xl p-3">
-        <p class="text-white/70 text-xs">Поставка</p>
-        <p class="text-white text-xl font-bold">8 дн</p>
-      </div>
-    </div>
-
-    <!-- Калькулятор -->
-    <div class="mt-6 p-4 bg-white/10 backdrop-blur-md rounded-xl">
-      <h2 class="text-white text-lg font-bold mb-3">🧮 Калькулятор стоимости</h2>
-      <label class="text-white/70 text-sm">Ссылка на товар</label>
-      <input type="text" id="productUrl" class="w-full mt-1 p-2 rounded-lg bg-white/20 text-white border border-white/30" placeholder="https://poizon.com/...">
-      <label class="text-white/70 text-sm block mt-3">Вес (кг)</label>
-      <input type="range" id="weightSlider" min="0.1" max="30" step="0.1" value="1" class="w-full mt-1">
-      <div class="flex justify-between text-white/70 text-sm mt-1">
-        <span>0.1 кг</span>
-        <span id="weightValue">1.0 кг</span>
-        <span>30 кг</span>
-      </div>
-      <button id="calcBtn" class="mt-4 w-full bg-cyan-500 text-white py-2 rounded-lg">Рассчитать</button>
-      <div id="calcResult" class="mt-4 hidden">
-        <p class="text-white">Примерная стоимость: <span id="totalPrice" class="font-bold text-cyan-400">0</span> ❄️</p>
-        <p class="text-white/70 text-xs mt-1">*Окончательная цена после взвешивания на складе</p>
-        <button id="createOrderBtn" class="mt-3 w-full bg-blue-600 text-white py-2 rounded-lg">Оформить заказ (75% предоплата)</button>
-      </div>
-    </div>
-
-    <div class="mt-4">
-      <button id="orderBtn" class="w-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg">
-        ✨ Создать заказ
-      </button>
-    </div>
+  <div id="app" class="min-h-screen p-4 pb-20 bg-gradient-to-b from-slate-900 to-black">
+    <!-- Контент будет загружаться динамически -->
   </div>
 
   <script>
-    // Ждём загрузку Supabase и Telegram
-    function waitForLibraries(callback) {
-      if (window.supabase && window.supabase.createClient && window.Telegram && window.Telegram.WebApp) {
-        callback();
-      } else {
-        setTimeout(() => waitForLibraries(callback), 100);
+    // --- Конфигурация ---
+    const OWNER_IDS = [6107097715, 804027583]; // замени на реальные ID // ЗАМЕНИ НА СВОЙ TELEGRAM ID
+
+    // --- Инициализация ---
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    const user = tg.initDataUnsafe?.user;
+    const userId = user ? user.id : null;
+    const userName = user ? (user.first_name || user.username) : 'Гость';
+    const isOwner = OWNER_IDS.includes(userId);
+
+    // --- Supabase ---
+    const SUPABASE_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // --- Функция загрузки баланса ---
+    async function loadBalance() {
+      if (!userId) return 0;
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('ices_balance')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) throw error;
+        return data ? data.ices_balance : 0;
+      } catch (err) {
+        console.error(err);
+        return 0;
       }
     }
 
-    waitForLibraries(function() {
-      const tg = window.Telegram.WebApp;
-      tg.ready();
-      tg.expand();
+    // --- Функция получения статуса заказа (русский текст) ---
+    function getStatusText(status) {
+      const statuses = {
+        'pending': 'Ожидает оплаты',
+        'paid': 'Оплачен (75%)',
+        'bought': 'Выкуплен',
+        'on_sklad_cn': 'На складе в Китае',
+        'in_transit': 'В пути',
+        'in_belarus': 'В Беларуси',
+        'delivered': 'Доставлен',
+        'cancelled': 'Отменён'
+      };
+      return statuses[status] || status;
+    }
 
-      const user = tg.initDataUnsafe?.user;
-      const userId = user ? user.id : null;
-      const userName = user ? (user.first_name || user.username) : 'Гость';
-      document.getElementById('userName').innerText = userName;
+    // --- Функция получения CSS-класса для статуса ---
+    function getStatusClass(status) {
+      const classes = {
+        'pending': 'status-pending',
+        'paid': 'status-paid',
+        'bought': 'status-paid',
+        'on_sklad_cn': 'status-paid',
+        'in_transit': 'status-shipped',
+        'in_belarus': 'status-shipped',
+        'delivered': 'status-delivered',
+        'cancelled': 'status-cancelled'
+      };
+      return classes[status] || 'status-pending';
+    }
 
-      const SUPABASE_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
-      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // --- Компонент: шапка ---
+    function renderHeader(balance) {
+      return `
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <p class="text-sm text-white/70">Привет,</p>
+              <h1 class="text-xl font-bold">${userName}</h1>
+            </div>
+            <div class="text-right">
+              <p class="text-sm text-white/70">Баланс</p>
+              <p class="text-xl font-bold text-cyan-400">${balance} ❄️</p>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
-      // Баланс
-      async function loadBalance() {
-        if (!userId) {
-          document.getElementById('balance').innerText = '0 ❄️';
-          return;
+    // --- Компонент: навигация ---
+    function renderNavigation(activeTab) {
+      return `
+        <div class="flex gap-2 mt-4 bg-white/5 backdrop-blur-md rounded-xl p-1">
+          <button class="nav-btn flex-1 py-2 rounded-lg text-sm font-medium ${activeTab === 'home' ? 'bg-cyan-500 text-white' : 'text-white/70'}" data-tab="home">🏠 Главная</button>
+          <button class="nav-btn flex-1 py-2 rounded-lg text-sm font-medium ${activeTab === 'orders' ? 'bg-cyan-500 text-white' : 'text-white/70'}" data-tab="orders">📦 Мои заказы</button>
+          ${isOwner ? `<button class="nav-btn flex-1 py-2 rounded-lg text-sm font-medium ${activeTab === 'admin' ? 'bg-cyan-500 text-white' : 'text-white/70'}" data-tab="admin">⚙️ Админка</button>` : ''}
+        </div>
+      `;
+    }
+
+    // --- Компонент: главная страница ---
+    function renderHome() {
+      return `
+        <div class="mt-4">
+          <h2 class="text-white text-lg font-bold mb-2">❄️ Находки дня</h2>
+          <div class="flex gap-3 overflow-x-auto pb-2">
+            <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 w-40 shrink-0">
+              <div class="w-full h-32 bg-slate-700 rounded-lg"></div>
+              <p class="text-white font-bold mt-2">Nike Dunk Low</p>
+              <p class="text-cyan-400 text-sm">520 ❄️</p>
+              <button class="mt-2 w-full bg-cyan-500 text-white py-1 rounded-lg text-sm">Хочу!</button>
+            </div>
+            <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 w-40 shrink-0">
+              <div class="w-full h-32 bg-slate-700 rounded-lg"></div>
+              <p class="text-white font-bold mt-2">Jordan 1 Retro</p>
+              <p class="text-cyan-400 text-sm">780 ❄️</p>
+              <button class="mt-2 w-full bg-cyan-500 text-white py-1 rounded-lg text-sm">Хочу!</button>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 mt-4">
+          <div class="bg-white/10 backdrop-blur-md rounded-xl p-3">
+            <p class="text-white/70 text-xs">Курс ¥</p>
+            <p class="text-white text-xl font-bold">0.45 BYN</p>
+          </div>
+          <div class="bg-white/10 backdrop-blur-md rounded-xl p-3">
+            <p class="text-white/70 text-xs">Поставка</p>
+            <p class="text-white text-xl font-bold">8 дн</p>
+          </div>
+        </div>
+        <div class="mt-6 p-4 bg-white/10 backdrop-blur-md rounded-xl">
+          <h2 class="text-white text-lg font-bold mb-3">🧮 Калькулятор стоимости</h2>
+          <label class="text-white/70 text-sm">Ссылка на товар</label>
+          <input type="text" id="productUrl" class="w-full mt-1 p-2 rounded-lg bg-white/20 text-white border border-white/30" placeholder="https://poizon.com/...">
+          <label class="text-white/70 text-sm block mt-3">Вес (кг)</label>
+          <input type="range" id="weightSlider" min="0.1" max="30" step="0.1" value="1" class="w-full mt-1">
+          <div class="flex justify-between text-white/70 text-sm mt-1">
+            <span>0.1 кг</span>
+            <span id="weightValue">1.0 кг</span>
+            <span>30 кг</span>
+          </div>
+          <button id="calcBtn" class="mt-4 w-full bg-cyan-500 text-white py-2 rounded-lg">Рассчитать</button>
+          <div id="calcResult" class="mt-4 hidden">
+            <p class="text-white">Примерная стоимость: <span id="totalPrice" class="font-bold text-cyan-400">0</span> ❄️</p>
+            <p class="text-white/70 text-xs mt-1">*Окончательная цена после взвешивания на складе</p>
+            <button id="createOrderBtn" class="mt-3 w-full bg-blue-600 text-white py-2 rounded-lg">Оформить заказ (75% предоплата)</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- Компонент: список заказов клиента ---
+    async function renderOrders() {
+      if (!userId) return '<p class="text-center mt-10">Авторизуйтесь, чтобы увидеть заказы</p>';
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          return '<p class="text-center mt-10 text-white/70">У вас пока нет заказов</p>';
         }
-        try {
-          const { data, error } = await supabase
-            .from('users')
-            .select('ices_balance')
-            .eq('user_id', userId)
-            .maybeSingle();
-          if (error) throw error;
-          const balance = data ? data.ices_balance : 0;
-          document.getElementById('balance').innerText = balance + ' ❄️';
-        } catch (err) {
-          console.error('Ошибка баланса:', err);
-          document.getElementById('balance').innerText = '0 ❄️';
-        }
+        return `
+          <div class="space-y-3 mt-4">
+            ${data.map(order => `
+              <div class="bg-white/10 backdrop-blur-md rounded-xl p-4">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <p class="text-white font-bold">Заказ #${order.id.slice(0, 8)}</p>
+                    <p class="text-white/70 text-xs mt-1">Ссылка: ${order.source_url ? order.source_url.substring(0, 40) + '...' : '—'}</p>
+                    <p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p>
+                    <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️ (предоплата)</p>
+                  </div>
+                  <div>
+                    <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
+                  </div>
+                </div>
+                <p class="text-white/50 text-xs mt-2">Создан: ${new Date(order.created_at).toLocaleString('ru-RU')}</p>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        console.error(err);
+        return '<p class="text-center mt-10 text-red-400">Ошибка загрузки заказов</p>';
       }
-      loadBalance();
+    }
 
-      // Элементы
+    // --- Компонент: админ-панель (список всех заказов) ---
+    async function renderAdmin() {
+      if (!isOwner) return '<p class="text-center mt-10">Доступ запрещён</p>';
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          return '<p class="text-center mt-10 text-white/70">Нет заказов</p>';
+        }
+        return `
+          <div class="space-y-3 mt-4">
+            ${data.map(order => `
+              <div class="admin-card bg-white/10 backdrop-blur-md rounded-xl p-4">
+                <div class="flex justify-between items-start flex-wrap gap-2">
+                  <div class="flex-1">
+                    <p class="text-white font-bold">Заказ #${order.id.slice(0, 8)}</p>
+                    <p class="text-white/70 text-xs">Пользователь: ${order.user_id}</p>
+                    <p class="text-white/70 text-xs">Ссылка: ${order.source_url ? order.source_url.substring(0, 40) + '...' : '—'}</p>
+                    <p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p>
+                    <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️ (предоплата)</p>
+                  </div>
+                  <div class="flex flex-col items-end gap-2">
+                    <select class="status-select bg-slate-800 text-white rounded-lg px-2 py-1 text-sm border border-white/20" data-order-id="${order.id}" data-current-status="${order.status}">
+                      <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Ожидает оплаты</option>
+                      <option value="paid" ${order.status === 'paid' ? 'selected' : ''}>Оплачен (75%)</option>
+                      <option value="bought" ${order.status === 'bought' ? 'selected' : ''}>Выкуплен</option>
+                      <option value="on_sklad_cn" ${order.status === 'on_sklad_cn' ? 'selected' : ''}>На складе в Китае</option>
+                      <option value="in_transit" ${order.status === 'in_transit' ? 'selected' : ''}>В пути</option>
+                      <option value="in_belarus" ${order.status === 'in_belarus' ? 'selected' : ''}>В Беларуси</option>
+                      <option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Доставлен</option>
+                      <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Отменён</option>
+                    </select>
+                    <button class="update-status-btn bg-cyan-500 text-white px-3 py-1 rounded-lg text-sm" data-order-id="${order.id}">Обновить статус</button>
+                  </div>
+                </div>
+                <p class="text-white/50 text-xs mt-2">Создан: ${new Date(order.created_at).toLocaleString('ru-RU')}</p>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        console.error(err);
+        return '<p class="text-center mt-10 text-red-400">Ошибка загрузки заказов</p>';
+      }
+    }
+
+    // --- Основная функция рендеринга ---
+    let currentTab = 'home';
+    let currentBalance = 0;
+
+    async function renderApp() {
+      currentBalance = await loadBalance();
+      const appDiv = document.getElementById('app');
+      appDiv.innerHTML = `
+        ${renderHeader(currentBalance)}
+        ${renderNavigation(currentTab)}
+        <div id="page-content" class="mt-2">
+          ${currentTab === 'home' ? renderHome() : currentTab === 'orders' ? await renderOrders() : await renderAdmin()}
+        </div>
+      `;
+      
+      // Привязываем обработчики событий
+      attachEventHandlers();
+    }
+
+    // --- Привязка обработчиков ---
+    function attachEventHandlers() {
+      // Навигация
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          currentTab = btn.getAttribute('data-tab');
+          await renderApp();
+        });
+      });
+      
+      // Калькулятор (если на главной)
       const weightSlider = document.getElementById('weightSlider');
       const weightValue = document.getElementById('weightValue');
       const calcBtn = document.getElementById('calcBtn');
+      const productUrlInput = document.getElementById('productUrl');
       const calcResultDiv = document.getElementById('calcResult');
       const totalPriceSpan = document.getElementById('totalPrice');
       const createOrderBtn = document.getElementById('createOrderBtn');
-      const productUrlInput = document.getElementById('productUrl');
-
+      
       if (weightSlider && weightValue) {
         weightSlider.addEventListener('input', () => {
           weightValue.innerText = parseFloat(weightSlider.value).toFixed(1) + ' кг';
         });
       }
-
+      
       if (calcBtn) {
         calcBtn.addEventListener('click', () => {
           const url = productUrlInput ? productUrlInput.value.trim() : '';
@@ -164,61 +321,71 @@
           alert('Расчёт выполнен. Теперь можно оформить заказ.');
         });
       }
-
+      
       if (createOrderBtn) {
-  createOrderBtn.addEventListener('click', async () => {
-    console.log('=== Кнопка "Оформить заказ" нажата ===');
-    if (!window.tempOrder) {
-      alert('Сначала рассчитайте стоимость');
-      return;
-    }
-    const { url, weight, priceCNY, total } = window.tempOrder;
-    console.log('Данные заказа:', { url, weight, priceCNY, total, userId });
-    
-    let finalUserId = userId;
-    if (!finalUserId) {
-      finalUserId = 123456789; // ⚠️ ВРЕМЕННО: замените на свой реальный Telegram ID, если знаете
-      alert('Используется тестовый ID: ' + finalUserId);
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from('orders')
-        .insert({
-          user_id: finalUserId,
-          source_url: url,
-          weight_estimated: weight,
-          price_original: priceCNY,
-          price_byn: priceCNY * 0.45,
-          delivery_cost_estimated: weight * 12,
-          prepayment_amount: total * 0.75,
-          status: 'pending'
-        })
-        .select();
-      if (error) throw error;
-      alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${(total * 0.75).toFixed(2)} ❄️`);
-      // Очистка формы
-      if (productUrlInput) productUrlInput.value = '';
-      if (weightSlider) weightSlider.value = 1;
-      if (weightValue) weightValue.innerText = '1.0 кг';
-      if (calcResultDiv) calcResultDiv.classList.add('hidden');
-      window.tempOrder = null;
-    } catch (err) {
-      console.error(err);
-      alert('Ошибка при создании заказа: ' + err.message);
-    }
-  });
-}
-
-      const orderBtn = document.getElementById('orderBtn');
-      if (orderBtn) {
-        orderBtn.addEventListener('click', () => {
-          const calcBlock = document.querySelector('.mt-6.p-4.bg-white\\/10');
-          if (calcBlock) calcBlock.scrollIntoView({ behavior: 'smooth' });
-          else tg.showAlert('Калькулятор будет здесь');
+        createOrderBtn.addEventListener('click', async () => {
+          if (!window.tempOrder) {
+            alert('Сначала рассчитайте стоимость');
+            return;
+          }
+          const { url, weight, priceCNY, total } = window.tempOrder;
+          if (!userId) {
+            alert('Ошибка авторизации');
+            return;
+          }
+          try {
+            const { data, error } = await supabase
+              .from('orders')
+              .insert({
+                user_id: userId,
+                source_url: url,
+                weight_estimated: weight,
+                price_original: priceCNY,
+                price_byn: priceCNY * 0.45,
+                delivery_cost_estimated: weight * 12,
+                prepayment_amount: total * 0.75,
+                status: 'pending'
+              })
+              .select();
+            if (error) throw error;
+            alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${(total * 0.75).toFixed(2)} ❄️`);
+            // Очистка формы
+            if (productUrlInput) productUrlInput.value = '';
+            if (weightSlider) weightSlider.value = 1;
+            if (weightValue) weightValue.innerText = '1.0 кг';
+            if (calcResultDiv) calcResultDiv.classList.add('hidden');
+            window.tempOrder = null;
+          } catch (err) {
+            console.error(err);
+            alert('Ошибка при создании заказа: ' + err.message);
+          }
         });
       }
-    });
+      
+      // Админ-панель: обновление статуса
+      document.querySelectorAll('.update-status-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const orderId = btn.getAttribute('data-order-id');
+          const select = document.querySelector(`.status-select[data-order-id="${orderId}"]`);
+          const newStatus = select.value;
+          try {
+            const { error } = await supabase
+              .from('orders')
+              .update({ status: newStatus })
+              .eq('id', orderId);
+            if (error) throw error;
+            alert('Статус заказа обновлён');
+            await renderApp(); // перерисовываем админку
+          } catch (err) {
+            console.error(err);
+            alert('Ошибка обновления статуса: ' + err.message);
+          }
+        });
+      });
+    }
+    
+    // --- Запуск приложения ---
+    renderApp();
   </script>
 </body>
 </html>
