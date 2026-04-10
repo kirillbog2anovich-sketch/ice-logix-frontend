@@ -167,7 +167,7 @@
         `;
       }
 
-      // --- Рендер списка заказов пользователя ---
+            // --- Рендер списка заказов пользователя (с трек-номером) ---
       async function renderMyOrders() {
         if (!userId) return '<p class="text-center mt-10">Авторизуйтесь</p>';
         try {
@@ -188,6 +188,7 @@
                       <p class="text-white font-bold">Заказ #${order.id.slice(0, 8)}</p>
                       <p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p>
                       <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️</p>
+                      ${order.tracking_number_cn ? `<p class="text-white/70 text-xs mt-2">📦 Трек: ${order.tracking_number_cn}</p>` : ''}
                     </div>
                     <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
                   </div>
@@ -200,7 +201,7 @@
         }
       }
 
-      // --- Рендер админки (только для owner) ---
+            // --- Рендер админки (с трек-номером) ---
       async function renderAdmin() {
         if (!isOwner) return '<p class="text-center mt-10">Доступ запрещён</p>';
         try {
@@ -221,6 +222,10 @@
                       <p class="text-white/70 text-xs">Пользователь: ${order.user_id}</p>
                       <p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p>
                       <p class="text-cyan-400 text-sm">${order.prepayment_amount} ❄️</p>
+                      <div class="mt-2">
+                        <label class="text-white/70 text-xs">Трек-номер:</label>
+                        <input type="text" id="tracking_${order.id}" value="${order.tracking_number_cn || ''}" class="tracking-input w-full mt-1 p-1 rounded bg-white/20 text-white text-sm border border-white/30" placeholder="Введите трек-номер">
+                      </div>
                     </div>
                     <div class="flex flex-col gap-2">
                       <select class="status-select bg-slate-800 text-white rounded-lg px-2 py-1 text-sm" data-order-id="${order.id}">
@@ -233,7 +238,8 @@
                         <option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Доставлен</option>
                         <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Отменён</option>
                       </select>
-                      <button class="update-status-btn bg-cyan-500 text-white px-3 py-1 rounded-lg text-sm" data-order-id="${order.id}">Обновить</button>
+                      <button class="update-status-btn bg-cyan-500 text-white px-3 py-1 rounded-lg text-sm" data-order-id="${order.id}">Обновить статус</button>
+                      <button class="update-tracking-btn bg-emerald-500 text-white px-3 py-1 rounded-lg text-sm" data-order-id="${order.id}">Сохранить трек</button>
                     </div>
                   </div>
                 </div>
@@ -354,6 +360,22 @@
           });
         }
       }
+
+          // Сохранение трек-номера
+          document.querySelectorAll('.update-tracking-btn').forEach(btn => {
+            btn.onclick = async () => {
+              const orderId = btn.getAttribute('data-order-id');
+              const trackingInput = document.getElementById(`tracking_${orderId}`);
+              const trackingNumber = trackingInput ? trackingInput.value.trim() : '';
+              try {
+                await supabase.from('orders').update({ tracking_number_cn: trackingNumber }).eq('id', orderId);
+                alert('Трек-номер сохранён');
+                await showScreen('admin');
+              } catch (err) {
+                alert('Ошибка: ' + err.message);
+              }
+            };
+          });
       
       // --- Старт ---
       showScreen('home');
