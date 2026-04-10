@@ -150,7 +150,7 @@
         calcBtn.addEventListener('click', () => {
           const url = productUrlInput ? productUrlInput.value.trim() : '';
           if (!url) {
-            tg.showAlert('Вставьте ссылку на товар');
+            alert('Вставьте ссылку на товар');
             return;
           }
           const weight = parseFloat(weightSlider ? weightSlider.value : 1);
@@ -161,61 +161,54 @@
           if (totalPriceSpan) totalPriceSpan.innerText = total.toFixed(2);
           if (calcResultDiv) calcResultDiv.classList.remove('hidden');
           window.tempOrder = { url, weight, priceCNY, total };
-          tg.showAlert('Расчёт выполнен. Теперь можно оформить заказ.');
+          alert('Расчёт выполнен. Теперь можно оформить заказ.');
         });
       }
 
       if (createOrderBtn) {
-        createOrderBtn.addEventListener('click', async () => {
-          console.log('=== Кнопка "Оформить заказ" нажата ===');
-          // Проверяем, что tempOrder существует
-          if (!window.tempOrder) {
-            console.log('tempOrder отсутствует');
-            tg.showAlert('Сначала рассчитайте стоимость');
-            return;
-          }
-          const { url, weight, priceCNY, total } = window.tempOrder;
-          console.log('Данные заказа:', { url, weight, priceCNY, total, userId });
-          if (!userId) {
-            console.log('userId отсутствует');
-            tg.showAlert('Ошибка авторизации');
-            return;
-          }
-          try {
-            const orderData = {
-              user_id: userId,
-              source_url: url,
-              weight_estimated: weight,
-              price_original: priceCNY,
-              price_byn: priceCNY * 0.45,
-              delivery_cost_estimated: weight * 12,
-              prepayment_amount: total * 0.75,
-              status: 'pending'
-            };
-            console.log('Отправляем в Supabase:', orderData);
-            const { data, error } = await supabase
-              .from('orders')
-              .insert(orderData)
-              .select();
-            if (error) {
-              console.error('Ошибка Supabase:', error);
-              tg.showAlert('Ошибка при создании заказа: ' + error.message);
-              return;
-            }
-            console.log('Заказ создан успешно:', data);
-            tg.showAlert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${(total * 0.75).toFixed(2)} ❄️`);
-            // Очистка формы
-            if (productUrlInput) productUrlInput.value = '';
-            if (weightSlider) weightSlider.value = 1;
-            if (weightValue) weightValue.innerText = '1.0 кг';
-            if (calcResultDiv) calcResultDiv.classList.add('hidden');
-            window.tempOrder = null;
-          } catch (err) {
-            console.error('Исключение при создании заказа:', err);
-            tg.showAlert('Ошибка при создании заказа. Подробности в консоли.');
-          }
-        });
-      }
+  createOrderBtn.addEventListener('click', async () => {
+    console.log('=== Кнопка "Оформить заказ" нажата ===');
+    if (!window.tempOrder) {
+      alert('Сначала рассчитайте стоимость');
+      return;
+    }
+    const { url, weight, priceCNY, total } = window.tempOrder;
+    console.log('Данные заказа:', { url, weight, priceCNY, total, userId });
+    
+    let finalUserId = userId;
+    if (!finalUserId) {
+      finalUserId = 123456789; // ⚠️ ВРЕМЕННО: замените на свой реальный Telegram ID, если знаете
+      alert('Используется тестовый ID: ' + finalUserId);
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .insert({
+          user_id: finalUserId,
+          source_url: url,
+          weight_estimated: weight,
+          price_original: priceCNY,
+          price_byn: priceCNY * 0.45,
+          delivery_cost_estimated: weight * 12,
+          prepayment_amount: total * 0.75,
+          status: 'pending'
+        })
+        .select();
+      if (error) throw error;
+      alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${(total * 0.75).toFixed(2)} ❄️`);
+      // Очистка формы
+      if (productUrlInput) productUrlInput.value = '';
+      if (weightSlider) weightSlider.value = 1;
+      if (weightValue) weightValue.innerText = '1.0 кг';
+      if (calcResultDiv) calcResultDiv.classList.add('hidden');
+      window.tempOrder = null;
+    } catch (err) {
+      console.error(err);
+      alert('Ошибка при создании заказа: ' + err.message);
+    }
+  });
+}
 
       const orderBtn = document.getElementById('orderBtn');
       if (orderBtn) {
