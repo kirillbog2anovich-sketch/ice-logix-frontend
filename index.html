@@ -34,7 +34,7 @@
 
     waitForLibraries(() => {
       // --- Конфигурация ---
-      const OWNER_IDS = [6107097715, 804027583]; // ЗАМЕНИ НА СВОИ ID
+      const OWNER_IDS = [6107097715, 804027583];
 
       // --- Telegram WebApp ---
       const tg = window.Telegram.WebApp;
@@ -167,7 +167,7 @@
         `;
       }
 
-            // --- Рендер списка заказов пользователя (с трек-номером) ---
+      // --- Рендер списка заказов пользователя (с трек-номером) ---
       async function renderMyOrders() {
         if (!userId) return '<p class="text-center mt-10">Авторизуйтесь</p>';
         try {
@@ -201,7 +201,7 @@
         }
       }
 
-                  // --- Рендер админки (с трек-номером) ---
+      // --- Рендер админки (с трек-номером) ---
       async function renderAdmin() {
         if (!isOwner) return '<p class="text-center mt-10">Доступ запрещён</p>';
         try {
@@ -340,7 +340,12 @@
           if (adminBtn) adminBtn.onclick = () => showScreen('admin');
         }
         
-                if (screen === 'admin') {
+        if (screen === 'myOrders') {
+          const backBtn = document.getElementById('backHomeBtn');
+          if (backBtn) backBtn.onclick = () => showScreen('home');
+        }
+        
+        if (screen === 'admin') {
           const backBtn = document.getElementById('backHomeBtn');
           if (backBtn) backBtn.onclick = () => showScreen('home');
           
@@ -382,6 +387,7 @@
             };
           });
         }
+      }
       
       // --- Старт ---
       showScreen('home');
