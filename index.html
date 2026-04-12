@@ -98,6 +98,7 @@
     let marketplaceFilters = { country: 'all', type: 'all', category: 'all', gender: 'all' };
     let balance = 0;
 
+    // --- Инициализация ---
     function init() {
       tg = window.Telegram.WebApp;
       tg.ready();
@@ -167,8 +168,8 @@
       else contentDiv.innerHTML = '<div class="text-center py-10">Страница не найдена</div>';
     }
 
-        // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-        async function loadBalance() {
+    // --- Вспомогательные функции ---
+    async function loadBalance() {
       if (!userId) return 0;
       try {
         const { data, error } = await supabase.from('users').select('ices_balance').eq('user_id', userId).maybeSingle();
@@ -209,15 +210,15 @@
       await supabase.from('orders').update({ photo_reports: [...currentPhotos, photoUrl] }).eq('id', orderId);
     }
 
-    // ==================== ГЛАВНАЯ СТРАНИЦА ====================
+    // --- Главная ---
     async function renderHome() {
-      const balance = await loadBalance();
+      const bal = await loadBalance();
       return `
         <div class="space-y-4">
           <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
             <div class="flex justify-between items-center">
               <div><p class="text-sm text-white/70">Привет,</p><h1 class="text-xl font-bold">${userName}</h1></div>
-              <div class="text-right"><p class="text-sm text-white/70">Баланс</p><p class="text-xl font-bold text-cyan-400">${balance} ❄️</p></div>
+              <div class="text-right"><p class="text-sm text-white/70">Баланс</p><p class="text-xl font-bold text-cyan-400">${bal} ❄️</p></div>
             </div>
           </div>
           <div>
@@ -298,7 +299,7 @@
       }
     }
 
-    // ==================== КАТАЛОГ ПЛОЩАДОК ====================
+    // --- Каталог ---
     async function renderMarketplaces() {
       try {
         let query = supabase.from('marketplaces').select('*').eq('is_active', true);
@@ -417,8 +418,8 @@
       });
     }
 
-        // ==================== ЗАКАЗЫ ====================
-        async function renderOrders() {
+    // --- Заказы ---
+    async function renderOrders() {
       if (!userId) return '<p class="text-center mt-10">Авторизуйтесь</p>';
       try {
         const { data, error } = await supabase.from('orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
@@ -445,19 +446,17 @@
       } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки заказов</p>'; }
     }
 
-    function attachOrdersHandlers() {
-      // Для заказов пока нет дополнительных обработчиков (можно добавить клик для деталей позже)
-    }
+    function attachOrdersHandlers() {}
 
-    // ==================== ПРОФИЛЬ ====================
+    // --- Профиль ---
     async function renderProfile() {
-      const balance = await loadBalance();
+      const bal = await loadBalance();
       return `
         <div class="space-y-4">
           <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 text-center">
             <div class="avatar mx-auto w-20 h-20 text-3xl flex items-center justify-center bg-white/20 rounded-full mb-2">${userName.charAt(0).toUpperCase()}</div>
             <h2 class="text-xl font-bold">${userName}</h2>
-            <p class="text-white/70">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p>
+            <p class="text-white/70">Баланс: <span class="text-cyan-400 font-bold">${bal} ❄️</span></p>
           </div>
           <div class="bg-white/10 backdrop-blur-md rounded-xl p-4">
             <h3 class="font-bold mb-2">Информация</h3>
@@ -470,12 +469,10 @@
     }
 
     function attachProfileHandlers() {
-      document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        tg.close();
-      });
+      document.getElementById('logoutBtn')?.addEventListener('click', () => tg.close());
     }
 
-    // ==================== АДМИНКА (только для владельцев) ====================
+    // --- Админка ---
     async function renderAdmin() {
       if (!isOwner) return '<p class="text-center mt-10">Доступ запрещён</p>';
       try {
@@ -551,8 +548,8 @@
       });
     }
 
-        // ==================== ЗАПУСК ПРИЛОЖЕНИЯ ====================
-        init();
+    // --- Запуск ---
+    init();
   </script>
 </body>
 </html>
