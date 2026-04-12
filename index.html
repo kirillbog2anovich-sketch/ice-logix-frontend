@@ -15,14 +15,8 @@
     .status-shipped { background: #3b82f6; color: #fff; }
     .status-delivered { background: #8b5cf6; color: #fff; }
     .status-cancelled { background: #ef4444; color: #fff; }
-    /* Стили для карточек каталога */
-    .marketplace-card {
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .marketplace-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 20px 25px -12px rgba(0,0,0,0.3);
-    }
+    .marketplace-card { transition: transform 0.2s, box-shadow 0.2s; }
+    .marketplace-card:hover { transform: translateY(-4px); box-shadow: 0 20px 25px -12px rgba(0,0,0,0.3); }
   </style>
 </head>
 <body class="text-white">
@@ -31,7 +25,6 @@
   </div>
 
   <script>
-    // --- Ждём загрузку всех зависимостей ---
     function waitForLibraries(callback) {
       if (window.Telegram && window.Telegram.WebApp && window.supabase) {
         callback();
@@ -41,10 +34,7 @@
     }
 
     waitForLibraries(() => {
-      // --- Конфигурация ---
       const OWNER_IDS = [6107097715, 804027583]; // замените на свои ID
-
-      // --- Telegram WebApp ---
       const tg = window.Telegram.WebApp;
       tg.ready();
       tg.expand();
@@ -53,37 +43,27 @@
       const userId = user ? user.id : null;
       const userName = user ? (user.first_name || user.username) : 'Гость';
       const isOwner = userId && OWNER_IDS.includes(userId);
-      
-            // Глобальное состояние фильтров каталога
-            if (!window.marketplaceFilters) window.marketplaceFilters = { country: 'all', type: 'all', category: 'all', gender: 'all' };
 
-      // --- Supabase ---
-      const SUPABASE_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
+      const SUPABASE_URL = 'https://jpcupwexczdgaikpktui.supabase.co';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY3Vwd2V4Y3pkZ2Fpa3BrdHVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMTE0NDYsImV4cCI6MjA5MDg4NzQ0Nn0.M1yQjOZFY5Gnr7jTxAgnnPJ2Lpaz8wZOajqFmY0xOaU';
       const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       const STORAGE_BUCKET = 'order_photos';
 
       const appDiv = document.getElementById('app');
-      let currentScreen = 'home'; // home, myOrders, admin, marketplaces
+      let currentScreen = 'home';
 
-      // --- Функция загрузки баланса ---
+      // Глобальное состояние фильтров каталога
+      if (!window.marketplaceFilters) window.marketplaceFilters = { country: 'all', type: 'all', category: 'all', gender: 'all' };
+
       async function loadBalance() {
         if (!userId) return 0;
         try {
-          const { data, error } = await supabase
-            .from('users')
-            .select('ices_balance')
-            .eq('user_id', userId)
-            .maybeSingle();
+          const { data, error } = await supabase.from('users').select('ices_balance').eq('user_id', userId).maybeSingle();
           if (error) throw error;
           return data ? data.ices_balance : 0;
-        } catch (err) {
-          console.error(err);
-          return 0;
-        }
+        } catch (err) { return 0; }
       }
 
-      // --- Функция получения статуса ---
       function getStatusText(status) {
         const statuses = {
           'pending': 'Ожидает оплаты',
@@ -112,7 +92,6 @@
         return classes[status] || 'status-pending';
       }
 
-      // --- Загрузка фото ---
       async function uploadPhoto(orderId, file) {
         const fileName = `${orderId}/${Date.now()}_${file.name}`;
         const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(fileName, file);
@@ -127,7 +106,7 @@
         await supabase.from('orders').update({ photo_reports: [...currentPhotos, photoUrl] }).eq('id', orderId);
       }
 
-      // --- Рендер главной страницы ---
+                 // --- Рендер главной страницы ---
       async function renderHome() {
         const balance = await loadBalance();
         return `
@@ -248,61 +227,56 @@
             // --- Рендер каталога площадок (вертикальные карточки с полной информацией) ---
             async function renderMarketplaces() {
         try {
-          const { data: marketplaces, error } = await supabase
-            .from('marketplaces')
-            .select('*')
-            .eq('is_active', true)
-            .order('sort_order', { ascending: true, nullsFirst: false });
+          let query = supabase.from('marketplaces').select('*').eq('is_active', true);
+          if (window.marketplaceFilters) {
+            if (window.marketplaceFilters.country && window.marketplaceFilters.country !== 'all') {
+              query = query.eq('country', window.marketplaceFilters.country);
+            }
+            if (window.marketplaceFilters.type && window.marketplaceFilters.type !== 'all') {
+              query = query.eq('type', window.marketplaceFilters.type);
+            }
+          }
+          const { data: marketplaces, error } = await query.order('sort_order', { ascending: true, nullsFirst: false });
           if (error) throw error;
           if (!marketplaces || marketplaces.length === 0) {
             return `<p class="text-center mt-10 text-white/70">Каталог пока пуст. Скоро добавим площадки.</p>`;
           }
-          
-          // Получаем уникальные страны для быстрых фильтров
           const countries = [...new Set(marketplaces.map(m => m.country).filter(Boolean))];
-          
-          // HTML: кнопка "Фильтр" и чипсы стран
-          let html = `
-            <div class="mb-4 flex items-center justify-between gap-2">
-              <button id="openFilterModal" class="bg-white/20 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1">
-                <span>🔍</span> Фильтр
-              </button>
+          return `
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div class="flex gap-2 overflow-x-auto pb-1">
-                <button class="country-chip bg-cyan-500 text-white px-3 py-1 rounded-full text-sm" data-country="all">Все</button>
-                ${countries.map(c => `<button class="country-chip bg-white/20 px-3 py-1 rounded-full text-sm" data-country="${c}">${c}</button>`).join('')}
+                <button class="filter-country active bg-cyan-500 text-white px-3 py-1 rounded-full text-sm" data-country="all">Все</button>
+                ${countries.map(c => `<button class="filter-country bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm" data-country="${c}">${c}</button>`).join('')}
               </div>
+              <button id="openFilterModalBtn" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm flex items-center gap-1">🔍 Фильтр</button>
             </div>
             <div class="grid grid-cols-2 gap-4" id="marketplaces-grid">
-          `;
-          
-          // Генерируем карточки
-          for (const mp of marketplaces) {
-            html += `
-              <div class="marketplace-card bg-white/10 backdrop-blur-md rounded-xl overflow-hidden flex flex-col" data-country="${mp.country || ''}" data-type="${mp.type || ''}">
-                <div class="aspect-square bg-white/20 flex items-center justify-center p-2">
-                  ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain" alt="${mp.name}">` : `<div class="text-4xl">🛍️</div>`}
-                </div>
-                <div class="p-3 flex-1 flex flex-col">
-                  <h3 class="font-bold text-white text-base">${mp.name}</h3>
-                  <p class="text-white/70 text-xs mt-1 line-clamp-2">${mp.description || mp.country || ''}</p>
-                  <div class="flex justify-between items-center mt-3">
-                    <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
-                    <button class="detail-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-id="${mp.id}" data-name="${mp.name}" data-description="${(mp.description || '').replace(/"/g, '&quot;')}" data-delivery="${(mp.delivery_info || '').replace(/"/g, '&quot;')}" data-payment="${(mp.payment_methods || '').replace(/"/g, '&quot;')}" data-instruction="${(mp.full_instruction || mp.instruction_text || '').replace(/"/g, '&quot;')}">ⓘ</button>
+              ${marketplaces.map(mp => `
+                <div class="marketplace-card bg-white/10 backdrop-blur-md rounded-xl overflow-hidden" data-country="${mp.country || ''}" data-type="${mp.type || ''}">
+                  <div class="aspect-square bg-white/20 flex items-center justify-center p-2">
+                    ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain" alt="${mp.name}">` : `<div class="text-4xl">🛍️</div>`}
+                  </div>
+                  <div class="p-3">
+                    <h3 class="font-bold text-white truncate">${mp.name}</h3>
+                    <p class="text-white/70 text-xs mt-1">${mp.country || ''} · ${mp.type === 'brand' ? 'Бренд' : mp.type === 'marketplace' ? 'Маркетплейс' : 'Специальный'}</p>
+                    <p class="text-white/80 text-xs mt-2 line-clamp-2">${(mp.description || 'Описание отсутствует').substring(0, 80)}${(mp.description || '').length > 80 ? '…' : ''}</p>
+                    <div class="flex justify-between items-center mt-3">
+                      <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
+                      <button class="detail-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-name="${mp.name.replace(/"/g, '&quot;')}" data-description="${(mp.description || '').replace(/"/g, '&quot;')}" data-delivery="${(mp.delivery_info || '').replace(/"/g, '&quot;')}" data-payment="${(mp.payment_methods || '').replace(/"/g, '&quot;')}" data-instruction="${(mp.full_instruction || mp.instruction_text || '').replace(/"/g, '&quot;')}">ℹ️</button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            `;
-          }
-          html += `</div>`;
-          return html;
+              `).join('')}
+            </div>
+          `;
         } catch (err) {
           console.error(err);
           return '<p class="text-center mt-10 text-red-400">Ошибка загрузки каталога</p>';
         }
       }
 
-            // --- Модальное окно с полной информацией о площадке ---
-            function showDetailModal(name, description, delivery, payment, instruction) {
+      // --- Модальное окно с полной информацией о площадке ---
+      function showDetailModal(name, description, delivery, payment, instruction) {
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4';
         modal.innerHTML = `
@@ -324,8 +298,8 @@
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
       }
 
-            // --- Модальное окно расширенного фильтра ---
-            function showFilterModal() {
+      // --- Модальное окно расширенного фильтра ---
+      function showFilterModal() {
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4';
         modal.innerHTML = `
@@ -383,7 +357,6 @@
         modal.querySelector('.close-modal').addEventListener('click', closeModal);
         modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
         
-        // Загружаем текущие фильтры из глобального состояния
         if (window.marketplaceFilters) {
           if (modal.querySelector('#filterCountry')) modal.querySelector('#filterCountry').value = window.marketplaceFilters.country || 'all';
           if (modal.querySelector('#filterType')) modal.querySelector('#filterType').value = window.marketplaceFilters.type || 'all';
@@ -407,8 +380,8 @@
         });
       }
 
-      // --- Обработка навигации ---
-      async function showScreen(screen) {
+            // --- Обработка навигации (главный переключатель экранов) ---
+            async function showScreen(screen) {
         currentScreen = screen;
         let html = '';
         if (screen === 'home') {
@@ -473,16 +446,54 @@
           if (marketplacesBtn) marketplacesBtn.onclick = () => showScreen('marketplaces');
         }
         if (screen === 'myOrders') {
-          document.getElementById('backHomeBtn')?.addEventListener('click', () => showScreen('home'));
+          const backBtn = document.getElementById('backHomeBtn');
+          if (backBtn) backBtn.onclick = () => showScreen('home');
         }
         if (screen === 'admin') {
-          document.getElementById('backHomeBtn')?.addEventListener('click', () => showScreen('home'));
-          document.querySelectorAll('.update-status-btn').forEach(btn => btn.onclick = async () => { const orderId = btn.getAttribute('data-order-id'); const select = document.querySelector(`.status-select[data-order-id="${orderId}"]`); await supabase.from('orders').update({ status: select.value }).eq('id', orderId); alert('Статус обновлён'); await showScreen('admin'); });
-          document.querySelectorAll('.update-tracking-btn').forEach(btn => btn.onclick = async () => { const orderId = btn.getAttribute('data-order-id'); const input = document.getElementById(`tracking_${orderId}`); await supabase.from('orders').update({ tracking_number_cn: input?.value || '' }).eq('id', orderId); alert('Трек сохранён'); await showScreen('admin'); });
-          document.querySelectorAll('.upload-photo-btn').forEach(btn => btn.onclick = async () => { const orderId = btn.getAttribute('data-order-id'); const file = document.getElementById(`photo_${orderId}`)?.files[0]; if (!file) { alert('Выберите файл'); return; } const photoUrl = await uploadPhoto(orderId, file); await addPhotoToOrder(orderId, photoUrl); alert('Фото загружено'); await showScreen('admin'); });
+          const backBtn = document.getElementById('backHomeBtn');
+          if (backBtn) backBtn.onclick = () => showScreen('home');
+          
+          document.querySelectorAll('.update-status-btn').forEach(btn => {
+            btn.onclick = async () => {
+              const orderId = btn.getAttribute('data-order-id');
+              const select = document.querySelector(`.status-select[data-order-id="${orderId}"]`);
+              const newStatus = select.value;
+              try {
+                await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
+                alert('Статус обновлён');
+                await showScreen('admin');
+              } catch (err) { alert('Ошибка: ' + err.message); }
+            };
+          });
+          document.querySelectorAll('.update-tracking-btn').forEach(btn => {
+            btn.onclick = async () => {
+              const orderId = btn.getAttribute('data-order-id');
+              const input = document.getElementById(`tracking_${orderId}`);
+              const trackingNumber = input?.value.trim() || '';
+              try {
+                await supabase.from('orders').update({ tracking_number_cn: trackingNumber }).eq('id', orderId);
+                alert('Трек сохранён');
+                await showScreen('admin');
+              } catch (err) { alert('Ошибка: ' + err.message); }
+            };
+          });
+          document.querySelectorAll('.upload-photo-btn').forEach(btn => {
+            btn.onclick = async () => {
+              const orderId = btn.getAttribute('data-order-id');
+              const fileInput = document.getElementById(`photo_${orderId}`);
+              const file = fileInput?.files[0];
+              if (!file) { alert('Выберите файл'); return; }
+              try {
+                const photoUrl = await uploadPhoto(orderId, file);
+                await addPhotoToOrder(orderId, photoUrl);
+                alert('Фото загружено');
+                await showScreen('admin');
+              } catch (err) { alert('Ошибка: ' + err.message); }
+            };
+          });
         }
         if (screen === 'marketplaces') {
-          // Фильтрация по странам (быстрые кнопки)
+          // Быстрые фильтры по странам
           const filterBtns = document.querySelectorAll('.filter-country');
           const cards = document.querySelectorAll('.marketplace-card');
           filterBtns.forEach(btn => {
@@ -497,7 +508,6 @@
                   card.style.display = 'none';
                 }
               });
-              // Сохраняем фильтр по странам в глобальное состояние
               if (!window.marketplaceFilters) window.marketplaceFilters = {};
               window.marketplaceFilters.country = country === 'all' ? null : country;
             });
@@ -516,18 +526,10 @@
               showDetailModal(name, description, delivery, payment, instruction);
             });
           });
-          // Инструкции
-          document.querySelectorAll('.instruction-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const title = btn.getAttribute('data-title') || 'Инструкция';
-              const text = btn.getAttribute('data-instruction') || 'Инструкция пока не добавлена.';
-              showInstructionModal(title, text);
-            });
-          });
         }
       }
       
-      // --- Старт ---
+      // --- Старт приложения ---
       showScreen('home');
     });
   </script>
