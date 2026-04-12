@@ -97,8 +97,8 @@
       const user = tg.initDataUnsafe?.user;
       userId = user ? user.id : null;
       userName = user ? (user.first_name || user.username) : 'Гость';
-      const SUPABASE_URL = 'https://jpcupwexczdgaikpktui.supabase.co';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY3Vwd2V4Y3pkZ2Fpa3BrdHVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMTE0NDYsImV4cCI6MjA5MDg4NzQ0Nn0.M1yQjOZFY5Gnr7jTxAgnnPJ2Lpaz8wZOajqFmY0xOaU';
+      const SUPABASE_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
       supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       loadUserData();
       attachEventListeners();
