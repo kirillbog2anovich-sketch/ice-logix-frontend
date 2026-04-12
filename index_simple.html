@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>ICE LOGIX</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body { background: #0F172A; }
+        .status-badge { padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .status-pending { background: #f59e0b; color: #000; }
+        .status-paid { background: #10b981; color: #fff; }
+        .status-shipped { background: #3b82f6; color: #fff; }
+        .status-delivered { background: #8b5cf6; color: #fff; }
+        .status-cancelled { background: #ef4444; color: #fff; }
+    </style>
+</head>
+<body class="text-white">
+    <div id="app" class="min-h-screen p-4 pb-20 bg-gradient-to-b from-slate-900 to-black">
+        <div class="text-center py-10" id="loading">Загрузка...</div>
+    </div>
+
+    <script>
+        function waitForLibraries(callback) {
+            if (window.Telegram && window.Telegram.WebApp && window.supabase) {
+                callback();
+            } else {
+                setTimeout(() => waitForLibraries(callback), 100);
+            }
+        }
+
+        waitForLibraries(() => {
+            const OWNER_IDS = [6107097715, 804027583]; // Замените на свои ID
+            const tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand();
+
+            const user = tg.initDataUnsafe?.user;
+            const userId = user ? user.id : null;
+            const userName = user ? (user.first_name || user.username) : 'Гость';
+            const isOwner = userId && OWNER_IDS.includes(userId);
+
+            const SUPABASE_URL = 'https://jpcupwexczdgaikpktui.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY3Vwd2V4Y3pkZ2Fpa3BrdHVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMTE0NDYsImV4cCI6MjA5MDg4NzQ0Nn0.M1yQjOZFY5Gnr7jTxAgnnPJ2Lpaz8wZOajqFmY0xOaU';
+            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            const appDiv = document.getElementById('app');
+
+            async function loadBalance() {
+                if (!userId) return 0;
+                try {
+                    const { data, error } = await supabase.from('users').select('ices_balance').eq('user_id', userId).maybeSingle();
+                    if (error) throw error;
+                    return data ? data.ices_balance : 0;
+                } catch (err) { return 0; }
+            }
+
+            // Простой рендер главной страницы
+            async function renderHome() {
+                const balance = await loadBalance();
+                return `
+                    <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+                        <div class="flex justify-between items-center">
+                            <div><p class="text-sm text-white/70">Привет,</p><h1 class="text-xl font-bold">${userName}</h1></div>
+                            <div class="text-right"><p class="text-sm text-white/70">Баланс</p><p class="text-xl font-bold text-cyan-400">${balance} ❄️</p></div>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button id="marketplacesBtn" class="flex-1 bg-white/10 py-2 rounded-lg">📦 Каталог площадок</button>
+                        ${isOwner ? '<button id="adminBtn" class="flex-1 bg-white/10 py-2 rounded-lg">⚙️ Админка</button>' : ''}
+                    </div>
+                    <div class="mt-4 p-4 bg-white/10 rounded-xl">
+                        <p>Добро пожаловать в ICE LOGIX!</p>
+                    </div>
+                `;
+            }
+
+            async function renderMarketplaces() {
+                const { data: marketplaces, error } = await supabase.from('marketplaces').select('*').eq('is_active', true);
+                if (error) return '<p>Ошибка загрузки каталога</p>';
+                if (!marketplaces || marketplaces.length === 0) return '<p>Нет площадок</p>';
+                return `
+                    <button id="backHomeBtn" class="mb-4 bg-white/10 px-4 py-2 rounded-lg">← Назад</button>
+                    <div class="grid grid-cols-2 gap-3">
+                        ${marketplaces.map(mp => `
+                            <div class="bg-white/10 backdrop-blur-md rounded-xl p-3">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <p class="text-white font-bold">${mp.name}</p>
+                                        <p class="text-white/70 text-xs">${mp.country}</p>
+                                    </div>
+                                    <button class="info-btn text-white/50 text-lg" data-id="${mp.id}">❔</button>
+                                </div>
+                                <a href="${mp.website_url}" target="_blank" class="block mt-2 text-cyan-400 text-sm">Перейти →</a>
+                                <div id="instruction_${mp.id}" class="hidden mt-2 p-2 bg-black/30 rounded text-xs">${mp.instruction_text || 'Инструкция не добавлена'}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            async function renderAdmin() {
+                if (!isOwner) return '<p>Доступ запрещён</p>';
+                return `
+                    <button id="backHomeBtn" class="mb-4 bg-white/10 px-4 py-2 rounded-lg">← Назад</button>
+                    <div class="bg-white/10 p-4 rounded-xl">
+                        <h2 class="text-xl font-bold">Админ-панель</h2>
+                        <p>Здесь будет управление заказами и площадками.</p>
+                        <button id="editMarketplacesBtn" class="mt-2 bg-cyan-500 px-3 py-1 rounded">Редактировать каталог</button>
+                    </div>
+                `;
+            }
+
+            async function showScreen(screen) {
+                let html = '';
+                if (screen === 'home') html = await renderHome();
+                else if (screen === 'marketplaces') html = await renderMarketplaces();
+                else if (screen === 'admin') html = await renderAdmin();
+                appDiv.innerHTML = html;
+
+                if (screen === 'home') {
+                    document.getElementById('marketplacesBtn')?.addEventListener('click', () => showScreen('marketplaces'));
+                    if (isOwner) document.getElementById('adminBtn')?.addEventListener('click', () => showScreen('admin'));
+                }
+                if (screen === 'marketplaces') {
+                    document.getElementById('backHomeBtn')?.addEventListener('click', () => showScreen('home'));
+                    document.querySelectorAll('.info-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const id = btn.getAttribute('data-id');
+                            const div = document.getElementById(`instruction_${id}`);
+                            if (div) div.classList.toggle('hidden');
+                        });
+                    });
+                }
+                if (screen === 'admin') {
+                    document.getElementById('backHomeBtn')?.addEventListener('click', () => showScreen('home'));
+                    document.getElementById('editMarketplacesBtn')?.addEventListener('click', () => alert('Редактирование будет добавлено позже'));
+                }
+            }
+
+            showScreen('home');
+        });
+    </script>
+</body>
+</html>
