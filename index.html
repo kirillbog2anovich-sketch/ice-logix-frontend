@@ -44,8 +44,8 @@
       const userName = user ? (user.first_name || user.username) : 'Гость';
       const isOwner = userId && OWNER_IDS.includes(userId);
 
-      const SUPABASE_URL = 'https://jpcupwexczdgaikpktui.supabase.co';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY3Vwd2V4Y3pkZ2Fpa3BrdHVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMTE0NDYsImV4cCI6MjA5MDg4NzQ0Nn0.M1yQjOZFY5Gnr7jTxAgnnPJ2Lpaz8wZOajqFmY0xOaU';
+      const SUPABASE_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
       const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       const STORAGE_BUCKET = 'order_photos';
 
@@ -380,8 +380,8 @@
         });
       }
 
-            // --- Обработка навигации (главный переключатель экранов) ---
-            async function showScreen(screen) {
+                  // --- Обработка навигации ---
+      async function showScreen(screen) {
         currentScreen = screen;
         let html = '';
         if (screen === 'home') {
@@ -446,54 +446,16 @@
           if (marketplacesBtn) marketplacesBtn.onclick = () => showScreen('marketplaces');
         }
         if (screen === 'myOrders') {
-          const backBtn = document.getElementById('backHomeBtn');
-          if (backBtn) backBtn.onclick = () => showScreen('home');
+          document.getElementById('backHomeBtn')?.addEventListener('click', () => showScreen('home'));
         }
         if (screen === 'admin') {
-          const backBtn = document.getElementById('backHomeBtn');
-          if (backBtn) backBtn.onclick = () => showScreen('home');
-          
-          document.querySelectorAll('.update-status-btn').forEach(btn => {
-            btn.onclick = async () => {
-              const orderId = btn.getAttribute('data-order-id');
-              const select = document.querySelector(`.status-select[data-order-id="${orderId}"]`);
-              const newStatus = select.value;
-              try {
-                await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
-                alert('Статус обновлён');
-                await showScreen('admin');
-              } catch (err) { alert('Ошибка: ' + err.message); }
-            };
-          });
-          document.querySelectorAll('.update-tracking-btn').forEach(btn => {
-            btn.onclick = async () => {
-              const orderId = btn.getAttribute('data-order-id');
-              const input = document.getElementById(`tracking_${orderId}`);
-              const trackingNumber = input?.value.trim() || '';
-              try {
-                await supabase.from('orders').update({ tracking_number_cn: trackingNumber }).eq('id', orderId);
-                alert('Трек сохранён');
-                await showScreen('admin');
-              } catch (err) { alert('Ошибка: ' + err.message); }
-            };
-          });
-          document.querySelectorAll('.upload-photo-btn').forEach(btn => {
-            btn.onclick = async () => {
-              const orderId = btn.getAttribute('data-order-id');
-              const fileInput = document.getElementById(`photo_${orderId}`);
-              const file = fileInput?.files[0];
-              if (!file) { alert('Выберите файл'); return; }
-              try {
-                const photoUrl = await uploadPhoto(orderId, file);
-                await addPhotoToOrder(orderId, photoUrl);
-                alert('Фото загружено');
-                await showScreen('admin');
-              } catch (err) { alert('Ошибка: ' + err.message); }
-            };
-          });
+          document.getElementById('backHomeBtn')?.addEventListener('click', () => showScreen('home'));
+          document.querySelectorAll('.update-status-btn').forEach(btn => btn.onclick = async () => { const orderId = btn.getAttribute('data-order-id'); const select = document.querySelector(`.status-select[data-order-id="${orderId}"]`); await supabase.from('orders').update({ status: select.value }).eq('id', orderId); alert('Статус обновлён'); await showScreen('admin'); });
+          document.querySelectorAll('.update-tracking-btn').forEach(btn => btn.onclick = async () => { const orderId = btn.getAttribute('data-order-id'); const input = document.getElementById(`tracking_${orderId}`); await supabase.from('orders').update({ tracking_number_cn: input?.value || '' }).eq('id', orderId); alert('Трек сохранён'); await showScreen('admin'); });
+          document.querySelectorAll('.upload-photo-btn').forEach(btn => btn.onclick = async () => { const orderId = btn.getAttribute('data-order-id'); const file = document.getElementById(`photo_${orderId}`)?.files[0]; if (!file) { alert('Выберите файл'); return; } const photoUrl = await uploadPhoto(orderId, file); await addPhotoToOrder(orderId, photoUrl); alert('Фото загружено'); await showScreen('admin'); });
         }
         if (screen === 'marketplaces') {
-          // Быстрые фильтры по странам
+          // Фильтрация по странам (быстрые кнопки)
           const filterBtns = document.querySelectorAll('.filter-country');
           const cards = document.querySelectorAll('.marketplace-card');
           filterBtns.forEach(btn => {
@@ -529,7 +491,7 @@
         }
       }
       
-      // --- Старт приложения ---
+      // --- Старт ---
       showScreen('home');
     });
   </script>
