@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICE LOGIX Test</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>ICE LOGIX Test</h1>
+    <div id="log"></div>
+    <script>
+        const logDiv = document.getElementById('log');
+        function log(msg) {
+            console.log(msg);
+            logDiv.innerHTML += '<br>' + msg;
+        }
+        
+        log('1. Скрипт начал работу');
+        
+        if (window.Telegram && window.Telegram.WebApp) {
+            log('2. Telegram WebApp найден');
+            const tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand();
+            log('3. Telegram WebApp инициализирован');
+            const user = tg.initDataUnsafe?.user;
+            log('4. User: ' + JSON.stringify(user));
+        } else {
+            log('2. Telegram WebApp НЕ найден');
+        }
+        
+        if (window.supabase) {
+            log('5. Supabase найден');
+            const supabase = window.supabase.createClient(
+                'https://jpcupwexczdgaikpktui.supabase.co',
+                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY3Vwd2V4Y3pkZ2Fpa3BrdHVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMTE0NDYsImV4cCI6MjA5MDg4NzQ0Nn0.M1yQjOZFY5Gnr7jTxAgnnPJ2Lpaz8wZOajqFmY0xOaU'
+            );
+            log('6. Supabase клиент создан');
+        } else {
+            log('5. Supabase НЕ найден');
+        }
+        
+        log('7. Тест завершён');
+    </script>
+</body>
+</html>
