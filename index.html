@@ -8,26 +8,30 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <style>
-    body { background: #0F172A; margin: 0; }
-    .status-badge { padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+    body { background: #0F172A; margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    .status-badge { padding: 4px 12px; border-radius: 40px; font-size: 11px; font-weight: bold; display: inline-block; }
     .status-pending { background: #f59e0b; color: #000; }
     .status-paid { background: #10b981; color: #fff; }
-    .status-shipped { background: #3b82f6; color: #fff; }
-    .status-delivered { background: #8b5cf6; color: #fff; }
+    .status-bought { background: #3b82f6; color: #fff; }
+    .status-on_sklad_cn { background: #8b5cf6; color: #fff; }
+    .status-in_transit { background: #06b6d4; color: #fff; }
+    .status-in_belarus { background: #14b8a6; color: #fff; }
+    .status-delivered { background: #10b981; color: #fff; }
     .status-cancelled { background: #ef4444; color: #fff; }
-    .marketplace-card { transition: transform 0.2s; cursor: pointer; background: rgba(255,255,255,0.1); backdrop-filter: blur(8px); border-radius: 12px; overflow: hidden; }
-    .marketplace-card:hover { transform: translateY(-4px); }
+    .marketplace-card { transition: all 0.2s; cursor: pointer; background: rgba(255,255,255,0.08); backdrop-filter: blur(12px); border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+    .marketplace-card:hover { transform: translateY(-4px); background: rgba(255,255,255,0.12); }
     .tab-bar {
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
       background: rgba(15, 23, 42, 0.95);
-      backdrop-filter: blur(20px);
+      backdrop-filter: blur(25px);
       border-top: 1px solid rgba(255,255,255,0.1);
       display: flex;
       justify-content: space-around;
-      padding: 8px 12px 12px;
+      align-items: center;
+      padding: 8px 16px 16px;
       z-index: 100;
     }
     .tab-item {
@@ -37,56 +41,78 @@
       gap: 4px;
       color: #8e9aaf;
       cursor: pointer;
+      transition: color 0.2s;
     }
     .tab-item.active { color: #00c2ff; }
     .tab-icon { font-size: 22px; }
-    .tab-label { font-size: 10px; font-weight: bold; }
+    .tab-label { font-size: 10px; font-weight: 600; }
     .tab-item.new-order {
       background: linear-gradient(135deg, #007aff, #00c2ff);
       color: white;
-      padding: 6px 12px;
-      border-radius: 30px;
-      margin-top: -8px;
+      padding: 8px 16px;
+      border-radius: 40px;
+      margin-top: -12px;
+      box-shadow: 0 4px 12px rgba(0,122,255,0.4);
     }
+    .tab-item.new-order .tab-label { font-size: 12px; font-weight: bold; }
     .app-header {
       position: sticky;
       top: 0;
       z-index: 90;
-      background: rgba(15, 23, 42, 0.9);
-      backdrop-filter: blur(20px);
-      padding: 10px 16px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(25px);
+      padding: 12px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       border-bottom: 1px solid rgba(255,255,255,0.1);
     }
-    .header-left { display: flex; align-items: center; gap: 12px; }
-    .back-btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; display: none; }
-    .logo-img { height: 32px; cursor: pointer; }
-    .balance { background: rgba(0,194,255,0.15); padding: 4px 8px; border-radius: 20px; font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px; }
-    .balance-add { background: none; border: none; color: #00c2ff; font-size: 16px; cursor: pointer; }
-    .icon-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
-    .avatar { width: 36px; height: 36px; border-radius: 50%; background: #2d3748; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .header-left { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .back-btn { background: rgba(255,255,255,0.15); border: none; color: white; font-size: 14px; font-weight: 600; padding: 6px 16px; border-radius: 40px; cursor: pointer; display: none; align-items: center; gap: 6px; transition: 0.2s; }
+    .back-btn:hover { background: rgba(255,255,255,0.25); }
+    .logo-img { height: 34px; cursor: pointer; }
+    .header-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .balance {
+      background: rgba(0,194,255,0.15);
+      padding: 5px 12px;
+      border-radius: 30px;
+      font-size: 14px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .balance-add { background: none; border: none; color: #00c2ff; font-size: 16px; cursor: pointer; font-weight: bold; padding: 0; }
+    .icon-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; width: 32px; text-align: center; }
+    .avatar { width: 36px; height: 36px; border-radius: 50%; background: #2d3748; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; cursor: pointer; }
     .avatar img { width: 100%; height: 100%; object-fit: cover; }
-    .user-info { display: flex; flex-direction: column; align-items: flex-end; }
-    .user-name { font-size: 12px; font-weight: bold; }
+    .user-info { display: flex; flex-direction: column; align-items: flex-end; margin-left: 8px; }
+    .user-name { font-size: 12px; font-weight: 600; color: white; line-height: 1.3; }
     .main-content { padding: 16px; padding-bottom: 80px; }
-    .catalog-tabs { display: flex; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px; }
-    .catalog-tab { font-size: 16px; font-weight: bold; color: #8e9aaf; cursor: pointer; padding: 4px 0; }
+    .catalog-tabs { display: flex; gap: 16px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px; }
+    .catalog-tab { font-size: 16px; font-weight: bold; color: #8e9aaf; cursor: pointer; padding: 4px 0; transition: 0.2s; }
     .catalog-tab.active { color: #00c2ff; border-bottom: 2px solid #00c2ff; }
+    .order-card { background: rgba(255,255,255,0.08); backdrop-filter: blur(12px); border-radius: 20px; padding: 16px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); transition: 0.2s; }
+    .order-card:hover { background: rgba(255,255,255,0.12); }
+    .back-sub-btn { background: rgba(255,255,255,0.15); border: none; color: white; padding: 8px 16px; border-radius: 40px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 16px; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; }
+    .back-sub-btn:hover { background: rgba(255,255,255,0.25); }
   </style>
 </head>
 <body>
   <div id="app">
     <div class="app-header">
       <div class="header-left">
-        <button class="back-btn" id="backBtn">←</button>
+        <button class="back-btn" id="backBtn">← Назад</button>
         <img id="logoImg" class="logo-img" src="https://i.ibb.co/9kJTjpjT/1-Logo.png" alt="ICE LOGIX">
       </div>
       <div class="header-right">
         <div class="balance"><span id="headerBalance">0 ❄️</span><button class="balance-add" id="addBalanceBtn">+</button></div>
         <button class="icon-btn" id="notificationsBtn">🔔</button>
-        <div class="user-info"><div class="avatar" id="avatar"></div><span class="user-name" id="userNameHeader">Гость</span></div>
+        <button class="icon-btn" id="settingsBtn">⚙️</button>
+        <div class="user-info">
+          <div class="avatar" id="avatar"></div>
+          <span class="user-name" id="userNameHeader">Гость</span>
+        </div>
       </div>
     </div>
     <div id="content" class="main-content"><div class="text-center py-10">Загрузка...</div></div>
@@ -99,13 +125,11 @@
     </div>
   </div>
   <script>
-    // --- Глобальные переменные ---
     let tg = null, userId = null, userName = 'Гость', userAvatarUrl = null, isOwner = false, supabaseClient = null;
     let currentTab = 'home', previousTab = null, currentSubScreen = null;
     let marketplaceFilters = { country: 'all' };
     let balance = 0;
 
-    // --- Инициализация ---
     async function init() {
       tg = window.Telegram.WebApp;
       tg.ready();
@@ -123,6 +147,8 @@
       const avatarDiv = document.getElementById('avatar');
       avatarDiv.innerHTML = userAvatarUrl ? `<img src="${userAvatarUrl}">` : userName.charAt(0).toUpperCase();
       document.getElementById('logoImg').onclick = () => switchTab('home');
+      document.getElementById('avatar').onclick = () => switchTab('profile');
+      document.getElementById('settingsBtn').onclick = () => alert('Настройки будут позже');
       switchTab('home');
     }
 
@@ -164,7 +190,7 @@
       document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
       const activeTab = document.querySelector(`.tab-item[data-tab="${tabName}"]`);
       if (activeTab) activeTab.classList.add('active');
-      document.getElementById('backBtn').style.display = (tabName === 'home') ? 'none' : 'block';
+      document.getElementById('backBtn').style.display = (tabName === 'home') ? 'none' : 'flex';
       renderCurrentScreen();
     }
 
@@ -173,6 +199,12 @@
       if (currentSubScreen === 'catalogs') {
         contentDiv.innerHTML = await renderCatalogsContent();
         attachCatalogsHandlers();
+        return;
+      }
+      if (currentSubScreen === 'myOrders') {
+        contentDiv.innerHTML = await renderOrders();
+        const backBtn = document.getElementById('backToProfileBtn');
+        if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
         return;
       }
       if (currentTab === 'home') contentDiv.innerHTML = await renderHome();
@@ -191,150 +223,73 @@
     }
 
     async function renderHome() {
-      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-center"><h1 class="text-2xl font-bold">Добро пожаловать, ${userName}!</h1><p class="text-white/70 mt-2">Ваш баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p></div>`;
+      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-center shadow-lg"><h1 class="text-2xl font-bold">Добро пожаловать, ${userName}!</h1><p class="text-white/70 mt-2">Ваш баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p></div>`;
     }
 
     async function renderCalculator() {
-      return `<div class="bg-white/10 backdrop-blur-md rounded-xl p-4"><h2 class="text-lg font-bold mb-3">🧮 Калькулятор</h2><input type="text" id="calcUrl" class="w-full p-2 rounded bg-white/20 mb-2" placeholder="Ссылка на товар"><input type="number" id="calcPrice" class="w-full p-2 rounded bg-white/20 mb-2" placeholder="Цена ¥" value="520"><input type="range" id="calcWeight" min="0.1" max="30" step="0.1" value="1" class="w-full"><span id="weightVal">1.0 кг</span><button id="calcBtn" class="mt-4 w-full bg-cyan-500 py-2 rounded">Рассчитать</button><div id="calcResult" class="mt-4 hidden"><p>Итого: <span id="totalPrice">0</span> ❄️</p><button id="toNewOrderBtn" class="w-full bg-blue-600 py-2 rounded mt-2">Перенести в заказ</button></div></div>`;
+      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg"><h2 class="text-xl font-bold mb-4">🧮 Калькулятор</h2><input type="text" id="calcUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Ссылка на товар"><input type="number" id="calcPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Цена ¥" value="520"><div class="flex items-center gap-3"><input type="range" id="calcWeight" min="0.1" max="30" step="0.1" value="1" class="flex-1"><span id="weightVal" class="text-white/80">1.0 кг</span></div><button id="calcBtn" class="mt-5 w-full bg-cyan-500 hover:bg-cyan-600 py-3 rounded-xl font-bold transition">Рассчитать</button><div id="calcResult" class="mt-5 hidden bg-white/5 p-4 rounded-xl"><p>Итого: <span id="totalPrice" class="font-bold text-cyan-400">0</span> ❄️</p><button id="toNewOrderBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-xl">Перенести в заказ</button></div></div>`;
     }
 
     async function renderNewOrder() {
       const d = window.tempOrder || { url: '', price: 520, weight: 1, total: 0 };
-      return `<div class="bg-white/10 backdrop-blur-md rounded-xl p-4"><h2 class="text-lg font-bold mb-3">✨ Новый заказ</h2><input type="text" id="orderUrl" class="w-full p-2 rounded bg-white/20 mb-2" value="${d.url}" placeholder="Ссылка"><input type="number" id="orderPrice" class="w-full p-2 rounded bg-white/20 mb-2" value="${d.price}"><input type="number" id="orderWeight" class="w-full p-2 rounded bg-white/20 mb-2" value="${d.weight}" step="0.1"><p>Итого: <span id="orderTotal">${d.total}</span> ❄️</p><button id="createOrderFinal" class="mt-4 w-full bg-green-600 py-2 rounded">Оформить заказ (75%)</button></div>`;
+      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg"><h2 class="text-xl font-bold mb-4">✨ Новый заказ</h2><input type="text" id="orderUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.url}" placeholder="Ссылка"><input type="number" id="orderPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.price}"><div class="flex items-center gap-3"><input type="number" id="orderWeight" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" value="${d.weight}" step="0.1"><span class="text-white/80">кг</span></div><p class="mt-4 text-lg">Итого: <span id="orderTotal" class="font-bold text-cyan-400">${d.total}</span> ❄️</p><button id="createOrderFinal" class="mt-5 w-full bg-green-600 hover:bg-green-700 py-3 rounded-xl font-bold">Оформить заказ (75%)</button></div>`;
     }
 
     async function renderProfile() {
-      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 text-center"><div class="avatar mx-auto w-20 h-20 text-3xl flex items-center justify-center bg-white/20 rounded-full mb-2">${userName.charAt(0)}</div><h2 class="text-xl font-bold">${userName}</h2><p class="text-white/70">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p><button id="myOrdersBtn" class="mt-2 bg-white/20 px-4 py-2 rounded-lg">Мои заказы</button><button id="logoutBtn" class="mt-4 w-full bg-red-500/20 py-2 rounded-lg">Выйти</button></div>`;
+      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 text-center shadow-lg"><div class="avatar mx-auto w-24 h-24 text-4xl flex items-center justify-center bg-white/20 rounded-full mb-3">${userName.charAt(0)}</div><h2 class="text-xl font-bold">${userName}</h2><p class="text-white/70 mt-1">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p><button id="myOrdersBtn" class="mt-5 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full">📋 Мои заказы</button><button id="logoutBtn" class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full">Выйти</button></div>`;
     }
 
     function attachCalculatorHandlers() {
-      const slider = document.getElementById('calcWeight');
-      const valSpan = document.getElementById('weightVal');
+      const slider = document.getElementById('calcWeight'), valSpan = document.getElementById('weightVal');
       if (slider) slider.oninput = () => valSpan.innerText = parseFloat(slider.value).toFixed(1) + ' кг';
-      const calcBtn = document.getElementById('calcBtn');
-      if (calcBtn) {
-        calcBtn.onclick = () => {
-          let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
-          let weight = parseFloat(slider?.value || 1);
-          let total = (price * 0.45) + (weight * 12);
-          document.getElementById('totalPrice').innerText = total.toFixed(2);
-          document.getElementById('calcResult').classList.remove('hidden');
-          window.tempOrder = {
-            url: document.getElementById('calcUrl')?.value || '',
-            price: price,
-            weight: weight,
-            total: total
-          };
-        };
-      }
-      const toNewOrder = document.getElementById('toNewOrderBtn');
-      if (toNewOrder) toNewOrder.onclick = () => {
-        if (window.tempOrder) switchTab('neworder');
-        else alert('Сначала рассчитайте стоимость');
+      document.getElementById('calcBtn').onclick = () => {
+        let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
+        let weight = parseFloat(slider?.value || 1);
+        let total = (price * 0.45) + (weight * 12);
+        document.getElementById('totalPrice').innerText = total.toFixed(2);
+        document.getElementById('calcResult').classList.remove('hidden');
+        window.tempOrder = { url: document.getElementById('calcUrl')?.value || '', price, weight, total };
       };
+      document.getElementById('toNewOrderBtn').onclick = () => { if (window.tempOrder) switchTab('neworder'); else alert('Сначала рассчитайте'); };
     }
 
     function attachNewOrderHandlers() {
-      const priceInp = document.getElementById('orderPrice');
-      const weightInp = document.getElementById('orderWeight');
-      const totalSpan = document.getElementById('orderTotal');
-      const update = () => {
-        let price = parseFloat(priceInp?.value || 520);
-        let weight = parseFloat(weightInp?.value || 1);
-        let total = (price * 0.45) + (weight * 12);
-        if (totalSpan) totalSpan.innerText = total.toFixed(2);
-        window.tempOrder = {
-          url: document.getElementById('orderUrl')?.value || '',
-          price: price,
-          weight: weight,
-          total: total
-        };
+      const priceInp = document.getElementById('orderPrice'), weightInp = document.getElementById('orderWeight'), totalSpan = document.getElementById('orderTotal');
+      const update = () => { let price = parseFloat(priceInp?.value || 520), weight = parseFloat(weightInp?.value || 1), total = (price * 0.45) + (weight * 12); totalSpan.innerText = total.toFixed(2); window.tempOrder = { url: document.getElementById('orderUrl')?.value || '', price, weight, total }; };
+      priceInp?.addEventListener('input', update); weightInp?.addEventListener('input', update);
+      document.getElementById('createOrderFinal').onclick = async () => {
+        if (!window.tempOrder || !userId) return alert('Ошибка');
+        const { data, error } = await supabaseClient.from('orders').insert({ user_id: userId, source_url: window.tempOrder.url, weight_estimated: window.tempOrder.weight, price_original: window.tempOrder.price, price_byn: window.tempOrder.price * 0.45, delivery_cost_estimated: window.tempOrder.weight * 12, prepayment_amount: window.tempOrder.total * 0.75, status: 'pending' }).select();
+        if (error) return alert('Ошибка: ' + error.message);
+        alert(`Заказ создан! Номер: ${data[0].id}`);
+        switchTab('home');
       };
-      if (priceInp) priceInp.addEventListener('input', update);
-      if (weightInp) weightInp.addEventListener('input', update);
-      const createBtn = document.getElementById('createOrderFinal');
-      if (createBtn) {
-        createBtn.onclick = async () => {
-          if (!window.tempOrder || !userId) return alert('Ошибка: нет данных заказа или авторизации');
-          try {
-            const { data, error } = await supabaseClient.from('orders').insert({
-              user_id: userId,
-              source_url: window.tempOrder.url,
-              weight_estimated: window.tempOrder.weight,
-              price_original: window.tempOrder.price,
-              price_byn: window.tempOrder.price * 0.45,
-              delivery_cost_estimated: window.tempOrder.weight * 12,
-              prepayment_amount: window.tempOrder.total * 0.75,
-              status: 'pending'
-            }).select();
-            if (error) throw error;
-            alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${(window.tempOrder.total * 0.75).toFixed(2)} ❄️`);
-            window.tempOrder = null;
-            switchTab('home');
-          } catch (err) {
-            alert('Ошибка создания заказа: ' + err.message);
-          }
-        };
-      }
     }
 
     function attachProfileHandlers() {
-      const myOrdersBtn = document.getElementById('myOrdersBtn');
-      if (myOrdersBtn) {
-        myOrdersBtn.onclick = () => {
-          currentSubScreen = 'myOrders';
-          renderCurrentScreen();
-        };
-      }
-      const logoutBtn = document.getElementById('logoutBtn');
-      if (logoutBtn) logoutBtn.onclick = () => tg.close();
+      document.getElementById('myOrdersBtn').onclick = () => { currentSubScreen = 'myOrders'; renderCurrentScreen(); };
+      document.getElementById('logoutBtn').onclick = () => tg.close();
     }
 
-    // --- Заказы (подэкран) ---
     async function renderOrders() {
       if (!userId) return '<p class="text-center mt-10">Авторизуйтесь</p>';
-      try {
-        const { data, error } = await supabaseClient.from('orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        if (error) throw error;
-        if (!data || data.length === 0) return '<p class="text-center mt-10">У вас пока нет заказов</p>';
-        return `
-          <button id="backToProfileBtn" class="mb-4 bg-white/20 px-4 py-2 rounded-lg">← Назад</button>
-          <div class="space-y-3">
-            ${data.map(order => `
-              <div class="bg-white/10 backdrop-blur-md rounded-xl p-4">
-                <div class="flex justify-between items-start">
-                  <div>
-                    <p class="text-white font-bold">Заказ #${order.id.slice(0, 8)}</p>
-                    <p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p>
-                    <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️</p>
-                    ${order.tracking_number_cn ? `<p class="text-white/70 text-xs mt-2">📦 Трек: ${order.tracking_number_cn}</p>` : ''}
-                    ${order.photo_reports && order.photo_reports.length ? `<div class="flex gap-2 mt-2">${order.photo_reports.map(url => `<img src="${url}" class="w-16 h-16 object-cover rounded">`).join('')}</div>` : ''}
-                  </div>
-                  <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        `;
-      } catch (err) {
-        console.error(err);
-        return '<p class="text-center mt-10 text-red-400">Ошибка загрузки заказов</p>';
-      }
+      const { data, error } = await supabaseClient.from('orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      if (error || !data?.length) return '<p class="text-center mt-10">У вас пока нет заказов</p>';
+      return `<button id="backToProfileBtn" class="back-sub-btn">← Назад</button><div class="space-y-3">${data.map(order => `<div class="order-card"><div class="flex justify-between items-start"><div><p class="font-bold">Заказ #${order.id.slice(0,8)}</p><p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p><p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️</p>${order.tracking_number_cn ? `<p class="text-white/70 text-xs mt-2">📦 Трек: ${order.tracking_number_cn}</p>` : ''}${order.photo_reports?.length ? `<div class="mt-2 flex gap-2">${order.photo_reports.map(url => `<img src="${url}" class="w-16 h-16 object-cover rounded">`).join('')}</div>` : ''}</div><span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span></div></div>`).join('')}</div>`;
     }
 
-    // --- Каталоги ---
+    function getStatusText(status) {
+      const map = { 'pending':'Ожидает оплаты', 'paid':'Оплачен', 'bought':'Выкуплен', 'on_sklad_cn':'На складе в Китае', 'in_transit':'В пути', 'in_belarus':'В Беларуси', 'delivered':'Доставлен', 'cancelled':'Отменён' };
+      return map[status] || status;
+    }
+    function getStatusClass(status) {
+      const map = { 'pending':'status-pending', 'paid':'status-paid', 'bought':'status-bought', 'on_sklad_cn':'status-on_sklad_cn', 'in_transit':'status-in_transit', 'in_belarus':'status-in_belarus', 'delivered':'status-delivered', 'cancelled':'status-cancelled' };
+      return map[status] || 'status-pending';
+    }
+
     async function renderCatalogsContent() {
-      return `
-        <div>
-          <div class="catalog-tabs">
-            <div class="catalog-tab active" data-catalog="marketplaces">Площадки</div>
-            <div class="catalog-tab" data-catalog="products">Товары</div>
-          </div>
-          <div id="catalogContent">${await renderMarketplaces()}</div>
-        </div>
-      `;
+      return `<div><div class="catalog-tabs"><div class="catalog-tab active" data-catalog="marketplaces">Площадки</div><div class="catalog-tab" data-catalog="products">Товары</div></div><div id="catalogContent">${await renderMarketplaces()}</div></div>`;
     }
-
     function attachCatalogsHandlers() {
       document.querySelectorAll('.catalog-tab').forEach(tab => {
         tab.onclick = async () => {
@@ -342,108 +297,30 @@
           tab.classList.add('active');
           const type = tab.getAttribute('data-catalog');
           const container = document.getElementById('catalogContent');
-          if (type === 'marketplaces') {
-            container.innerHTML = await renderMarketplaces();
-            attachMarketplacesHandlers();
-          } else {
-            container.innerHTML = '<p class="text-center mt-10">Каталог товаров в разработке</p>';
-          }
+          if (type === 'marketplaces') container.innerHTML = await renderMarketplaces();
+          else container.innerHTML = '<p class="text-center mt-10">Каталог товаров в разработке</p>';
+          if (type === 'marketplaces') attachMarketplacesHandlers();
         };
       });
       attachMarketplacesHandlers();
     }
-
     async function renderMarketplaces() {
       try {
         let query = supabaseClient.from('marketplaces').select('*').eq('is_active', true);
-        if (marketplaceFilters.country && marketplaceFilters.country !== 'all') {
-          query = query.eq('country', marketplaceFilters.country);
-        }
+        if (marketplaceFilters.country && marketplaceFilters.country !== 'all') query = query.eq('country', marketplaceFilters.country);
         const { data, error } = await query.order('sort_order', { ascending: true });
-        if (error || !data?.length) return '<p class="text-center mt-10">Каталог площадок пуст</p>';
+        if (error || !data?.length) return '<p class="text-center mt-10">Каталог пуст</p>';
         const countries = [...new Set(data.map(m => m.country).filter(Boolean))];
-        return `
-          <div class="mb-4 flex flex-wrap gap-2">
-            <button class="filter-country active bg-cyan-500 px-3 py-1 rounded-full" data-country="all">Все</button>
-            ${countries.map(c => `<button class="filter-country bg-white/20 px-3 py-1 rounded-full" data-country="${c}">${c}</button>`).join('')}
-            <button id="openFilterModalBtn" class="bg-white/20 px-3 py-1 rounded-full">🔍 Фильтр</button>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            ${data.map(mp => `
-              <div class="marketplace-card" data-country="${mp.country || ''}">
-                <div class="aspect-square bg-white/20 flex items-center justify-center p-2">
-                  ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain">` : '<div class="text-4xl">🛍️</div>'}
-                </div>
-                <div class="p-3">
-                  <h3 class="font-bold text-white truncate">${mp.name}</h3>
-                  <p class="text-white/70 text-xs">${mp.country || ''}</p>
-                  <div class="flex justify-between items-center mt-2">
-                    <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
-                    <button class="detail-btn bg-white/20 rounded-full w-8 h-8" data-name="${mp.name.replace(/"/g, '&quot;')}" data-desc="${(mp.description || '').replace(/"/g, '&quot;')}">ℹ️</button>
-                  </div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        `;
-      } catch(e) {
-        return '<p class="text-center mt-10 text-red-400">Ошибка загрузки каталога</p>';
-      }
+        return `<div class="mb-4 flex gap-2"><button class="filter-country active bg-cyan-500 px-3 py-1 rounded-full" data-country="all">Все</button>${countries.map(c => `<button class="filter-country bg-white/20 px-3 py-1 rounded-full" data-country="${c}">${c}</button>`).join('')}<button id="openFilterModalBtn" class="bg-white/20 px-3 py-1 rounded-full">🔍 Фильтр</button></div><div class="grid grid-cols-2 gap-4">${data.map(mp => `<div class="marketplace-card" data-country="${mp.country || ''}"><div class="aspect-square bg-white/20 flex items-center justify-center p-2">${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain">` : '🛍️'}</div><div class="p-3"><h3 class="font-bold">${mp.name}</h3><p class="text-white/70 text-xs">${mp.country || ''}</p><div class="flex justify-between mt-2"><a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a><button class="detail-btn bg-white/20 rounded-full w-8 h-8" data-desc="${(mp.description || '').replace(/"/g, '&quot;')}">ℹ️</button></div></div></div>`).join('')}</div>`;
+      } catch(e) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки</p>'; }
     }
-
     function attachMarketplacesHandlers() {
       document.querySelectorAll('.filter-country').forEach(btn => {
-        btn.onclick = () => {
-          const country = btn.getAttribute('data-country');
-          document.querySelectorAll('.filter-country').forEach(b => b.classList.remove('active', 'bg-cyan-500'));
-          btn.classList.add('active', 'bg-cyan-500');
-          document.querySelectorAll('.marketplace-card').forEach(card => {
-            if (country === 'all' || card.getAttribute('data-country') === country) {
-              card.style.display = '';
-            } else {
-              card.style.display = 'none';
-            }
-          });
-          marketplaceFilters.country = country === 'all' ? null : country;
-        };
+        btn.onclick = () => { const country = btn.getAttribute('data-country'); document.querySelectorAll('.filter-country').forEach(b => b.classList.remove('active', 'bg-cyan-500')); btn.classList.add('active', 'bg-cyan-500'); document.querySelectorAll('.marketplace-card').forEach(card => { if (country === 'all' || card.getAttribute('data-country') === country) card.style.display = ''; else card.style.display = 'none'; }); marketplaceFilters.country = country === 'all' ? null : country; };
       });
-      const filterBtn = document.getElementById('openFilterModalBtn');
-      if (filterBtn) filterBtn.onclick = () => alert('Расширенный фильтр будет добавлен позже');
-      document.querySelectorAll('.detail-btn').forEach(btn => {
-        btn.onclick = () => alert(btn.getAttribute('data-desc') || 'Описание отсутствует');
-      });
+      document.getElementById('openFilterModalBtn')?.addEventListener('click', () => alert('Расширенный фильтр будет позже'));
+      document.querySelectorAll('.detail-btn').forEach(btn => btn.onclick = () => alert(btn.getAttribute('data-desc') || 'Нет описания'));
     }
-
-    // --- Функции для статусов (если не определены ранее) ---
-    function getStatusText(status) {
-      const map = {
-        'pending': 'Ожидает оплаты',
-        'paid': 'Оплачен (75%)',
-        'bought': 'Выкуплен',
-        'on_sklad_cn': 'На складе в Китае',
-        'in_transit': 'В пути',
-        'in_belarus': 'В Беларуси',
-        'delivered': 'Доставлен',
-        'cancelled': 'Отменён'
-      };
-      return map[status] || status;
-    }
-
-    function getStatusClass(status) {
-      const map = {
-        'pending': 'status-pending',
-        'paid': 'status-paid',
-        'bought': 'status-paid',
-        'on_sklad_cn': 'status-paid',
-        'in_transit': 'status-shipped',
-        'in_belarus': 'status-shipped',
-        'delivered': 'status-delivered',
-        'cancelled': 'status-cancelled'
-      };
-      return map[status] || 'status-pending';
-    }
-
-    // --- Запуск ---
     init();
   </script>
 </body>
