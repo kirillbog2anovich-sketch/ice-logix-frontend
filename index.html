@@ -8,14 +8,14 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <style>
-    body { background: #0F172A; }
+    body { background: #0F172A; margin: 0; }
     .status-badge { padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold; }
     .status-pending { background: #f59e0b; color: #000; }
     .status-paid { background: #10b981; color: #fff; }
     .status-shipped { background: #3b82f6; color: #fff; }
     .status-delivered { background: #8b5cf6; color: #fff; }
     .status-cancelled { background: #ef4444; color: #fff; }
-    .marketplace-card { transition: transform 0.2s; cursor: pointer; }
+    .marketplace-card { transition: transform 0.2s; cursor: pointer; background: rgba(255,255,255,0.1); backdrop-filter: blur(8px); border-radius: 12px; overflow: hidden; }
     .marketplace-card:hover { transform: translateY(-4px); }
     .tab-bar {
       position: fixed;
@@ -99,12 +99,14 @@
     </div>
   </div>
   <script>
+    // --- Глобальные переменные ---
     let tg = null, userId = null, userName = 'Гость', userAvatarUrl = null, isOwner = false, supabaseClient = null;
     let currentTab = 'home', previousTab = null, currentSubScreen = null;
-    let marketplaceFilters = { country: 'all', type: 'all', category: 'all', gender: 'all' };
+    let marketplaceFilters = { country: 'all' };
     let balance = 0;
 
-    function init() {
+    // --- Инициализация ---
+    async function init() {
       tg = window.Telegram.WebApp;
       tg.ready();
       tg.expand();
@@ -115,7 +117,7 @@
       const SUPABASE_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co';
       const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
       supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      loadUserData();
+      await loadUserData();
       attachEventListeners();
       document.getElementById('userNameHeader').innerText = userName;
       const avatarDiv = document.getElementById('avatar');
@@ -135,13 +137,22 @@
     }
 
     function attachEventListeners() {
-      document.getElementById('backBtn').onclick = () => { if (previousTab) switchTab(previousTab); else if (currentTab !== 'home') switchTab('home'); else tg.close(); };
+      document.getElementById('backBtn').onclick = () => {
+        if (previousTab) switchTab(previousTab);
+        else if (currentTab !== 'home') switchTab('home');
+        else tg.close();
+      };
       document.getElementById('addBalanceBtn').onclick = () => alert('Пополнение баланса будет позже');
       document.querySelectorAll('.tab-item').forEach(tab => {
         tab.onclick = () => {
           const tabName = tab.getAttribute('data-tab');
-          if (tabName === 'catalogs') { currentSubScreen = 'catalogs'; renderCurrentScreen(); }
-          else { currentSubScreen = null; switchTab(tabName); }
+          if (tabName === 'catalogs') {
+            currentSubScreen = 'catalogs';
+            renderCurrentScreen();
+          } else {
+            currentSubScreen = null;
+            switchTab(tabName);
+          }
         };
       });
     }
@@ -159,11 +170,19 @@
 
     async function renderCurrentScreen() {
       const contentDiv = document.getElementById('content');
-      if (currentSubScreen === 'catalogs') { contentDiv.innerHTML = await renderCatalogsContent(); attachCatalogsHandlers(); return; }
+      if (currentSubScreen === 'catalogs') {
+        contentDiv.innerHTML = await renderCatalogsContent();
+        attachCatalogsHandlers();
+        return;
+      }
       if (currentTab === 'home') contentDiv.innerHTML = await renderHome();
       else if (currentTab === 'calculator') contentDiv.innerHTML = await renderCalculator();
       else if (currentTab === 'neworder') contentDiv.innerHTML = await renderNewOrder();
-      else if (currentTab === 'catalogs') { contentDiv.innerHTML = await renderCatalogsContent(); attachCatalogsHandlers(); return; }
+      else if (currentTab === 'catalogs') {
+        contentDiv.innerHTML = await renderCatalogsContent();
+        attachCatalogsHandlers();
+        return;
+      }
       else if (currentTab === 'profile') contentDiv.innerHTML = await renderProfile();
       else contentDiv.innerHTML = '<div class="text-center py-10">Страница не найдена</div>';
       if (currentTab === 'calculator') attachCalculatorHandlers();
@@ -171,42 +190,151 @@
       if (currentTab === 'profile') attachProfileHandlers();
     }
 
-    async function renderHome() { return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 text-center"><h1 class="text-2xl font-bold">Добро пожаловать, ${userName}!</h1><p class="text-white/70 mt-2">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p></div>`; }
-    async function renderCalculator() { return `<div class="bg-white/10 backdrop-blur-md rounded-xl p-4"><h2 class="text-lg font-bold mb-3">🧮 Калькулятор</h2><input type="text" id="calcUrl" class="w-full p-2 rounded bg-white/20 mb-2" placeholder="Ссылка"><input type="number" id="calcPrice" class="w-full p-2 rounded bg-white/20 mb-2" placeholder="Цена ¥" value="520"><input type="range" id="calcWeight" min="0.1" max="30" step="0.1" value="1" class="w-full"><span id="weightVal">1.0 кг</span><button id="calcBtn" class="mt-4 w-full bg-cyan-500 py-2 rounded">Рассчитать</button><div id="calcResult" class="mt-4 hidden"><p>Итого: <span id="totalPrice">0</span> ❄️</p><button id="toNewOrderBtn" class="w-full bg-blue-600 py-2 rounded mt-2">Перенести в заказ</button></div></div>`; }
-    async function renderNewOrder() { const d = window.tempOrder || { url: '', price: 520, weight: 1, total: 0 }; return `<div class="bg-white/10 backdrop-blur-md rounded-xl p-4"><h2 class="text-lg font-bold mb-3">✨ Новый заказ</h2><input type="text" id="orderUrl" class="w-full p-2 rounded bg-white/20 mb-2" value="${d.url}" placeholder="Ссылка"><input type="number" id="orderPrice" class="w-full p-2 rounded bg-white/20 mb-2" value="${d.price}"><input type="number" id="orderWeight" class="w-full p-2 rounded bg-white/20 mb-2" value="${d.weight}" step="0.1"><p>Итого: <span id="orderTotal">${d.total}</span> ❄️</p><button id="createOrderFinal" class="mt-4 w-full bg-green-600 py-2 rounded">Оформить заказ (75%)</button></div>`; }
-    async function renderProfile() { return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 text-center"><div class="avatar mx-auto w-20 h-20 text-3xl flex items-center justify-center bg-white/20 rounded-full mb-2">${userName.charAt(0)}</div><h2 class="text-xl font-bold">${userName}</h2><p class="text-white/70">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p><button id="myOrdersBtn" class="mt-2 bg-white/20 px-4 py-2 rounded-lg">Мои заказы</button><button id="logoutBtn" class="mt-4 w-full bg-red-500/20 py-2 rounded-lg">Выйти</button></div>`; }
+    async function renderHome() {
+      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-center"><h1 class="text-2xl font-bold">Добро пожаловать, ${userName}!</h1><p class="text-white/70 mt-2">Ваш баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p></div>`;
+    }
+
+    async function renderCalculator() {
+      return `<div class="bg-white/10 backdrop-blur-md rounded-xl p-4"><h2 class="text-lg font-bold mb-3">🧮 Калькулятор</h2><input type="text" id="calcUrl" class="w-full p-2 rounded bg-white/20 mb-2" placeholder="Ссылка на товар"><input type="number" id="calcPrice" class="w-full p-2 rounded bg-white/20 mb-2" placeholder="Цена ¥" value="520"><input type="range" id="calcWeight" min="0.1" max="30" step="0.1" value="1" class="w-full"><span id="weightVal">1.0 кг</span><button id="calcBtn" class="mt-4 w-full bg-cyan-500 py-2 rounded">Рассчитать</button><div id="calcResult" class="mt-4 hidden"><p>Итого: <span id="totalPrice">0</span> ❄️</p><button id="toNewOrderBtn" class="w-full bg-blue-600 py-2 rounded mt-2">Перенести в заказ</button></div></div>`;
+    }
+
+    async function renderNewOrder() {
+      const d = window.tempOrder || { url: '', price: 520, weight: 1, total: 0 };
+      return `<div class="bg-white/10 backdrop-blur-md rounded-xl p-4"><h2 class="text-lg font-bold mb-3">✨ Новый заказ</h2><input type="text" id="orderUrl" class="w-full p-2 rounded bg-white/20 mb-2" value="${d.url}" placeholder="Ссылка"><input type="number" id="orderPrice" class="w-full p-2 rounded bg-white/20 mb-2" value="${d.price}"><input type="number" id="orderWeight" class="w-full p-2 rounded bg-white/20 mb-2" value="${d.weight}" step="0.1"><p>Итого: <span id="orderTotal">${d.total}</span> ❄️</p><button id="createOrderFinal" class="mt-4 w-full bg-green-600 py-2 rounded">Оформить заказ (75%)</button></div>`;
+    }
+
+    async function renderProfile() {
+      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 text-center"><div class="avatar mx-auto w-20 h-20 text-3xl flex items-center justify-center bg-white/20 rounded-full mb-2">${userName.charAt(0)}</div><h2 class="text-xl font-bold">${userName}</h2><p class="text-white/70">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p><button id="myOrdersBtn" class="mt-2 bg-white/20 px-4 py-2 rounded-lg">Мои заказы</button><button id="logoutBtn" class="mt-4 w-full bg-red-500/20 py-2 rounded-lg">Выйти</button></div>`;
+    }
 
     function attachCalculatorHandlers() {
-      const slider = document.getElementById('calcWeight'), valSpan = document.getElementById('weightVal');
+      const slider = document.getElementById('calcWeight');
+      const valSpan = document.getElementById('weightVal');
       if (slider) slider.oninput = () => valSpan.innerText = parseFloat(slider.value).toFixed(1) + ' кг';
-      document.getElementById('calcBtn').onclick = () => {
-        let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
-        let weight = parseFloat(slider?.value || 1);
-        let total = (price * 0.45) + (weight * 12);
-        document.getElementById('totalPrice').innerText = total.toFixed(2);
-        document.getElementById('calcResult').classList.remove('hidden');
-        window.tempOrder = { url: document.getElementById('calcUrl')?.value || '', price, weight, total };
+      const calcBtn = document.getElementById('calcBtn');
+      if (calcBtn) {
+        calcBtn.onclick = () => {
+          let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
+          let weight = parseFloat(slider?.value || 1);
+          let total = (price * 0.45) + (weight * 12);
+          document.getElementById('totalPrice').innerText = total.toFixed(2);
+          document.getElementById('calcResult').classList.remove('hidden');
+          window.tempOrder = {
+            url: document.getElementById('calcUrl')?.value || '',
+            price: price,
+            weight: weight,
+            total: total
+          };
+        };
+      }
+      const toNewOrder = document.getElementById('toNewOrderBtn');
+      if (toNewOrder) toNewOrder.onclick = () => {
+        if (window.tempOrder) switchTab('neworder');
+        else alert('Сначала рассчитайте стоимость');
       };
-      document.getElementById('toNewOrderBtn').onclick = () => { if (window.tempOrder) switchTab('neworder'); else alert('Сначала рассчитайте'); };
-    }
-    function attachNewOrderHandlers() {
-      const priceInp = document.getElementById('orderPrice'), weightInp = document.getElementById('orderWeight'), totalSpan = document.getElementById('orderTotal');
-      const update = () => { let price = parseFloat(priceInp?.value || 520), weight = parseFloat(weightInp?.value || 1), total = (price * 0.45) + (weight * 12); totalSpan.innerText = total.toFixed(2); window.tempOrder = { url: document.getElementById('orderUrl')?.value || '', price, weight, total }; };
-      priceInp?.addEventListener('input', update); weightInp?.addEventListener('input', update);
-      document.getElementById('createOrderFinal').onclick = async () => {
-        if (!window.tempOrder || !userId) return alert('Ошибка');
-        const { data, error } = await supabaseClient.from('orders').insert({ user_id: userId, source_url: window.tempOrder.url, weight_estimated: window.tempOrder.weight, price_original: window.tempOrder.price, price_byn: window.tempOrder.price * 0.45, delivery_cost_estimated: window.tempOrder.weight * 12, prepayment_amount: window.tempOrder.total * 0.75, status: 'pending' }).select();
-        if (error) return alert('Ошибка: ' + error.message);
-        alert(`Заказ создан! Номер: ${data[0].id}`);
-        switchTab('home');
-      };
-    }
-    function attachProfileHandlers() {
-      document.getElementById('myOrdersBtn').onclick = () => alert('Список заказов будет позже');
-      document.getElementById('logoutBtn').onclick = () => tg.close();
     }
 
-    async function renderCatalogsContent() { return `<div><div class="catalog-tabs"><div class="catalog-tab active" data-catalog="marketplaces">Площадки</div><div class="catalog-tab" data-catalog="products">Товары</div></div><div id="catalogContent">${await renderMarketplaces()}</div></div>`; }
+    function attachNewOrderHandlers() {
+      const priceInp = document.getElementById('orderPrice');
+      const weightInp = document.getElementById('orderWeight');
+      const totalSpan = document.getElementById('orderTotal');
+      const update = () => {
+        let price = parseFloat(priceInp?.value || 520);
+        let weight = parseFloat(weightInp?.value || 1);
+        let total = (price * 0.45) + (weight * 12);
+        if (totalSpan) totalSpan.innerText = total.toFixed(2);
+        window.tempOrder = {
+          url: document.getElementById('orderUrl')?.value || '',
+          price: price,
+          weight: weight,
+          total: total
+        };
+      };
+      if (priceInp) priceInp.addEventListener('input', update);
+      if (weightInp) weightInp.addEventListener('input', update);
+      const createBtn = document.getElementById('createOrderFinal');
+      if (createBtn) {
+        createBtn.onclick = async () => {
+          if (!window.tempOrder || !userId) return alert('Ошибка: нет данных заказа или авторизации');
+          try {
+            const { data, error } = await supabaseClient.from('orders').insert({
+              user_id: userId,
+              source_url: window.tempOrder.url,
+              weight_estimated: window.tempOrder.weight,
+              price_original: window.tempOrder.price,
+              price_byn: window.tempOrder.price * 0.45,
+              delivery_cost_estimated: window.tempOrder.weight * 12,
+              prepayment_amount: window.tempOrder.total * 0.75,
+              status: 'pending'
+            }).select();
+            if (error) throw error;
+            alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${(window.tempOrder.total * 0.75).toFixed(2)} ❄️`);
+            window.tempOrder = null;
+            switchTab('home');
+          } catch (err) {
+            alert('Ошибка создания заказа: ' + err.message);
+          }
+        };
+      }
+    }
+
+    function attachProfileHandlers() {
+      const myOrdersBtn = document.getElementById('myOrdersBtn');
+      if (myOrdersBtn) {
+        myOrdersBtn.onclick = () => {
+          currentSubScreen = 'myOrders';
+          renderCurrentScreen();
+        };
+      }
+      const logoutBtn = document.getElementById('logoutBtn');
+      if (logoutBtn) logoutBtn.onclick = () => tg.close();
+    }
+
+    // --- Заказы (подэкран) ---
+    async function renderOrders() {
+      if (!userId) return '<p class="text-center mt-10">Авторизуйтесь</p>';
+      try {
+        const { data, error } = await supabaseClient.from('orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!data || data.length === 0) return '<p class="text-center mt-10">У вас пока нет заказов</p>';
+        return `
+          <button id="backToProfileBtn" class="mb-4 bg-white/20 px-4 py-2 rounded-lg">← Назад</button>
+          <div class="space-y-3">
+            ${data.map(order => `
+              <div class="bg-white/10 backdrop-blur-md rounded-xl p-4">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <p class="text-white font-bold">Заказ #${order.id.slice(0, 8)}</p>
+                    <p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p>
+                    <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️</p>
+                    ${order.tracking_number_cn ? `<p class="text-white/70 text-xs mt-2">📦 Трек: ${order.tracking_number_cn}</p>` : ''}
+                    ${order.photo_reports && order.photo_reports.length ? `<div class="flex gap-2 mt-2">${order.photo_reports.map(url => `<img src="${url}" class="w-16 h-16 object-cover rounded">`).join('')}</div>` : ''}
+                  </div>
+                  <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        console.error(err);
+        return '<p class="text-center mt-10 text-red-400">Ошибка загрузки заказов</p>';
+      }
+    }
+
+    // --- Каталоги ---
+    async function renderCatalogsContent() {
+      return `
+        <div>
+          <div class="catalog-tabs">
+            <div class="catalog-tab active" data-catalog="marketplaces">Площадки</div>
+            <div class="catalog-tab" data-catalog="products">Товары</div>
+          </div>
+          <div id="catalogContent">${await renderMarketplaces()}</div>
+        </div>
+      `;
+    }
+
     function attachCatalogsHandlers() {
       document.querySelectorAll('.catalog-tab').forEach(tab => {
         tab.onclick = async () => {
@@ -214,30 +342,108 @@
           tab.classList.add('active');
           const type = tab.getAttribute('data-catalog');
           const container = document.getElementById('catalogContent');
-          if (type === 'marketplaces') container.innerHTML = await renderMarketplaces();
-          else container.innerHTML = '<p class="text-center mt-10">Каталог товаров в разработке</p>';
-          if (type === 'marketplaces') attachMarketplacesHandlers();
+          if (type === 'marketplaces') {
+            container.innerHTML = await renderMarketplaces();
+            attachMarketplacesHandlers();
+          } else {
+            container.innerHTML = '<p class="text-center mt-10">Каталог товаров в разработке</p>';
+          }
         };
       });
       attachMarketplacesHandlers();
     }
+
     async function renderMarketplaces() {
       try {
         let query = supabaseClient.from('marketplaces').select('*').eq('is_active', true);
-        if (marketplaceFilters.country && marketplaceFilters.country !== 'all') query = query.eq('country', marketplaceFilters.country);
+        if (marketplaceFilters.country && marketplaceFilters.country !== 'all') {
+          query = query.eq('country', marketplaceFilters.country);
+        }
         const { data, error } = await query.order('sort_order', { ascending: true });
-        if (error || !data?.length) return '<p class="text-center mt-10">Каталог пуст</p>';
+        if (error || !data?.length) return '<p class="text-center mt-10">Каталог площадок пуст</p>';
         const countries = [...new Set(data.map(m => m.country).filter(Boolean))];
-        return `<div class="mb-4 flex gap-2"><button class="filter-country active bg-cyan-500 px-3 py-1 rounded-full" data-country="all">Все</button>${countries.map(c => `<button class="filter-country bg-white/20 px-3 py-1 rounded-full" data-country="${c}">${c}</button>`).join('')}<button id="openFilterModalBtn" class="bg-white/20 px-3 py-1 rounded-full">🔍 Фильтр</button></div><div class="grid grid-cols-2 gap-4">${data.map(mp => `<div class="marketplace-card bg-white/10 rounded-xl overflow-hidden" data-country="${mp.country || ''}"><div class="aspect-square bg-white/20 flex items-center justify-center p-2">${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain">` : '🛍️'}</div><div class="p-3"><h3 class="font-bold">${mp.name}</h3><p class="text-white/70 text-xs">${mp.country || ''}</p><div class="flex justify-between mt-2"><a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a><button class="detail-btn bg-white/20 rounded-full w-8 h-8" data-name="${mp.name.replace(/"/g, '&quot;')}" data-desc="${(mp.description || '').replace(/"/g, '&quot;')}">ℹ️</button></div></div></div>`).join('')}</div>`;
-      } catch(e) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки</p>'; }
+        return `
+          <div class="mb-4 flex flex-wrap gap-2">
+            <button class="filter-country active bg-cyan-500 px-3 py-1 rounded-full" data-country="all">Все</button>
+            ${countries.map(c => `<button class="filter-country bg-white/20 px-3 py-1 rounded-full" data-country="${c}">${c}</button>`).join('')}
+            <button id="openFilterModalBtn" class="bg-white/20 px-3 py-1 rounded-full">🔍 Фильтр</button>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            ${data.map(mp => `
+              <div class="marketplace-card" data-country="${mp.country || ''}">
+                <div class="aspect-square bg-white/20 flex items-center justify-center p-2">
+                  ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain">` : '<div class="text-4xl">🛍️</div>'}
+                </div>
+                <div class="p-3">
+                  <h3 class="font-bold text-white truncate">${mp.name}</h3>
+                  <p class="text-white/70 text-xs">${mp.country || ''}</p>
+                  <div class="flex justify-between items-center mt-2">
+                    <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
+                    <button class="detail-btn bg-white/20 rounded-full w-8 h-8" data-name="${mp.name.replace(/"/g, '&quot;')}" data-desc="${(mp.description || '').replace(/"/g, '&quot;')}">ℹ️</button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch(e) {
+        return '<p class="text-center mt-10 text-red-400">Ошибка загрузки каталога</p>';
+      }
     }
+
     function attachMarketplacesHandlers() {
       document.querySelectorAll('.filter-country').forEach(btn => {
-        btn.onclick = () => { const country = btn.getAttribute('data-country'); document.querySelectorAll('.filter-country').forEach(b => b.classList.remove('active', 'bg-cyan-500')); btn.classList.add('active', 'bg-cyan-500'); document.querySelectorAll('.marketplace-card').forEach(card => { if (country === 'all' || card.getAttribute('data-country') === country) card.style.display = ''; else card.style.display = 'none'; }); marketplaceFilters.country = country === 'all' ? null : country; };
+        btn.onclick = () => {
+          const country = btn.getAttribute('data-country');
+          document.querySelectorAll('.filter-country').forEach(b => b.classList.remove('active', 'bg-cyan-500'));
+          btn.classList.add('active', 'bg-cyan-500');
+          document.querySelectorAll('.marketplace-card').forEach(card => {
+            if (country === 'all' || card.getAttribute('data-country') === country) {
+              card.style.display = '';
+            } else {
+              card.style.display = 'none';
+            }
+          });
+          marketplaceFilters.country = country === 'all' ? null : country;
+        };
       });
-      document.getElementById('openFilterModalBtn')?.addEventListener('click', () => alert('Расширенный фильтр будет позже'));
-      document.querySelectorAll('.detail-btn').forEach(btn => btn.onclick = () => alert(btn.getAttribute('data-desc') || 'Нет описания'));
+      const filterBtn = document.getElementById('openFilterModalBtn');
+      if (filterBtn) filterBtn.onclick = () => alert('Расширенный фильтр будет добавлен позже');
+      document.querySelectorAll('.detail-btn').forEach(btn => {
+        btn.onclick = () => alert(btn.getAttribute('data-desc') || 'Описание отсутствует');
+      });
     }
+
+    // --- Функции для статусов (если не определены ранее) ---
+    function getStatusText(status) {
+      const map = {
+        'pending': 'Ожидает оплаты',
+        'paid': 'Оплачен (75%)',
+        'bought': 'Выкуплен',
+        'on_sklad_cn': 'На складе в Китае',
+        'in_transit': 'В пути',
+        'in_belarus': 'В Беларуси',
+        'delivered': 'Доставлен',
+        'cancelled': 'Отменён'
+      };
+      return map[status] || status;
+    }
+
+    function getStatusClass(status) {
+      const map = {
+        'pending': 'status-pending',
+        'paid': 'status-paid',
+        'bought': 'status-paid',
+        'on_sklad_cn': 'status-paid',
+        'in_transit': 'status-shipped',
+        'in_belarus': 'status-shipped',
+        'delivered': 'status-delivered',
+        'cancelled': 'status-cancelled'
+      };
+      return map[status] || 'status-pending';
+    }
+
+    // --- Запуск ---
     init();
   </script>
 </body>
