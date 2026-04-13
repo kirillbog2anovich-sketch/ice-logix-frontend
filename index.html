@@ -293,6 +293,29 @@
       });
     }
 
+        // --- Функция парсинга URL через Edge Function ---
+        async function parseProductUrl(url) {
+      try {
+        const response = await fetch('https://vrvwdagjpttvfvjanbwq.supabase.co/functions/v1/parse-product', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: url })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+          console.warn('Parse error:', data.error);
+          return null;
+        }
+        
+        return data;
+      } catch (err) {
+        console.error('Fetch error:', err);
+        return null;
+      }
+    }
+
     function switchTab(tabName) {
       if (currentTab && currentTab !== tabName) previousTab = currentTab;
       currentTab = tabName;
@@ -404,18 +427,35 @@
       const valSpan = document.getElementById('weightVal');
       if (slider) slider.oninput = () => valSpan.innerText = parseFloat(slider.value).toFixed(1) + ' кг';
       const calcBtn = document.getElementById('calcBtn');
-      if (calcBtn) calcBtn.onclick = () => {
-        let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
-        let weight = parseFloat(slider?.value || 1);
-        let total = (price * 0.45) + (weight * 12);
-        document.getElementById('totalPrice').innerText = total.toFixed(2);
-        document.getElementById('calcResult').classList.remove('hidden');
-        window.tempOrder = { url: document.getElementById('calcUrl')?.value || '', price: price, weight: weight, total: total };
-      };
-      const toNewOrderBtn = document.getElementById('toNewOrderBtn');
-      if (toNewOrderBtn) toNewOrderBtn.onclick = () => { if (window.tempOrder) switchTab('neworder'); else alert('Сначала рассчитайте стоимость'); };
+      if (calcBtn) {
+        calcBtn.onclick = async () => {
+          const url = document.getElementById('calcUrl')?.value.trim();
+          let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
+          
+          // Если есть ссылка, пытаемся распарсить
+          if (url && url.startsWith('http')) {
+            const parsed = await parseProductUrl(url);
+            if (parsed && parsed.price && parsed.price > 0) {
+              price = parsed.price;
+              document.getElementById('calcPrice').value = price;
+              if (parsed.title) {
+                console.log('Товар:', parsed.title);
+              }
+              alert(`Цена определена автоматически: ${price} ${parsed.currency || '¥'}`);
+            } else {
+              alert('Не удалось определить цену. Введите вручную или попробуйте другой сайт.');
+            }
+          }
+          
+          let weight = parseFloat(slider?.value || 1);
+          let total = (price * 0.45) + (weight * 12);
+          document.getElementById('totalPrice').innerText = total.toFixed(2);
+          document.getElementById('calcResult').classList.remove('hidden');
+          window.tempOrder = { url: url, price: price, weight: weight, total: total };
+        };
+      }
     }
-
+    
     // ==================== РЕНДЕР НОВОГО ЗАКАЗА ====================
     async function renderNewOrder() {
       const d = window.tempOrder || { url: '', price: 520, weight: 1, total: 0 };
