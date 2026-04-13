@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
+  <!-- updated 2026-04-13 -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>ICE LOGIX</title>
@@ -8,7 +9,9 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <style>
-    body { background: #0F172A; margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0F172A; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    /* Стили статусов заказов */
     .status-badge { padding: 4px 12px; border-radius: 40px; font-size: 11px; font-weight: bold; display: inline-block; }
     .status-pending { background: #f59e0b; color: #000; }
     .status-paid { background: #10b981; color: #fff; }
@@ -18,8 +21,18 @@
     .status-in_belarus { background: #14b8a6; color: #fff; }
     .status-delivered { background: #10b981; color: #fff; }
     .status-cancelled { background: #ef4444; color: #fff; }
-    .marketplace-card { transition: all 0.2s; cursor: pointer; background: rgba(255,255,255,0.08); backdrop-filter: blur(12px); border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+    /* Карточки каталога */
+    .marketplace-card {
+      transition: all 0.2s;
+      cursor: pointer;
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(12px);
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
     .marketplace-card:hover { transform: translateY(-4px); background: rgba(255,255,255,0.12); }
+    /* Нижнее меню */
     .tab-bar {
       position: fixed;
       bottom: 0;
@@ -55,6 +68,7 @@
       box-shadow: 0 4px 12px rgba(0,122,255,0.4);
     }
     .tab-item.new-order .tab-label { font-size: 12px; font-weight: bold; }
+    /* Верхняя панель */
     .app-header {
       position: sticky;
       top: 0;
@@ -68,8 +82,6 @@
       border-bottom: 1px solid rgba(255,255,255,0.1);
     }
     .header-left { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-    .back-btn { background: rgba(255,255,255,0.15); border: none; color: white; font-size: 14px; font-weight: 600; padding: 6px 16px; border-radius: 40px; cursor: pointer; display: none; align-items: center; gap: 6px; transition: 0.2s; }
-    .back-btn:hover { background: rgba(255,255,255,0.25); }
     .logo-img { height: 34px; cursor: pointer; }
     .header-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
     .balance {
@@ -88,21 +100,37 @@
     .avatar img { width: 100%; height: 100%; object-fit: cover; }
     .user-info { display: flex; flex-direction: column; align-items: flex-end; margin-left: 8px; }
     .user-name { font-size: 12px; font-weight: 600; color: white; line-height: 1.3; }
+    /* Отдельная кнопка "Назад" (под хедером) */
+    .global-back-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 6px 16px;
+      border-radius: 40px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: 0.2s;
+      margin-bottom: 16px;
+    }
+    .global-back-btn:hover { background: rgba(255,255,255,0.25); }
     .main-content { padding: 16px; padding-bottom: 80px; }
+    /* Каталог: вкладки */
     .catalog-tabs { display: flex; gap: 16px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px; }
     .catalog-tab { font-size: 16px; font-weight: bold; color: #8e9aaf; cursor: pointer; padding: 4px 0; transition: 0.2s; }
     .catalog-tab.active { color: #00c2ff; border-bottom: 2px solid #00c2ff; }
+    /* Карточка заказа */
     .order-card { background: rgba(255,255,255,0.08); backdrop-filter: blur(12px); border-radius: 20px; padding: 16px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); transition: 0.2s; }
     .order-card:hover { background: rgba(255,255,255,0.12); }
-    .back-sub-btn { background: rgba(255,255,255,0.15); border: none; color: white; padding: 8px 16px; border-radius: 40px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 16px; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; }
-    .back-sub-btn:hover { background: rgba(255,255,255,0.25); }
   </style>
 </head>
 <body>
   <div id="app">
     <div class="app-header">
       <div class="header-left">
-        <button class="back-btn" id="backBtn">← Назад</button>
         <img id="logoImg" class="logo-img" src="https://i.ibb.co/9kJTjpjT/1-Logo.png" alt="ICE LOGIX">
       </div>
       <div class="header-right">
@@ -149,6 +177,7 @@
       document.getElementById('logoImg').onclick = () => switchTab('home');
       document.getElementById('avatar').onclick = () => switchTab('profile');
       document.getElementById('settingsBtn').onclick = () => alert('Настройки будут позже');
+      document.getElementById('notificationsBtn').onclick = () => alert('Уведомлений пока нет');
       switchTab('home');
     }
 
@@ -163,11 +192,6 @@
     }
 
     function attachEventListeners() {
-      document.getElementById('backBtn').onclick = () => {
-        if (previousTab) switchTab(previousTab);
-        else if (currentTab !== 'home') switchTab('home');
-        else tg.close();
-      };
       document.getElementById('addBalanceBtn').onclick = () => alert('Пополнение баланса будет позже');
       document.querySelectorAll('.tab-item').forEach(tab => {
         tab.onclick = () => {
@@ -190,23 +214,25 @@
       document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
       const activeTab = document.querySelector(`.tab-item[data-tab="${tabName}"]`);
       if (activeTab) activeTab.classList.add('active');
-      document.getElementById('backBtn').style.display = (tabName === 'home') ? 'none' : 'flex';
       renderCurrentScreen();
     }
 
     async function renderCurrentScreen() {
       const contentDiv = document.getElementById('content');
+      // Подэкран: каталоги
       if (currentSubScreen === 'catalogs') {
         contentDiv.innerHTML = await renderCatalogsContent();
         attachCatalogsHandlers();
         return;
       }
+      // Подэкран: мои заказы
       if (currentSubScreen === 'myOrders') {
         contentDiv.innerHTML = await renderOrders();
         const backBtn = document.getElementById('backToProfileBtn');
         if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
         return;
       }
+      // Основные табы
       if (currentTab === 'home') contentDiv.innerHTML = await renderHome();
       else if (currentTab === 'calculator') contentDiv.innerHTML = await renderCalculator();
       else if (currentTab === 'neworder') contentDiv.innerHTML = await renderNewOrder();
@@ -216,80 +242,254 @@
         return;
       }
       else if (currentTab === 'profile') contentDiv.innerHTML = await renderProfile();
+      else if (currentTab === 'admin' && isOwner) contentDiv.innerHTML = await renderAdmin();
       else contentDiv.innerHTML = '<div class="text-center py-10">Страница не найдена</div>';
       if (currentTab === 'calculator') attachCalculatorHandlers();
       if (currentTab === 'neworder') attachNewOrderHandlers();
       if (currentTab === 'profile') attachProfileHandlers();
+      if (currentTab === 'admin' && isOwner) attachAdminHandlers();
     }
 
+    // --- Рендер главной страницы ---
     async function renderHome() {
-      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-center shadow-lg"><h1 class="text-2xl font-bold">Добро пожаловать, ${userName}!</h1><p class="text-white/70 mt-2">Ваш баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p></div>`;
+      return `
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-center shadow-lg">
+          <h1 class="text-2xl font-bold">Добро пожаловать, ${userName}!</h1>
+          <p class="text-white/70 mt-2">Ваш баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p>
+        </div>
+      `;
     }
 
+    // --- Калькулятор ---
     async function renderCalculator() {
-      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg"><h2 class="text-xl font-bold mb-4">🧮 Калькулятор</h2><input type="text" id="calcUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Ссылка на товар"><input type="number" id="calcPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Цена ¥" value="520"><div class="flex items-center gap-3"><input type="range" id="calcWeight" min="0.1" max="30" step="0.1" value="1" class="flex-1"><span id="weightVal" class="text-white/80">1.0 кг</span></div><button id="calcBtn" class="mt-5 w-full bg-cyan-500 hover:bg-cyan-600 py-3 rounded-xl font-bold transition">Рассчитать</button><div id="calcResult" class="mt-5 hidden bg-white/5 p-4 rounded-xl"><p>Итого: <span id="totalPrice" class="font-bold text-cyan-400">0</span> ❄️</p><button id="toNewOrderBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-xl">Перенести в заказ</button></div></div>`;
-    }
-
-    async function renderNewOrder() {
-      const d = window.tempOrder || { url: '', price: 520, weight: 1, total: 0 };
-      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg"><h2 class="text-xl font-bold mb-4">✨ Новый заказ</h2><input type="text" id="orderUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.url}" placeholder="Ссылка"><input type="number" id="orderPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.price}"><div class="flex items-center gap-3"><input type="number" id="orderWeight" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" value="${d.weight}" step="0.1"><span class="text-white/80">кг</span></div><p class="mt-4 text-lg">Итого: <span id="orderTotal" class="font-bold text-cyan-400">${d.total}</span> ❄️</p><button id="createOrderFinal" class="mt-5 w-full bg-green-600 hover:bg-green-700 py-3 rounded-xl font-bold">Оформить заказ (75%)</button></div>`;
-    }
-
-    async function renderProfile() {
-      return `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 text-center shadow-lg"><div class="avatar mx-auto w-24 h-24 text-4xl flex items-center justify-center bg-white/20 rounded-full mb-3">${userName.charAt(0)}</div><h2 class="text-xl font-bold">${userName}</h2><p class="text-white/70 mt-1">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p><button id="myOrdersBtn" class="mt-5 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full">📋 Мои заказы</button><button id="logoutBtn" class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full">Выйти</button></div>`;
+      return `
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg">
+          <h2 class="text-xl font-bold mb-4">🧮 Калькулятор</h2>
+          <input type="text" id="calcUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Ссылка на товар">
+          <input type="number" id="calcPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Цена ¥" value="520">
+          <div class="flex items-center gap-3">
+            <input type="range" id="calcWeight" min="0.1" max="30" step="0.1" value="1" class="flex-1">
+            <span id="weightVal" class="text-white/80">1.0 кг</span>
+          </div>
+          <button id="calcBtn" class="mt-5 w-full bg-cyan-500 hover:bg-cyan-600 py-3 rounded-xl font-bold transition">Рассчитать</button>
+          <div id="calcResult" class="mt-5 hidden bg-white/5 p-4 rounded-xl">
+            <p>Итого: <span id="totalPrice" class="font-bold text-cyan-400">0</span> ❄️</p>
+            <button id="toNewOrderBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-xl">Перенести в заказ</button>
+          </div>
+        </div>
+      `;
     }
 
     function attachCalculatorHandlers() {
-      const slider = document.getElementById('calcWeight'), valSpan = document.getElementById('weightVal');
+      const slider = document.getElementById('calcWeight');
+      const valSpan = document.getElementById('weightVal');
       if (slider) slider.oninput = () => valSpan.innerText = parseFloat(slider.value).toFixed(1) + ' кг';
-      document.getElementById('calcBtn').onclick = () => {
-        let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
-        let weight = parseFloat(slider?.value || 1);
-        let total = (price * 0.45) + (weight * 12);
-        document.getElementById('totalPrice').innerText = total.toFixed(2);
-        document.getElementById('calcResult').classList.remove('hidden');
-        window.tempOrder = { url: document.getElementById('calcUrl')?.value || '', price, weight, total };
+      const calcBtn = document.getElementById('calcBtn');
+      if (calcBtn) {
+        calcBtn.onclick = () => {
+          let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
+          let weight = parseFloat(slider?.value || 1);
+          let total = (price * 0.45) + (weight * 12);
+          document.getElementById('totalPrice').innerText = total.toFixed(2);
+          document.getElementById('calcResult').classList.remove('hidden');
+          window.tempOrder = {
+            url: document.getElementById('calcUrl')?.value || '',
+            price: price,
+            weight: weight,
+            total: total
+          };
+        };
+      }
+      const toNewOrderBtn = document.getElementById('toNewOrderBtn');
+      if (toNewOrderBtn) toNewOrderBtn.onclick = () => {
+        if (window.tempOrder) switchTab('neworder');
+        else alert('Сначала рассчитайте стоимость');
       };
-      document.getElementById('toNewOrderBtn').onclick = () => { if (window.tempOrder) switchTab('neworder'); else alert('Сначала рассчитайте'); };
+    }
+
+    // --- Новый заказ ---
+    async function renderNewOrder() {
+      const d = window.tempOrder || { url: '', price: 520, weight: 1, total: 0 };
+      return `
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg">
+          <h2 class="text-xl font-bold mb-4">✨ Новый заказ</h2>
+          <input type="text" id="orderUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.url}" placeholder="Ссылка">
+          <input type="number" id="orderPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.price}">
+          <div class="flex items-center gap-3">
+            <input type="number" id="orderWeight" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" value="${d.weight}" step="0.1">
+            <span class="text-white/80">кг</span>
+          </div>
+          <p class="mt-4 text-lg">Итого: <span id="orderTotal" class="font-bold text-cyan-400">${d.total}</span> ❄️</p>
+          <button id="createOrderFinal" class="mt-5 w-full bg-green-600 hover:bg-green-700 py-3 rounded-xl font-bold">Оформить заказ (75%)</button>
+        </div>
+      `;
     }
 
     function attachNewOrderHandlers() {
-      const priceInp = document.getElementById('orderPrice'), weightInp = document.getElementById('orderWeight'), totalSpan = document.getElementById('orderTotal');
-      const update = () => { let price = parseFloat(priceInp?.value || 520), weight = parseFloat(weightInp?.value || 1), total = (price * 0.45) + (weight * 12); totalSpan.innerText = total.toFixed(2); window.tempOrder = { url: document.getElementById('orderUrl')?.value || '', price, weight, total }; };
-      priceInp?.addEventListener('input', update); weightInp?.addEventListener('input', update);
-      document.getElementById('createOrderFinal').onclick = async () => {
-        if (!window.tempOrder || !userId) return alert('Ошибка');
-        const { data, error } = await supabaseClient.from('orders').insert({ user_id: userId, source_url: window.tempOrder.url, weight_estimated: window.tempOrder.weight, price_original: window.tempOrder.price, price_byn: window.tempOrder.price * 0.45, delivery_cost_estimated: window.tempOrder.weight * 12, prepayment_amount: window.tempOrder.total * 0.75, status: 'pending' }).select();
-        if (error) return alert('Ошибка: ' + error.message);
-        alert(`Заказ создан! Номер: ${data[0].id}`);
-        switchTab('home');
+      const priceInp = document.getElementById('orderPrice');
+      const weightInp = document.getElementById('orderWeight');
+      const totalSpan = document.getElementById('orderTotal');
+      const urlInp = document.getElementById('orderUrl');
+      const update = () => {
+        let price = parseFloat(priceInp?.value || 520);
+        let weight = parseFloat(weightInp?.value || 1);
+        let total = (price * 0.45) + (weight * 12);
+        if (totalSpan) totalSpan.innerText = total.toFixed(2);
+        window.tempOrder = { url: urlInp?.value || '', price, weight, total };
       };
+      if (priceInp) priceInp.addEventListener('input', update);
+      if (weightInp) weightInp.addEventListener('input', update);
+      const createBtn = document.getElementById('createOrderFinal');
+      if (createBtn) {
+        createBtn.onclick = async () => {
+          if (!window.tempOrder || !userId) return alert('Ошибка');
+          try {
+            const { data, error } = await supabaseClient.from('orders').insert({
+              user_id: userId,
+              source_url: window.tempOrder.url,
+              weight_estimated: window.tempOrder.weight,
+              price_original: window.tempOrder.price,
+              price_byn: window.tempOrder.price * 0.45,
+              delivery_cost_estimated: window.tempOrder.weight * 12,
+              prepayment_amount: window.tempOrder.total * 0.75,
+              status: 'pending'
+            }).select();
+            if (error) throw error;
+            alert(`Заказ создан! Номер: ${data[0].id}`);
+            switchTab('home');
+          } catch (err) {
+            alert('Ошибка: ' + err.message);
+          }
+        };
+      }
+    }
+
+    // --- Профиль ---
+    async function renderProfile() {
+      return `
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 text-center shadow-lg">
+          <div class="avatar mx-auto w-24 h-24 text-4xl flex items-center justify-center bg-white/20 rounded-full mb-3">${userName.charAt(0)}</div>
+          <h2 class="text-xl font-bold">${userName}</h2>
+          <p class="text-white/70 mt-1">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p>
+          <button id="myOrdersBtn" class="mt-5 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full">📋 Мои заказы</button>
+          ${isOwner ? '<button id="adminPanelBtn" class="mt-3 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full">⚙️ Админка</button>' : ''}
+          <button id="logoutBtn" class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full">Выйти</button>
+        </div>
+      `;
     }
 
     function attachProfileHandlers() {
-      document.getElementById('myOrdersBtn').onclick = () => { currentSubScreen = 'myOrders'; renderCurrentScreen(); };
-      document.getElementById('logoutBtn').onclick = () => tg.close();
+      const myOrdersBtn = document.getElementById('myOrdersBtn');
+      if (myOrdersBtn) myOrdersBtn.onclick = () => { currentSubScreen = 'myOrders'; renderCurrentScreen(); };
+      const adminPanelBtn = document.getElementById('adminPanelBtn');
+      if (adminPanelBtn) adminPanelBtn.onclick = () => switchTab('admin');
+      const logoutBtn = document.getElementById('logoutBtn');
+      if (logoutBtn) logoutBtn.onclick = () => tg.close();
     }
 
-    async function renderOrders() {
-      if (!userId) return '<p class="text-center mt-10">Авторизуйтесь</p>';
-      const { data, error } = await supabaseClient.from('orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-      if (error || !data?.length) return '<p class="text-center mt-10">У вас пока нет заказов</p>';
-      return `<button id="backToProfileBtn" class="back-sub-btn">← Назад</button><div class="space-y-3">${data.map(order => `<div class="order-card"><div class="flex justify-between items-start"><div><p class="font-bold">Заказ #${order.id.slice(0,8)}</p><p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p><p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️</p>${order.tracking_number_cn ? `<p class="text-white/70 text-xs mt-2">📦 Трек: ${order.tracking_number_cn}</p>` : ''}${order.photo_reports?.length ? `<div class="mt-2 flex gap-2">${order.photo_reports.map(url => `<img src="${url}" class="w-16 h-16 object-cover rounded">`).join('')}</div>` : ''}</div><span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span></div></div>`).join('')}</div>`;
+    // --- Админка (только для владельцев) ---
+    async function renderAdmin() {
+      if (!isOwner) return '<p class="text-center mt-10">Доступ запрещён</p>';
+      try {
+        const { data, error } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!data || data.length === 0) return '<p class="text-center mt-10">Нет заказов</p>';
+        return `
+          <div class="space-y-3">
+            ${data.map(order => `
+              <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10">
+                <div class="flex justify-between items-start flex-wrap gap-2">
+                  <div>
+                    <p class="font-bold">Заказ #${order.id.slice(0,8)}</p>
+                    <p class="text-white/70 text-xs">Пользователь: ${order.user_id}</p>
+                    <p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p>
+                    <p class="text-cyan-400 text-sm">${order.prepayment_amount} ❄️</p>
+                    <div class="mt-2">
+                      <label class="text-white/70 text-xs">Трек-номер:</label>
+                      <input type="text" id="tracking_${order.id}" value="${order.tracking_number_cn || ''}" class="w-full mt-1 p-1 rounded bg-white/20 text-white text-sm">
+                    </div>
+                    <div class="mt-2">
+                      <label class="text-white/70 text-xs">Фото:</label>
+                      <input type="file" id="photo_${order.id}" class="w-full mt-1 text-sm text-white/70" accept="image/*">
+                      ${order.photo_reports?.length ? `<div class="flex gap-2 mt-2">${order.photo_reports.map(url => `<img src="${url}" class="w-12 h-12 object-cover rounded">`).join('')}</div>` : ''}
+                    </div>
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <select class="status-select bg-slate-800 text-white rounded-lg px-2 py-1 text-sm" data-order-id="${order.id}">
+                      <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Ожидает оплаты</option>
+                      <option value="paid" ${order.status === 'paid' ? 'selected' : ''}>Оплачен (75%)</option>
+                      <option value="bought" ${order.status === 'bought' ? 'selected' : ''}>Выкуплен</option>
+                      <option value="on_sklad_cn" ${order.status === 'on_sklad_cn' ? 'selected' : ''}>На складе в Китае</option>
+                      <option value="in_transit" ${order.status === 'in_transit' ? 'selected' : ''}>В пути</option>
+                      <option value="in_belarus" ${order.status === 'in_belarus' ? 'selected' : ''}>В Беларуси</option>
+                      <option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Доставлен</option>
+                      <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Отменён</option>
+                    </select>
+                    <button class="update-status-btn bg-cyan-500 text-white px-3 py-1 rounded-lg text-sm" data-order-id="${order.id}">Обновить статус</button>
+                    <button class="update-tracking-btn bg-emerald-500 text-white px-3 py-1 rounded-lg text-sm" data-order-id="${order.id}">Сохранить трек</button>
+                    <button class="upload-photo-btn bg-purple-500 text-white px-3 py-1 rounded-lg text-sm" data-order-id="${order.id}">Загрузить фото</button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки админки</p>'; }
     }
 
-    function getStatusText(status) {
-      const map = { 'pending':'Ожидает оплаты', 'paid':'Оплачен', 'bought':'Выкуплен', 'on_sklad_cn':'На складе в Китае', 'in_transit':'В пути', 'in_belarus':'В Беларуси', 'delivered':'Доставлен', 'cancelled':'Отменён' };
-      return map[status] || status;
-    }
-    function getStatusClass(status) {
-      const map = { 'pending':'status-pending', 'paid':'status-paid', 'bought':'status-bought', 'on_sklad_cn':'status-on_sklad_cn', 'in_transit':'status-in_transit', 'in_belarus':'status-in_belarus', 'delivered':'status-delivered', 'cancelled':'status-cancelled' };
-      return map[status] || 'status-pending';
+    function attachAdminHandlers() {
+      document.querySelectorAll('.update-status-btn').forEach(btn => {
+        btn.onclick = async () => {
+          const orderId = btn.getAttribute('data-order-id');
+          const select = document.querySelector(`.status-select[data-order-id="${orderId}"]`);
+          const newStatus = select.value;
+          await supabaseClient.from('orders').update({ status: newStatus }).eq('id', orderId);
+          alert('Статус обновлён');
+          renderCurrentScreen();
+        };
+      });
+      document.querySelectorAll('.update-tracking-btn').forEach(btn => {
+        btn.onclick = async () => {
+          const orderId = btn.getAttribute('data-order-id');
+          const input = document.getElementById(`tracking_${orderId}`);
+          await supabaseClient.from('orders').update({ tracking_number_cn: input?.value || '' }).eq('id', orderId);
+          alert('Трек сохранён');
+          renderCurrentScreen();
+        };
+      });
+      document.querySelectorAll('.upload-photo-btn').forEach(btn => {
+        btn.onclick = async () => {
+          const orderId = btn.getAttribute('data-order-id');
+          const fileInput = document.getElementById(`photo_${orderId}`);
+          const file = fileInput?.files[0];
+          if (!file) { alert('Выберите файл'); return; }
+          const fileName = `${orderId}/${Date.now()}_${file.name}`;
+          const { error: uploadError } = await supabaseClient.storage.from('order_photos').upload(fileName, file);
+          if (uploadError) { alert('Ошибка загрузки фото'); return; }
+          const { data: urlData } = supabaseClient.storage.from('order_photos').getPublicUrl(fileName);
+          const photoUrl = urlData.publicUrl;
+          const { data: order } = await supabaseClient.from('orders').select('photo_reports').eq('id', orderId).single();
+          const currentPhotos = order?.photo_reports || [];
+          await supabaseClient.from('orders').update({ photo_reports: [...currentPhotos, photoUrl] }).eq('id', orderId);
+          alert('Фото загружено');
+          renderCurrentScreen();
+        };
+      });
     }
 
-    async function renderCatalogsContent() {
-      return `<div><div class="catalog-tabs"><div class="catalog-tab active" data-catalog="marketplaces">Площадки</div><div class="catalog-tab" data-catalog="products">Товары</div></div><div id="catalogContent">${await renderMarketplaces()}</div></div>`;
+        // --- КАТАЛОГ ПЛОЩАДОК (ПОЛНАЯ ВЕРСИЯ) ---
+        async function renderCatalogsContent() {
+      return `
+        <div>
+          <div class="catalog-tabs">
+            <div class="catalog-tab active" data-catalog="marketplaces">Площадки</div>
+            <div class="catalog-tab" data-catalog="products">Товары</div>
+          </div>
+          <div id="catalogContent">${await renderMarketplaces()}</div>
+        </div>
+      `;
     }
+
     function attachCatalogsHandlers() {
       document.querySelectorAll('.catalog-tab').forEach(tab => {
         tab.onclick = async () => {
@@ -297,30 +497,248 @@
           tab.classList.add('active');
           const type = tab.getAttribute('data-catalog');
           const container = document.getElementById('catalogContent');
-          if (type === 'marketplaces') container.innerHTML = await renderMarketplaces();
-          else container.innerHTML = '<p class="text-center mt-10">Каталог товаров в разработке</p>';
-          if (type === 'marketplaces') attachMarketplacesHandlers();
+          if (type === 'marketplaces') {
+            container.innerHTML = await renderMarketplaces();
+            attachMarketplacesHandlers();
+          } else {
+            container.innerHTML = '<p class="text-center mt-10 text-white/70">Каталог товаров в разработке</p>';
+          }
         };
       });
       attachMarketplacesHandlers();
     }
+
     async function renderMarketplaces() {
       try {
         let query = supabaseClient.from('marketplaces').select('*').eq('is_active', true);
-        if (marketplaceFilters.country && marketplaceFilters.country !== 'all') query = query.eq('country', marketplaceFilters.country);
+        if (marketplaceFilters.country && marketplaceFilters.country !== 'all') {
+          query = query.eq('country', marketplaceFilters.country);
+        }
         const { data, error } = await query.order('sort_order', { ascending: true });
-        if (error || !data?.length) return '<p class="text-center mt-10">Каталог пуст</p>';
+        if (error || !data?.length) {
+          return '<p class="text-center mt-10 text-white/70">Каталог площадок пока пуст</p>';
+        }
         const countries = [...new Set(data.map(m => m.country).filter(Boolean))];
-        return `<div class="mb-4 flex gap-2"><button class="filter-country active bg-cyan-500 px-3 py-1 rounded-full" data-country="all">Все</button>${countries.map(c => `<button class="filter-country bg-white/20 px-3 py-1 rounded-full" data-country="${c}">${c}</button>`).join('')}<button id="openFilterModalBtn" class="bg-white/20 px-3 py-1 rounded-full">🔍 Фильтр</button></div><div class="grid grid-cols-2 gap-4">${data.map(mp => `<div class="marketplace-card" data-country="${mp.country || ''}"><div class="aspect-square bg-white/20 flex items-center justify-center p-2">${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain">` : '🛍️'}</div><div class="p-3"><h3 class="font-bold">${mp.name}</h3><p class="text-white/70 text-xs">${mp.country || ''}</p><div class="flex justify-between mt-2"><a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a><button class="detail-btn bg-white/20 rounded-full w-8 h-8" data-desc="${(mp.description || '').replace(/"/g, '&quot;')}">ℹ️</button></div></div></div>`).join('')}</div>`;
-      } catch(e) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки</p>'; }
+        return `
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex gap-2 overflow-x-auto pb-1">
+              <button class="filter-country active bg-cyan-500 text-white px-3 py-1 rounded-full text-sm" data-country="all">Все</button>
+              ${countries.map(c => `<button class="filter-country bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm" data-country="${c}">${c}</button>`).join('')}
+            </div>
+            <button id="openFilterModalBtn" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm flex items-center gap-1">🔍 Фильтр</button>
+          </div>
+          <div class="grid grid-cols-2 gap-4" id="marketplaces-grid">
+            ${data.map(mp => `
+              <div class="marketplace-card" data-country="${mp.country || ''}">
+                <div class="aspect-square bg-white/20 flex items-center justify-center p-2">
+                  ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain" alt="${mp.name}">` : '<div class="text-4xl">🛍️</div>'}
+                </div>
+                <div class="p-3">
+                  <h3 class="font-bold text-white truncate">${mp.name}</h3>
+                  <p class="text-white/70 text-xs mt-1">${mp.country || ''} · ${mp.type === 'brand' ? 'Бренд' : mp.type === 'marketplace' ? 'Маркетплейс' : 'Специальный'}</p>
+                  <p class="text-white/80 text-xs mt-2 line-clamp-2">${(mp.description || 'Описание отсутствует').substring(0, 80)}${(mp.description || '').length > 80 ? '…' : ''}</p>
+                  <div class="flex justify-between items-center mt-3">
+                    <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
+                    <button class="detail-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-name="${mp.name.replace(/"/g, '&quot;')}" data-description="${(mp.description || '').replace(/"/g, '&quot;')}" data-delivery="${(mp.delivery_info || '').replace(/"/g, '&quot;')}" data-payment="${(mp.payment_methods || '').replace(/"/g, '&quot;')}" data-instruction="${(mp.full_instruction || mp.instruction_text || '').replace(/"/g, '&quot;')}">ℹ️</button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        console.error(err);
+        return '<p class="text-center mt-10 text-red-400">Ошибка загрузки каталога</p>';
+      }
     }
+
     function attachMarketplacesHandlers() {
-      document.querySelectorAll('.filter-country').forEach(btn => {
-        btn.onclick = () => { const country = btn.getAttribute('data-country'); document.querySelectorAll('.filter-country').forEach(b => b.classList.remove('active', 'bg-cyan-500')); btn.classList.add('active', 'bg-cyan-500'); document.querySelectorAll('.marketplace-card').forEach(card => { if (country === 'all' || card.getAttribute('data-country') === country) card.style.display = ''; else card.style.display = 'none'; }); marketplaceFilters.country = country === 'all' ? null : country; };
+      const filterBtns = document.querySelectorAll('.filter-country');
+      const cards = document.querySelectorAll('.marketplace-card');
+      filterBtns.forEach(btn => {
+        btn.onclick = () => {
+          const country = btn.getAttribute('data-country');
+          filterBtns.forEach(b => b.classList.remove('active', 'bg-cyan-500', 'text-white'));
+          btn.classList.add('active', 'bg-cyan-500', 'text-white');
+          cards.forEach(card => {
+            if (country === 'all' || card.getAttribute('data-country') === country) {
+              card.style.display = '';
+            } else {
+              card.style.display = 'none';
+            }
+          });
+          marketplaceFilters.country = country === 'all' ? null : country;
+        };
       });
-      document.getElementById('openFilterModalBtn')?.addEventListener('click', () => alert('Расширенный фильтр будет позже'));
-      document.querySelectorAll('.detail-btn').forEach(btn => btn.onclick = () => alert(btn.getAttribute('data-desc') || 'Нет описания'));
+      const filterModalBtn = document.getElementById('openFilterModalBtn');
+      if (filterModalBtn) {
+        filterModalBtn.onclick = () => {
+          const modal = document.createElement('div');
+          modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4';
+          modal.innerHTML = `
+            <div class="bg-white/10 backdrop-blur-md rounded-2xl max-w-sm w-full p-4">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="text-white font-bold text-lg">Фильтры</h3>
+                <button class="close-modal text-white text-2xl">&times;</button>
+              </div>
+              <div class="space-y-4">
+                <div>
+                  <label class="text-white/80 text-sm block mb-1">Страна</label>
+                  <select id="filterCountrySelect" class="w-full p-2 rounded-lg bg-white/20 text-white border border-white/30">
+                    <option value="all">Все</option>
+                    <option value="Китай">Китай</option>
+                    <option value="Европа">Европа</option>
+                    <option value="Россия">Россия</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-white/80 text-sm block mb-1">Тип площадки</label>
+                  <select id="filterTypeSelect" class="w-full p-2 rounded-lg bg-white/20 text-white border border-white/30">
+                    <option value="all">Все</option>
+                    <option value="marketplace">Маркетплейс</option>
+                    <option value="brand">Бренд</option>
+                    <option value="special">Специальный</option>
+                  </select>
+                </div>
+                <div class="flex gap-2 mt-4">
+                  <button id="applyFiltersBtn" class="flex-1 bg-cyan-500 py-2 rounded-lg">Применить</button>
+                  <button id="resetFiltersBtn" class="flex-1 bg-white/20 py-2 rounded-lg">Сбросить</button>
+                </div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(modal);
+          const closeModal = () => modal.remove();
+          modal.querySelector('.close-modal').addEventListener('click', closeModal);
+          modal.querySelector('#applyFiltersBtn').addEventListener('click', async () => {
+            marketplaceFilters.country = modal.querySelector('#filterCountrySelect').value;
+            marketplaceFilters.type = modal.querySelector('#filterTypeSelect').value;
+            await renderCurrentScreen();
+            closeModal();
+          });
+          modal.querySelector('#resetFiltersBtn').addEventListener('click', async () => {
+            marketplaceFilters = { country: 'all', type: 'all', category: 'all', gender: 'all' };
+            await renderCurrentScreen();
+            closeModal();
+          });
+        };
+      }
+      document.querySelectorAll('.detail-btn').forEach(btn => {
+        btn.onclick = () => {
+          const name = btn.getAttribute('data-name');
+          const description = btn.getAttribute('data-description');
+          const delivery = btn.getAttribute('data-delivery');
+          const payment = btn.getAttribute('data-payment');
+          const instruction = btn.getAttribute('data-instruction');
+          const modal = document.createElement('div');
+          modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4';
+          modal.innerHTML = `
+            <div class="bg-white/10 backdrop-blur-md rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+              <div class="sticky top-0 bg-white/10 backdrop-blur-md p-4 border-b border-white/20 flex justify-between items-center">
+                <h3 class="text-white font-bold text-lg">${name}</h3>
+                <button class="close-modal text-white text-2xl">&times;</button>
+              </div>
+              <div class="p-4 space-y-3 text-white/90">
+                ${description ? `<div><h4 class="font-bold text-cyan-300">Описание</h4><p>${description}</p></div>` : ''}
+                ${delivery ? `<div><h4 class="font-bold text-cyan-300">Доставка до склада</h4><p>${delivery}</p></div>` : ''}
+                ${payment ? `<div><h4 class="font-bold text-cyan-300">Способы оплаты</h4><p>${payment}</p></div>` : ''}
+                ${instruction ? `<div><h4 class="font-bold text-cyan-300">Инструкция по заказу</h4><p class="whitespace-pre-line">${instruction}</p></div>` : ''}
+              </div>
+            </div>
+          `;
+          document.body.appendChild(modal);
+          modal.querySelector('.close-modal').addEventListener('click', () => modal.remove());
+          modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        };
+      });
     }
+
+    // --- МОИ ЗАКАЗЫ ---
+    async function renderOrders() {
+      if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
+      try {
+        const { data, error } = await supabaseClient.from('orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!data || data.length === 0) return '<p class="text-center mt-10 text-white/70">У вас пока нет заказов</p>';
+        return `
+          <button id="backToProfileBtn" class="global-back-btn">← Назад</button>
+          <div class="space-y-3">
+            ${data.map(order => `
+              <div class="order-card">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <p class="text-white font-bold">Заказ #${order.id.slice(0, 8)}</p>
+                    <p class="text-white/70 text-xs">Вес: ${order.weight_estimated} кг</p>
+                    <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️</p>
+                    ${order.tracking_number_cn ? `<p class="text-white/70 text-xs mt-2">📦 Трек: ${order.tracking_number_cn}</p>` : ''}
+                    ${order.photo_reports?.length ? `<div class="mt-2 flex gap-2 overflow-x-auto">${order.photo_reports.map(url => `<img src="${url}" class="w-16 h-16 object-cover rounded-lg">`).join('')}</div>` : ''}
+                  </div>
+                  <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        return '<p class="text-center mt-10 text-red-400">Ошибка загрузки заказов</p>';
+      }
+    }
+
+    function getStatusText(status) {
+      const statuses = {
+        'pending': 'Ожидает оплаты', 'paid': 'Оплачен (75%)', 'bought': 'Выкуплен',
+        'on_sklad_cn': 'На складе в Китае', 'in_transit': 'В пути', 'in_belarus': 'В Беларуси',
+        'delivered': 'Доставлен', 'cancelled': 'Отменён'
+      };
+      return statuses[status] || status;
+    }
+
+    function getStatusClass(status) {
+      const classes = {
+        'pending': 'status-pending', 'paid': 'status-paid', 'bought': 'status-bought',
+        'on_sklad_cn': 'status-on_sklad_cn', 'in_transit': 'status-in_transit', 'in_belarus': 'status-in_belarus',
+        'delivered': 'status-delivered', 'cancelled': 'status-cancelled'
+      };
+      return classes[status] || 'status-pending';
+    }
+
+    // --- КНОПКА НАЗАД (ГЛОБАЛЬНАЯ) ---
+    // Добавляем кнопку "Назад" на страницу, если она ещё не добавлена
+    function ensureBackButton() {
+      let backBtn = document.getElementById('globalBackBtn');
+      if (!backBtn) {
+        const contentDiv = document.getElementById('content');
+        const btn = document.createElement('button');
+        btn.id = 'globalBackBtn';
+        btn.className = 'global-back-btn';
+        btn.innerHTML = '← Назад';
+        btn.onclick = () => {
+          if (previousTab) switchTab(previousTab);
+          else if (currentTab !== 'home') switchTab('home');
+          else tg.close();
+        };
+        if (contentDiv && (currentTab !== 'home' || currentSubScreen)) {
+          if (contentDiv.firstChild && contentDiv.firstChild.id !== 'globalBackBtn') {
+            contentDiv.insertBefore(btn, contentDiv.firstChild);
+          }
+        }
+      } else {
+        if (currentTab === 'home' && !currentSubScreen) {
+          backBtn.style.display = 'none';
+        } else {
+          backBtn.style.display = 'inline-flex';
+        }
+      }
+    }
+
+    // Переопределяем renderCurrentScreen, чтобы добавить кнопку "Назад"
+    const originalRender = renderCurrentScreen;
+    renderCurrentScreen = async function() {
+      await originalRender();
+      ensureBackButton();
+    };
+
+    // Запуск
     init();
   </script>
 </body>
