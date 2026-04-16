@@ -1565,7 +1565,6 @@ function attachCatalogsHandlers() {
 // ==================== РЕНДЕР ПОДКАТАЛОГА ПЛОЩАДОК ====================
 async function renderMarketplaces() {
   try {
-    // Запрос к Supabase
     const { data, error } = await supabaseClient
       .from('marketplaces')
       .select('*')
@@ -1577,47 +1576,44 @@ async function renderMarketplaces() {
       return `<p class="text-center mt-10 text-white/70">Каталог площадок пока пуст</p>`;
     }
     
-    // Соберём уникальные страны для будущего фильтра
-    const countries = [...new Set(data.map(mp => mp.country))];
+    // Соберём все уникальные страны, категории, пол для фильтров
+    const allCountries = [...new Set(data.map(mp => mp.country))];
+    const allCategories = [...new Set(data.flatMap(mp => mp.categories || []))];
+    const allGenders = [...new Set(data.flatMap(mp => mp.gender || []))];
     
     return `
       <button id="backFromMarketplacesBtn" class="global-back-btn">← Назад</button>
       
-      <!-- Фильтры (заглушка, заработают в следующей части) -->
-      <div class="flex gap-2 overflow-x-auto pb-2 mb-4" id="marketplaceFilters">
-        <button class="filter-chip active" data-country="all">Все</button>
-        ${countries.map(c => `<button class="filter-chip" data-country="${c}">${c}</button>`).join('')}
+      <!-- Фильтры -->
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-white font-bold">🌍 Страны</h3>
+        </div>
+        <div class="flex gap-2 overflow-x-auto pb-2" id="filterCountries">
+          <button class="filter-chip active" data-country="all">Все</button>
+          ${allCountries.map(c => `<button class="filter-chip" data-country="${c}">${c}</button>`).join('')}
+        </div>
+        
+        <div class="mt-3">
+          <h3 class="text-white font-bold mb-2">📂 Категории</h3>
+          <div class="flex gap-2 overflow-x-auto pb-2" id="filterCategories">
+            <button class="filter-chip active" data-category="all">Все</button>
+            ${allCategories.map(cat => `<button class="filter-chip" data-category="${cat}">${cat}</button>`).join('')}
+          </div>
+        </div>
+        
+        <div class="mt-3">
+          <h3 class="text-white font-bold mb-2">👤 Пол</h3>
+          <div class="flex gap-2 overflow-x-auto pb-2" id="filterGenders">
+            <button class="filter-chip active" data-gender="all">Все</button>
+            ${allGenders.map(g => `<button class="filter-chip" data-gender="${g}">${g}</button>`).join('')}
+          </div>
+        </div>
       </div>
       
-      <div class="grid grid-cols-2 gap-4" id="marketplacesGrid">
-        ${data.map(mp => `
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10 flex flex-col h-full">
-            <div class="aspect-square bg-white/20 flex items-center justify-center p-4 relative">
-              ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain" alt="${mp.name}">` : '<span class="text-5xl">🛍️</span>'}
-              ${mp.country === 'США' || mp.country === 'Япония' ? '<span class="absolute top-2 right-2 bg-yellow-500/80 text-black text-xs px-2 py-1 rounded-full">Скоро</span>' : ''}
-            </div>
-            <div class="p-3 flex-1 flex flex-col">
-              <h3 class="font-bold text-white text-lg">${mp.name}</h3>
-              <p class="text-white/70 text-xs">${mp.country}</p>
-              <div class="flex flex-wrap gap-1 mt-1">
-                ${mp.categories.slice(0, 2).map(cat => `<span class="text-white/50 text-xs bg-white/10 px-2 py-0.5 rounded-full">${cat}</span>`).join('')}
-                ${mp.categories.length > 2 ? `<span class="text-white/50 text-xs">+${mp.categories.length - 2}</span>` : ''}
-              </div>
-              <p class="text-white/80 text-sm mt-2 line-clamp-2">${mp.description || ''}</p>
-              
-              <div class="flex items-center justify-between mt-3 pt-2 border-t border-white/10">
-                <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
-                <button class="instruction-btn bg-white/20 hover:bg-white/30 rounded-full w-8 h-8 flex items-center justify-center" 
-                  data-name="${mp.name.replace(/"/g, '&quot;')}" 
-                  data-instruction="${(mp.instruction || '').replace(/"/g, '&quot;')}"
-                  data-requires-vpn="${mp.requires_vpn}">
-                  ❓
-                </button>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
+      <!-- Сетка площадок (будет обновляться через JS) -->
+      <div class="grid grid-cols-2 gap-4" id="marketplacesGrid"></div>
+      
       ${renderFooter()}
     `;
   } catch (err) {
@@ -1627,33 +1623,130 @@ async function renderMarketplaces() {
 }
 
 function attachMarketplacesHandlers() {
-  // Кнопка "Назад"
   const backBtn = document.getElementById('backFromMarketplacesBtn');
   if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
   
-  // Кнопки с инструкцией (знак вопроса)
-  document.querySelectorAll('.instruction-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const name = btn.dataset.name;
-      const instruction = btn.dataset.instruction;
-      const requiresVpn = btn.dataset.requiresVpn === 'true';
-      
-      let message = `🛍️ ${name}\n\n`;
-      if (requiresVpn) message += `⚠️ Для доступа может потребоваться VPN.\n\n`;
-      message += instruction || 'Подробная инструкция появится позже.';
-      
-      alert(message); // Временно используем alert, позже сделаем красивое модальное окно
-    };
-  });
+  // Кэш данных площадок (загрузим один раз)
+  let marketplacesData = [];
   
-  // Заглушка для фильтров по странам (пока просто алерт)
-  document.querySelectorAll('.filter-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const country = chip.dataset.country;
-      alert(`Фильтр по стране "${country}" будет работать в следующей версии.`);
+  // Функция отрисовки сетки с учётом активных фильтров
+  async function renderFilteredGrid() {
+    // Если данные ещё не загружены, получим их
+    if (marketplacesData.length === 0) {
+      const { data } = await supabaseClient.from('marketplaces').select('*').eq('is_active', true);
+      marketplacesData = data || [];
+    }
+    
+    // Получаем активные фильтры
+    const activeCountry = document.querySelector('#filterCountries .filter-chip.active')?.dataset.country || 'all';
+    const activeCategory = document.querySelector('#filterCategories .filter-chip.active')?.dataset.category || 'all';
+    const activeGender = document.querySelector('#filterGenders .filter-chip.active')?.dataset.gender || 'all';
+    
+    // Фильтруем
+    let filtered = marketplacesData;
+    if (activeCountry !== 'all') filtered = filtered.filter(mp => mp.country === activeCountry);
+    if (activeCategory !== 'all') filtered = filtered.filter(mp => mp.categories && mp.categories.includes(activeCategory));
+    if (activeGender !== 'all') filtered = filtered.filter(mp => mp.gender && mp.gender.includes(activeGender));
+    
+    const grid = document.getElementById('marketplacesGrid');
+    if (!grid) return;
+    
+    if (filtered.length === 0) {
+      grid.innerHTML = '<p class="text-white/70 col-span-2 text-center py-10">Нет площадок, соответствующих фильтрам</p>';
+      return;
+    }
+    
+    grid.innerHTML = filtered.map(mp => `
+      <div class="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10 flex flex-col h-full">
+        <div class="aspect-square bg-white/20 flex items-center justify-center p-4 relative">
+          ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain" alt="${mp.name}">` : '<span class="text-5xl">🛍️</span>'}
+          ${mp.country === 'США' || mp.country === 'Япония' || mp.country === 'ОАЭ' ? '<span class="absolute top-2 right-2 bg-yellow-500/80 text-black text-xs px-2 py-1 rounded-full">Скоро</span>' : ''}
+        </div>
+        <div class="p-3 flex-1 flex flex-col">
+          <h3 class="font-bold text-white text-lg">${mp.name}</h3>
+          <p class="text-white/70 text-xs">${mp.country}</p>
+          <div class="flex flex-wrap gap-1 mt-1">
+            ${mp.gender?.slice(0, 2).map(g => `<span class="text-white/70 text-xs bg-white/10 px-2 py-0.5 rounded-full">${g}</span>`).join('') || ''}
+          </div>
+          <div class="flex flex-wrap gap-1 mt-1">
+            ${mp.categories?.slice(0, 2).map(cat => `<span class="text-white/50 text-xs bg-white/10 px-2 py-0.5 rounded-full">${cat}</span>`).join('')}
+            ${mp.categories?.length > 2 ? `<span class="text-white/50 text-xs">+${mp.categories.length - 2}</span>` : ''}
+          </div>
+          <p class="text-white/80 text-sm mt-2 line-clamp-2">${mp.description || ''}</p>
+          
+          <div class="flex items-center justify-between mt-3 pt-2 border-t border-white/10">
+            <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
+            <button class="instruction-btn bg-white/20 hover:bg-white/30 rounded-full w-8 h-8 flex items-center justify-center" 
+              data-name="${mp.name.replace(/"/g, '&quot;')}" 
+              data-instruction="${(mp.instruction || '').replace(/"/g, '&quot;')}"
+              data-instruction-images='${JSON.stringify(mp.instruction_images || [])}'
+              data-requires-vpn="${mp.requires_vpn}">
+              ❓
+            </button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+    
+    // Вешаем обработчики на кнопки инструкций
+    document.querySelectorAll('.instruction-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        showInstructionModal(btn.dataset);
+      };
     });
-  });
+  }
+  
+  // Функция показа модального окна с инструкцией
+  function showInstructionModal({ name, instruction, instructionImages, requiresVpn }) {
+    const images = instructionImages ? JSON.parse(instructionImages) : [];
+    
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4';
+    modal.innerHTML = `
+      <div class="bg-[#1e293b] rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto border border-white/20">
+        <div class="sticky top-0 bg-[#1e293b] p-4 border-b border-white/10 flex justify-between items-center">
+          <h3 class="text-white font-bold text-xl">🛍️ ${name}</h3>
+          <button class="close-modal text-white text-2xl">&times;</button>
+        </div>
+        <div class="p-4">
+          ${requiresVpn === 'true' ? '<p class="text-yellow-400 mb-3">⚠️ Для доступа может потребоваться VPN.</p>' : ''}
+          <p class="text-white/90 whitespace-pre-line">${instruction || 'Подробная инструкция появится позже.'}</p>
+          ${images.length > 0 ? `
+            <div class="mt-4 space-y-3">
+              ${images.map(url => `<img src="${url}" class="w-full rounded-xl border border-white/20">`).join('')}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('.close-modal').onclick = () => modal.remove();
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  }
+  
+  // Вешаем обработчики на фильтры
+  function setupFilters() {
+    const filterGroups = ['#filterCountries', '#filterCategories', '#filterGenders'];
+    filterGroups.forEach(selector => {
+      const container = document.querySelector(selector);
+      if (!container) return;
+      container.querySelectorAll('.filter-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          // Убираем active у всех чипов в этой группе
+          container.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          renderFilteredGrid();
+        });
+      });
+    });
+  }
+  
+  // Инициализация
+  (async () => {
+    await renderFilteredGrid();
+    setupFilters();
+  })();
 }
 
 // ==================== РЕНДЕР ПОДКАТАЛОГА ТОВАРОВ ====================
