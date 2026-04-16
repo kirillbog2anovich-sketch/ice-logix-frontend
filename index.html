@@ -88,7 +88,7 @@
     <div id="content" class="main-content"><div class="text-center py-10">Загрузка...</div></div>
     <div class="tab-bar" id="tabBar">
       <div class="tab-item" data-tab="home"><span class="tab-icon">🏠</span><span class="tab-label">Главная</span></div>
-      <div class="tab-item" data-tab="products"><span class="tab-icon">🛍️</span><span class="tab-label">Товары</span></div>
+      <div class="tab-item" data-tab="calculator"><span class="tab-icon">🧮</span><span class="tab-label">Калькулятор</span></div>
       <div class="tab-item new-order" data-tab="neworder"><span class="tab-icon">✨</span><span class="tab-label">Новый заказ</span></div>
       <div class="tab-item" data-tab="catalogs"><span class="tab-icon">📚</span><span class="tab-label">Каталоги</span></div>
       <div class="tab-item" data-tab="profile"><span class="tab-icon">👤</span><span class="tab-label">Профиль</span></div>
@@ -765,104 +765,6 @@ if (!userLimits.isTrusted) {
       });
     }
 
-        // ==================== РЕНДЕР КАТАЛОГА ТОВАРОВ ====================
-        async function renderProducts() {
-      try {
-        let query = supabaseClient.from('products').select('*', { count: 'exact' }).eq('is_active', true);
-        if (productsFilter.category !== 'all') query = query.eq('category', productsFilter.category);
-        if (productsFilter.brand !== 'all') query = query.eq('brand', productsFilter.brand);
-        if (productsFilter.sort === 'price_asc') query = query.order('price', { ascending: true });
-        else if (productsFilter.sort === 'price_desc') query = query.order('price', { ascending: false });
-        else query = query.order('created_at', { ascending: false });
-        
-        const from = (productsPage - 1) * 20;
-        const to = from + 19;
-        const { data, count, error } = await query.range(from, to);
-        if (error) throw error;
-        
-        productsTotalPages = Math.ceil((count || 0) / 20);
-        
-        const categories = [...new Set(data.map(p => p.category).filter(Boolean))];
-        const brands = [...new Set(data.map(p => p.brand).filter(Boolean))];
-        
-        return `
-          <div class="mb-4 flex flex-wrap gap-2">
-            <div class="flex-1"><select id="filterCategory" class="w-full p-2 rounded-lg bg-white/20 border border-white/30"><option value="all">Все категории</option>${categories.map(c => `<option value="${c}" ${productsFilter.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
-            <div class="flex-1"><select id="filterBrand" class="w-full p-2 rounded-lg bg-white/20 border border-white/30"><option value="all">Все бренды</option>${brands.map(b => `<option value="${b}" ${productsFilter.brand === b ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
-            <div><select id="filterSort" class="w-full p-2 rounded-lg bg-white/20 border border-white/30"><option value="new" ${productsFilter.sort === 'new' ? 'selected' : ''}>Новинки</option><option value="price_asc" ${productsFilter.sort === 'price_asc' ? 'selected' : ''}>Цена ↑</option><option value="price_desc" ${productsFilter.sort === 'price_desc' ? 'selected' : ''}>Цена ↓</option></select></div>
-            <button id="applyProductsFilter" class="bg-cyan-500 px-4 py-2 rounded-lg">Применить</button>
-          </div>
-          <div class="grid grid-cols-2 gap-4" id="productsGrid">
-            ${data.map(p => `
-              <div class="product-card" data-product-id="${p.id}">
-                <div class="aspect-square bg-white/10 flex items-center justify-center relative"><img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover"><span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span></div>
-                <div class="p-2"><p class="text-white font-bold text-sm truncate">${p.title}</p><p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p><p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p><button class="buyNowBtn mt-2 w-full bg-cyan-500/50 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">Купить сейчас</button></div>
-              </div>
-            `).join('')}
-          </div>
-          <div class="flex justify-center gap-2 mt-4"><button id="prevPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage <= 1 ? 'disabled' : ''}>← Назад</button><span class="text-white/70 py-2">Страница ${productsPage} из ${productsTotalPages}</span><button id="nextPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage >= productsTotalPages ? 'disabled' : ''}>Вперёд →</button></div>
-          ${renderFooter()}
-        `;
-      } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки товаров</p>'; }
-    }
-
-    function attachProductsHandlers() {
-      const applyBtn = document.getElementById('applyProductsFilter');
-      if (applyBtn) {
-        applyBtn.onclick = () => {
-          productsFilter.category = document.getElementById('filterCategory').value;
-          productsFilter.brand = document.getElementById('filterBrand').value;
-          productsFilter.sort = document.getElementById('filterSort').value;
-          productsPage = 1;
-          renderCurrentScreen();
-        };
-      }
-      const prevBtn = document.getElementById('prevPage');
-      const nextBtn = document.getElementById('nextPage');
-      if (prevBtn) prevBtn.onclick = () => { if (productsPage > 1) { productsPage--; renderCurrentScreen(); } };
-      if (nextBtn) nextBtn.onclick = () => { if (productsPage < productsTotalPages) { productsPage++; renderCurrentScreen(); } };
-      
-      document.querySelectorAll('.wishlist-heart').forEach(heart => {
-        heart.onclick = async (e) => {
-          e.stopPropagation();
-          const productId = heart.getAttribute('data-product-id');
-          if (wishlist.has(productId)) {
-            await supabaseClient.from('wishlist').delete().eq('user_id', userId).eq('product_id', productId);
-            wishlist.delete(productId);
-            heart.innerText = '🤍';
-            heart.classList.remove('text-red-500');
-          } else {
-            await supabaseClient.from('wishlist').insert({ user_id: userId, product_id: productId });
-            wishlist.add(productId);
-            heart.innerText = '❤️';
-            heart.classList.add('text-red-500');
-          }
-        };
-      });
-      
-      document.querySelectorAll('.buyNowBtn').forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          const url = btn.getAttribute('data-url');
-          const price = parseFloat(btn.getAttribute('data-price'));
-          if (url) {
-            window.tempOrder = { url: url, price: price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
-            switchTab('neworder');
-          }
-        };
-      });
-      
-      document.querySelectorAll('.product-card').forEach(card => {
-        card.onclick = () => {
-          const url = card.querySelector('.buyNowBtn')?.getAttribute('data-url');
-          const price = parseFloat(card.querySelector('.buyNowBtn')?.getAttribute('data-price'));
-          if (url) {
-            window.tempOrder = { url: url, price: price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
-            switchTab('neworder');
-          }
-        };
-      });
-    }
 
     // ==================== РЕНДЕР ИЗБРАННОГО ====================
     async function renderWishlist() {
@@ -1257,44 +1159,6 @@ if (!userLimits.isTrusted) {
       });
     }
 
-        // ==================== РЕНДЕР КАТАЛОГА ПЛОЩАДОК ====================
-        async function renderCatalogs() {
-      try {
-        const { data, error } = await supabaseClient.from('marketplaces').select('*').eq('is_active', true).order('sort_order', { ascending: true });
-        if (error) throw error;
-        if (!data || data.length === 0) return '<p class="text-center mt-10 text-white/70">Каталог площадок пока пуст</p>';
-        return `
-          <div class="grid grid-cols-2 gap-4">
-            ${data.map(mp => `
-              <div class="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
-                <div class="aspect-square bg-white/20 flex items-center justify-center p-4">
-                  ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain">` : '<div class="text-5xl">🛍️</div>'}
-                </div>
-                <div class="p-3">
-                  <h3 class="font-bold text-white">${mp.name}</h3>
-                  <p class="text-white/70 text-xs">${mp.country || ''}</p>
-                  <div class="flex justify-between items-center mt-2">
-                    <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
-                    <button class="detail-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-name="${mp.name.replace(/"/g, '&quot;')}" data-desc="${(mp.description || '').replace(/"/g, '&quot;')}">ℹ️</button>
-                  </div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-          ${renderFooter()}
-        `;
-      } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки каталога</p>'; }
-    }
-
-    function attachCatalogsHandlers() {
-      document.querySelectorAll('.detail-btn').forEach(btn => {
-        btn.onclick = () => {
-          const name = btn.getAttribute('data-name');
-          const desc = btn.getAttribute('data-desc');
-          alert(`${name}\n\n${desc || 'Описание отсутствует'}`);
-        };
-      });
-    }
 
     // ==================== РЕНДЕР МОИХ ЗАКАЗОВ ====================
     async function renderMyOrders() {
@@ -1442,6 +1306,156 @@ if (!userLimits.isTrusted) {
       }
     }
 
+    // Рендер каталога площадок (старый renderCatalogs переименовываем)
+async function renderMarketplaces() {
+  try {
+    const { data, error } = await supabaseClient.from('marketplaces').select('*').eq('is_active', true).order('sort_order', { ascending: true });
+    if (error) throw error;
+    if (!data || data.length === 0) return '<p class="text-center mt-10 text-white/70">Каталог площадок пока пуст</p>';
+    return `
+      <button id="backFromMarketplacesBtn" class="global-back-btn">← Назад</button>
+      <div class="grid grid-cols-2 gap-4">
+        ${data.map(mp => `
+          <div class="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
+            <div class="aspect-square bg-white/20 flex items-center justify-center p-4">
+              ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain">` : '<div class="text-5xl">🛍️</div>'}
+            </div>
+            <div class="p-3">
+              <h3 class="font-bold text-white">${mp.name}</h3>
+              <p class="text-white/70 text-xs">${mp.country || ''}</p>
+              <div class="flex justify-between items-center mt-2">
+                <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
+                <button class="detail-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-name="${mp.name.replace(/"/g, '&quot;')}" data-desc="${(mp.description || '').replace(/"/g, '&quot;')}">ℹ️</button>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ${renderFooter()}
+    `;
+  } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки каталога</p>'; }
+}
+
+function attachMarketplacesHandlers() {
+  document.querySelectorAll('.detail-btn').forEach(btn => {
+    btn.onclick = () => {
+      const name = btn.getAttribute('data-name');
+      const desc = btn.getAttribute('data-desc');
+      alert(`${name}\n\n${desc || 'Описание отсутствует'}`);
+    };
+  });
+  const backBtn = document.getElementById('backFromMarketplacesBtn');
+  if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
+}
+
+// Рендер каталога товаров (почти как старый renderProducts, но с кнопкой Назад)
+async function renderProductsCatalog() {
+  try {
+    let query = supabaseClient.from('products').select('*', { count: 'exact' }).eq('is_active', true);
+    if (productsFilter.category !== 'all') query = query.eq('category', productsFilter.category);
+    if (productsFilter.brand !== 'all') query = query.eq('brand', productsFilter.brand);
+    if (productsFilter.sort === 'price_asc') query = query.order('price', { ascending: true });
+    else if (productsFilter.sort === 'price_desc') query = query.order('price', { ascending: false });
+    else query = query.order('created_at', { ascending: false });
+    
+    const from = (productsPage - 1) * 20;
+    const to = from + 19;
+    const { data, count, error } = await query.range(from, to);
+    if (error) throw error;
+    
+    productsTotalPages = Math.ceil((count || 0) / 20);
+    
+    const categories = [...new Set(data.map(p => p.category).filter(Boolean))];
+    const brands = [...new Set(data.map(p => p.brand).filter(Boolean))];
+    
+    return `
+      <button id="backFromProductsCatalogBtn" class="global-back-btn">← Назад</button>
+      <div class="mb-4 flex flex-wrap gap-2">
+        <div class="flex-1"><select id="filterCategory" class="w-full p-2 rounded-lg bg-white/20 border border-white/30"><option value="all">Все категории</option>${categories.map(c => `<option value="${c}" ${productsFilter.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+        <div class="flex-1"><select id="filterBrand" class="w-full p-2 rounded-lg bg-white/20 border border-white/30"><option value="all">Все бренды</option>${brands.map(b => `<option value="${b}" ${productsFilter.brand === b ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
+        <div><select id="filterSort" class="w-full p-2 rounded-lg bg-white/20 border border-white/30"><option value="new" ${productsFilter.sort === 'new' ? 'selected' : ''}>Новинки</option><option value="price_asc" ${productsFilter.sort === 'price_asc' ? 'selected' : ''}>Цена ↑</option><option value="price_desc" ${productsFilter.sort === 'price_desc' ? 'selected' : ''}>Цена ↓</option></select></div>
+        <button id="applyProductsFilter" class="bg-cyan-500 px-4 py-2 rounded-lg">Применить</button>
+      </div>
+      <div class="grid grid-cols-2 gap-4" id="productsGrid">
+        ${data.map(p => `
+          <div class="product-card" data-product-id="${p.id}">
+            <div class="aspect-square bg-white/10 flex items-center justify-center relative"><img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover"><span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span></div>
+            <div class="p-2"><p class="text-white font-bold text-sm truncate">${p.title}</p><p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p><p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p><button class="buyNowBtn mt-2 w-full bg-cyan-500/50 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">Купить сейчас</button></div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="flex justify-center gap-2 mt-4"><button id="prevPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage <= 1 ? 'disabled' : ''}>← Назад</button><span class="text-white/70 py-2">Страница ${productsPage} из ${productsTotalPages}</span><button id="nextPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage >= productsTotalPages ? 'disabled' : ''}>Вперёд →</button></div>
+      ${renderFooter()}
+    `;
+  } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки товаров</p>'; }
+}
+
+function attachProductsCatalogHandlers() {
+  const applyBtn = document.getElementById('applyProductsFilter');
+  if (applyBtn) {
+    applyBtn.onclick = () => {
+      productsFilter.category = document.getElementById('filterCategory').value;
+      productsFilter.brand = document.getElementById('filterBrand').value;
+      productsFilter.sort = document.getElementById('filterSort').value;
+      productsPage = 1;
+      renderCurrentScreen();
+    };
+  }
+  const prevBtn = document.getElementById('prevPage');
+  const nextBtn = document.getElementById('nextPage');
+  if (prevBtn) prevBtn.onclick = () => { if (productsPage > 1) { productsPage--; renderCurrentScreen(); } };
+  if (nextBtn) nextBtn.onclick = () => { if (productsPage < productsTotalPages) { productsPage++; renderCurrentScreen(); } };
+  
+  document.querySelectorAll('.wishlist-heart').forEach(heart => {
+    heart.onclick = async (e) => {
+      e.stopPropagation();
+      const productId = heart.getAttribute('data-product-id');
+      if (wishlist.has(productId)) {
+        await supabaseClient.from('wishlist').delete().eq('user_id', userId).eq('product_id', productId);
+        wishlist.delete(productId);
+        heart.innerText = '🤍';
+        heart.classList.remove('text-red-500');
+      } else {
+        await supabaseClient.from('wishlist').insert({ user_id: userId, product_id: productId });
+        wishlist.add(productId);
+        heart.innerText = '❤️';
+        heart.classList.add('text-red-500');
+      }
+    };
+  });
+  
+  document.querySelectorAll('.buyNowBtn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const url = btn.getAttribute('data-url');
+      const price = parseFloat(btn.getAttribute('data-price'));
+      if (url) {
+        window.tempOrder = { url: url, price: price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
+        switchTab('neworder');
+      }
+    };
+  });
+  
+  document.querySelectorAll('.product-card').forEach(card => {
+    card.onclick = () => {
+      const url = card.querySelector('.buyNowBtn')?.getAttribute('data-url');
+      const price = parseFloat(card.querySelector('.buyNowBtn')?.getAttribute('data-price'));
+      if (url) {
+        window.tempOrder = { url: url, price: price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
+        switchTab('neworder');
+      }
+    };
+  });
+  
+  const backBtn = document.getElementById('backFromProductsCatalogBtn');
+  if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
+}
+
+// Вспомогательная функция для кнопки Назад в подэкранах
+function ensureBackButtonForSubscreen() {
+  // Уже добавлена кнопка вручную в каждом рендере, но можно оставить пустой
+}
+
     // ==================== RENDER CURRENT SCREEN ====================
     async function renderCurrentScreen() {
       const contentDiv = document.getElementById('content');
@@ -1452,8 +1466,21 @@ if (!userLimits.isTrusted) {
         if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
         return;
       }
-      
-      if (currentTab === 'home') {
+
+      if (currentSubScreen === 'marketplaces') {
+    contentDiv.innerHTML = await renderMarketplaces();
+    attachMarketplacesHandlers();
+    ensureBackButtonForSubscreen();
+    return;
+  }
+  if (currentSubScreen === 'productsCatalog') {
+    contentDiv.innerHTML = await renderProductsCatalog();
+    attachProductsCatalogHandlers();
+    ensureBackButtonForSubscreen();
+    return;
+  } 
+  
+  if (currentTab === 'home') {
         contentDiv.innerHTML = await renderHome();
         attachHomeHandlers();
       } else if (currentTab === 'calculator') {
@@ -1462,9 +1489,9 @@ if (!userLimits.isTrusted) {
       } else if (currentTab === 'neworder') {
         contentDiv.innerHTML = await renderNewOrder();
         attachNewOrderHandlers();
-      } else if (currentTab === 'products') {
-        contentDiv.innerHTML = await renderProducts();
-        attachProductsHandlers();
+      } else if (currentTab === 'calculator') {
+        contentDiv.innerHTML = await renderCalculator();
+        attachCalculatorHandlers();
       } else if (currentTab === 'wishlist') {
         contentDiv.innerHTML = await renderWishlist();
         attachWishlistHandlers();
