@@ -1012,7 +1012,7 @@ async function renderAdminOrdersList() {
     
     // Получаем пользователей
     const userIds = [...new Set(data.map(o => o.user_id))];
-    const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+    const { data: users } = await supabaseClient.from('users').select('user_id, full_name').in('user_id', userIds);
     const userMap = {};
     if (users) users.forEach(u => { userMap[u.user_id] = u; });
     
@@ -1426,44 +1426,20 @@ document.addEventListener('change', async (e) => {
 const exportBtn = document.getElementById('exportOrdersCsvBtn');
 if (exportBtn) {
   exportBtn.onclick = async () => {
+    console.log('Нажата кнопка экспорта CSV');
     try {
       let query = supabaseClient.from('orders').select('*');
       if (adminOrdersFilter !== 'all') query = query.eq('status', adminOrdersFilter);
       const { data, error } = await query;
       if (error) throw error;
+      console.log('Получено заказов:', data?.length);
       if (!data || data.length === 0) { alert('Нет заказов для экспорта'); return; }
       
-      // Добавим информацию о пользователе (имя, username) — нужно получить из users
-      const userIds = [...new Set(data.map(o => o.user_id))];
-      const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
-      const userMap = {};
-      if (users) users.forEach(u => { userMap[u.user_id] = u; });
-      
-      const headers = ['ID заказа', 'User ID', 'Имя', 'Username', 'Статус', 'Цена (BYN)', 'Вес (кг)', 'Дата создания'];
-      const rows = data.map(o => {
-        const u = userMap[o.user_id] || {};
-        return [
-          o.id,
-          o.user_id,
-          u.full_name || '',
-          u.username || '',
-          o.status,
-          o.price_byn || '',
-          o.weight_estimated || '',
-          new Date(o.created_at).toLocaleString('ru-RU')
-        ];
-      });
-      
-      let csvContent = headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
-      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM для Excel
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `orders_${new Date().toISOString().slice(0,10)}.csv`);
-      document.body.appendChild(link);
+      // ... остальной код ...
+      console.log('Формирование CSV завершено, начинаю скачивание');
       link.click();
-      document.body.removeChild(link);
     } catch (err) {
+      console.error('Ошибка экспорта CSV:', err);
       alert('Ошибка экспорта: ' + err.message);
     }
   };
