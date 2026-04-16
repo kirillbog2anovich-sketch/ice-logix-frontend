@@ -1565,23 +1565,54 @@ function attachCatalogsHandlers() {
 // ==================== РЕНДЕР ПОДКАТАЛОГА ПЛОЩАДОК ====================
 async function renderMarketplaces() {
   try {
-    const { data, error } = await supabaseClient.from('marketplaces').select('*').eq('is_active', true).order('sort_order', { ascending: true });
+    // Запрос к Supabase
+    const { data, error } = await supabaseClient
+      .from('marketplaces')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true });
+      
     if (error) throw error;
-    if (!data || data.length === 0) return '<p class="text-center mt-10 text-white/70">Каталог площадок пока пуст</p>';
+    if (!data || data.length === 0) {
+      return `<p class="text-center mt-10 text-white/70">Каталог площадок пока пуст</p>`;
+    }
+    
+    // Соберём уникальные страны для будущего фильтра
+    const countries = [...new Set(data.map(mp => mp.country))];
+    
     return `
       <button id="backFromMarketplacesBtn" class="global-back-btn">← Назад</button>
-      <div class="grid grid-cols-2 gap-4">
+      
+      <!-- Фильтры (заглушка, заработают в следующей части) -->
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-4" id="marketplaceFilters">
+        <button class="filter-chip active" data-country="all">Все</button>
+        ${countries.map(c => `<button class="filter-chip" data-country="${c}">${c}</button>`).join('')}
+      </div>
+      
+      <div class="grid grid-cols-2 gap-4" id="marketplacesGrid">
         ${data.map(mp => `
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
-            <div class="aspect-square bg-white/20 flex items-center justify-center p-4">
-              ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain">` : '<div class="text-5xl">🛍️</div>'}
+          <div class="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10 flex flex-col h-full">
+            <div class="aspect-square bg-white/20 flex items-center justify-center p-4 relative">
+              ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain" alt="${mp.name}">` : '<span class="text-5xl">🛍️</span>'}
+              ${mp.country === 'США' || mp.country === 'Япония' ? '<span class="absolute top-2 right-2 bg-yellow-500/80 text-black text-xs px-2 py-1 rounded-full">Скоро</span>' : ''}
             </div>
-            <div class="p-3">
-              <h3 class="font-bold text-white">${mp.name}</h3>
-              <p class="text-white/70 text-xs">${mp.country || ''}</p>
-              <div class="flex justify-between items-center mt-2">
+            <div class="p-3 flex-1 flex flex-col">
+              <h3 class="font-bold text-white text-lg">${mp.name}</h3>
+              <p class="text-white/70 text-xs">${mp.country}</p>
+              <div class="flex flex-wrap gap-1 mt-1">
+                ${mp.categories.slice(0, 2).map(cat => `<span class="text-white/50 text-xs bg-white/10 px-2 py-0.5 rounded-full">${cat}</span>`).join('')}
+                ${mp.categories.length > 2 ? `<span class="text-white/50 text-xs">+${mp.categories.length - 2}</span>` : ''}
+              </div>
+              <p class="text-white/80 text-sm mt-2 line-clamp-2">${mp.description || ''}</p>
+              
+              <div class="flex items-center justify-between mt-3 pt-2 border-t border-white/10">
                 <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
-                <button class="detail-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-name="${mp.name.replace(/"/g, '&quot;')}" data-desc="${(mp.description || '').replace(/"/g, '&quot;')}">ℹ️</button>
+                <button class="instruction-btn bg-white/20 hover:bg-white/30 rounded-full w-8 h-8 flex items-center justify-center" 
+                  data-name="${mp.name.replace(/"/g, '&quot;')}" 
+                  data-instruction="${(mp.instruction || '').replace(/"/g, '&quot;')}"
+                  data-requires-vpn="${mp.requires_vpn}">
+                  ❓
+                </button>
               </div>
             </div>
           </div>
@@ -1589,15 +1620,40 @@ async function renderMarketplaces() {
       </div>
       ${renderFooter()}
     `;
-  } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки каталога</p>'; }
+  } catch (err) {
+    console.error(err);
+    return '<p class="text-center mt-10 text-red-400">Ошибка загрузки каталога</p>';
+  }
 }
 
 function attachMarketplacesHandlers() {
-  document.querySelectorAll('.detail-btn').forEach(btn => {
-    btn.onclick = () => alert(`${btn.dataset.name}\n\n${btn.dataset.desc || 'Описание отсутствует'}`);
-  });
+  // Кнопка "Назад"
   const backBtn = document.getElementById('backFromMarketplacesBtn');
   if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
+  
+  // Кнопки с инструкцией (знак вопроса)
+  document.querySelectorAll('.instruction-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      const instruction = btn.dataset.instruction;
+      const requiresVpn = btn.dataset.requiresVpn === 'true';
+      
+      let message = `🛍️ ${name}\n\n`;
+      if (requiresVpn) message += `⚠️ Для доступа может потребоваться VPN.\n\n`;
+      message += instruction || 'Подробная инструкция появится позже.';
+      
+      alert(message); // Временно используем alert, позже сделаем красивое модальное окно
+    };
+  });
+  
+  // Заглушка для фильтров по странам (пока просто алерт)
+  document.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const country = chip.dataset.country;
+      alert(`Фильтр по стране "${country}" будет работать в следующей версии.`);
+    });
+  });
 }
 
 // ==================== РЕНДЕР ПОДКАТАЛОГА ТОВАРОВ ====================
