@@ -966,6 +966,32 @@ if (!userLimits.isTrusted) {
     }
 
     // ==================== РЕНДЕР АДМИНКИ (С ПРОВЕРКАМИ) ====================
+    async function renderMarketplacesAdminList() {
+  try {
+    const { data, error } = await supabaseClient.from('marketplaces').select('*').order('sort_order', { ascending: true });
+    if (error) throw error;
+    if (!data || data.length === 0) return '<p class="text-white/70 text-center py-2">Нет площадок</p>';
+    
+    return data.map(mp => `
+      <div class="flex items-center justify-between p-2 bg-white/5 rounded-lg">
+        <div class="flex items-center gap-2">
+          ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-8 h-8 object-contain rounded">` : '<span class="w-8 h-8 flex items-center justify-center bg-white/20 rounded">🛍️</span>'}
+          <div>
+            <span class="text-white">${mp.name}</span>
+            <span class="text-white/50 text-xs block">${mp.country}</span>
+          </div>
+        </div>
+        <div>
+          <button class="editMarketplaceBtn text-cyan-400 mr-2" data-id="${mp.id}">✏️</button>
+          <button class="deleteMarketplaceBtn text-red-400" data-id="${mp.id}">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    return '<p class="text-red-400">Ошибка загрузки</p>';
+  }
+}
+    
     async function renderAdmin() {
       if (!isOwner) return '<p class="text-center mt-10 text-red-400">Доступ запрещён</p>';
       try {
@@ -1032,6 +1058,13 @@ if (!userLimits.isTrusted) {
               `).join('')}
             </div>
           </div>
+          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+  <h3 class="text-white font-bold mb-3">🌐 Управление площадками</h3>
+  <button id="addMarketplaceBtn" class="w-full bg-cyan-500 py-2 rounded-lg mb-3">➕ Добавить площадку</button>
+  <div class="space-y-2 max-h-80 overflow-y-auto" id="marketplacesList">
+    ${await renderMarketplacesAdminList()}
+  </div>
+</div>
           ${renderFooter()}
         `;
       } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки админ-панели</p>'; }
@@ -1157,6 +1190,123 @@ if (!userLimits.isTrusted) {
           } catch (err) { alert('Ошибка: ' + err.message); }
         };
       });
+      // === Управление площадками ===
+const addMarketplaceBtn = document.getElementById('addMarketplaceBtn');
+if (addMarketplaceBtn) addMarketplaceBtn.onclick = () => openMarketplaceForm();
+
+async function openMarketplaceForm(marketplace = null) {
+  const isEdit = !!marketplace;
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto';
+  modal.innerHTML = `
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20">
+      <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая площадка'}</h3>
+      <div class="space-y-3">
+        <input type="text" id="mpName" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${marketplace?.name || ''}">
+        <input type="url" id="mpUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Ссылка на сайт *" value="${marketplace?.website_url || ''}">
+        <input type="text" id="mpCountry" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Страна *" value="${marketplace?.country || ''}">
+        <textarea id="mpDescription" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Описание">${marketplace?.description || ''}</textarea>
+        <textarea id="mpInstruction" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Инструкция">${marketplace?.instruction || ''}</textarea>
+        <div>
+          <label class="text-white/70 text-sm">Категории (можно несколько)</label>
+          <div class="flex flex-wrap gap-2 mt-1" id="mpCategories">
+            ${['Обувь', 'Одежда', 'Аксессуары'].map(cat => {
+              const checked = marketplace?.categories?.includes(cat) ? 'checked' : '';
+              return `<label class="text-white/80"><input type="checkbox" value="${cat}" ${checked}> ${cat}</label>`;
+            }).join('')}
+          </div>
+        </div>
+        <div>
+          <label class="text-white/70 text-sm">Пол (можно несколько)</label>
+          <div class="flex flex-wrap gap-2 mt-1" id="mpGender">
+            ${['Муж', 'Жен', 'Унисекс'].map(g => {
+              const checked = marketplace?.gender?.includes(g) ? 'checked' : '';
+              return `<label class="text-white/80"><input type="checkbox" value="${g}" ${checked}> ${g}</label>`;
+            }).join('')}
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="checkbox" id="mpVpn" ${marketplace?.requires_vpn ? 'checked' : ''}>
+          <label class="text-white/80">Требуется VPN</label>
+        </div>
+        <div>
+          <label class="text-white/70 text-sm block mb-1">Логотип (URL или загрузить)</label>
+          <input type="text" id="mpLogoUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-2" placeholder="https://..." value="${marketplace?.logo_url || ''}">
+          <input type="file" id="mpLogoFile" accept="image/*" class="text-white/70 text-sm">
+        </div>
+        <input type="number" id="mpSortOrder" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Порядок сортировки" value="${marketplace?.sort_order || 0}">
+        <label class="flex items-center gap-2 text-white/80"><input type="checkbox" id="mpActive" ${marketplace?.is_active !== false ? 'checked' : ''}> Активна</label>
+      </div>
+      <div class="flex gap-3 mt-5">
+        <button id="saveMarketplaceBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">${isEdit ? 'Сохранить' : 'Добавить'}</button>
+        <button id="cancelMarketplaceBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  const cancelBtn = modal.querySelector('#cancelMarketplaceBtn');
+  cancelBtn.onclick = () => modal.remove();
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  
+  const saveBtn = modal.querySelector('#saveMarketplaceBtn');
+  saveBtn.onclick = async () => {
+    const name = modal.querySelector('#mpName').value.trim();
+    const url = modal.querySelector('#mpUrl').value.trim();
+    const country = modal.querySelector('#mpCountry').value.trim();
+    if (!name || !url || !country) { alert('Заполните обязательные поля'); return; }
+    
+    // Собираем выбранные категории и пол
+    const categories = Array.from(modal.querySelectorAll('#mpCategories input:checked')).map(cb => cb.value);
+    const gender = Array.from(modal.querySelectorAll('#mpGender input:checked')).map(cb => cb.value);
+    
+    const description = modal.querySelector('#mpDescription').value.trim();
+    const instruction = modal.querySelector('#mpInstruction').value.trim();
+    const requires_vpn = modal.querySelector('#mpVpn').checked;
+    const sort_order = parseInt(modal.querySelector('#mpSortOrder').value) || 0;
+    const is_active = modal.querySelector('#mpActive').checked;
+    
+    // Обработка логотипа
+    let logo_url = modal.querySelector('#mpLogoUrl').value.trim();
+    const logoFile = modal.querySelector('#mpLogoFile').files[0];
+    if (logoFile) {
+      const fileName = `logos/${Date.now()}_${logoFile.name}`;
+      const { data: uploadData, error: uploadError } = await supabaseClient.storage.from('marketplace-logos').upload(fileName, logoFile);
+      if (uploadError) { alert('Ошибка загрузки лого: ' + uploadError.message); return; }
+      const { data: publicUrl } = supabaseClient.storage.from('marketplace-logos').getPublicUrl(fileName);
+      logo_url = publicUrl.publicUrl;
+    }
+    
+    const payload = { name, website_url: url, country, categories, gender, description, instruction, requires_vpn, sort_order, is_active, logo_url };
+    
+    try {
+      if (isEdit) {
+        await supabaseClient.from('marketplaces').update(payload).eq('id', marketplace.id);
+      } else {
+        await supabaseClient.from('marketplaces').insert(payload);
+      }
+      alert(isEdit ? 'Площадка обновлена' : 'Площадка добавлена');
+      modal.remove();
+      renderCurrentScreen(); // обновим админку
+    } catch (err) { alert('Ошибка: ' + err.message); }
+  };
+}
+
+// Обработчики кнопок редактирования и удаления (делегирование)
+document.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('editMarketplaceBtn')) {
+    const id = e.target.dataset.id;
+    const { data } = await supabaseClient.from('marketplaces').select('*').eq('id', id).single();
+    if (data) openMarketplaceForm(data);
+  }
+  if (e.target.classList.contains('deleteMarketplaceBtn')) {
+    const id = e.target.dataset.id;
+    if (!confirm('Удалить площадку?')) return;
+    await supabaseClient.from('marketplaces').delete().eq('id', id);
+    alert('Удалено');
+    renderCurrentScreen();
+  }
+});
     }
 
 
@@ -1306,47 +1456,6 @@ if (!userLimits.isTrusted) {
       }
     }
 
-    // Рендер каталога площадок (старый renderCatalogs переименовываем)
-async function renderMarketplaces() {
-  try {
-    const { data, error } = await supabaseClient.from('marketplaces').select('*').eq('is_active', true).order('sort_order', { ascending: true });
-    if (error) throw error;
-    if (!data || data.length === 0) return '<p class="text-center mt-10 text-white/70">Каталог площадок пока пуст</p>';
-    return `
-      <button id="backFromMarketplacesBtn" class="global-back-btn">← Назад</button>
-      <div class="grid grid-cols-2 gap-4">
-        ${data.map(mp => `
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10">
-            <div class="aspect-square bg-white/20 flex items-center justify-center p-4">
-              ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-full h-full object-contain">` : '<div class="text-5xl">🛍️</div>'}
-            </div>
-            <div class="p-3">
-              <h3 class="font-bold text-white">${mp.name}</h3>
-              <p class="text-white/70 text-xs">${mp.country || ''}</p>
-              <div class="flex justify-between items-center mt-2">
-                <a href="${mp.website_url}" target="_blank" class="text-cyan-400 text-sm underline">Перейти</a>
-                <button class="detail-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-name="${mp.name.replace(/"/g, '&quot;')}" data-desc="${(mp.description || '').replace(/"/g, '&quot;')}">ℹ️</button>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-      ${renderFooter()}
-    `;
-  } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки каталога</p>'; }
-}
-
-function attachMarketplacesHandlers() {
-  document.querySelectorAll('.detail-btn').forEach(btn => {
-    btn.onclick = () => {
-      const name = btn.getAttribute('data-name');
-      const desc = btn.getAttribute('data-desc');
-      alert(`${name}\n\n${desc || 'Описание отсутствует'}`);
-    };
-  });
-  const backBtn = document.getElementById('backFromMarketplacesBtn');
-  if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
-}
 
 // Рендер каталога товаров (почти как старый renderProducts, но с кнопкой Назад)
 async function renderProductsCatalog() {
@@ -1576,10 +1685,12 @@ async function renderMarketplaces() {
       return `<p class="text-center mt-10 text-white/70">Каталог площадок пока пуст</p>`;
     }
     
-    // Соберём все уникальные страны, категории, пол для фильтров
+    // Разрешённые категории
+    const allowedCategories = ['Обувь', 'Одежда', 'Аксессуары'];
+    // Соберём все страны и пол (категории только разрешённые)
     const allCountries = [...new Set(data.map(mp => mp.country))];
-    const allCategories = [...new Set(data.flatMap(mp => mp.categories || []))];
     const allGenders = [...new Set(data.flatMap(mp => mp.gender || []))];
+    const allCategories = allowedCategories.filter(cat => data.some(mp => mp.categories && mp.categories.includes(cat)));
     
     return `
       <button id="backFromMarketplacesBtn" class="global-back-btn">← Назад</button>
@@ -1611,7 +1722,6 @@ async function renderMarketplaces() {
         </div>
       </div>
       
-      <!-- Сетка площадок (будет обновляться через JS) -->
       <div class="grid grid-cols-2 gap-4" id="marketplacesGrid"></div>
       
       ${renderFooter()}
@@ -1626,23 +1736,18 @@ function attachMarketplacesHandlers() {
   const backBtn = document.getElementById('backFromMarketplacesBtn');
   if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
   
-  // Кэш данных площадок (загрузим один раз)
   let marketplacesData = [];
   
-  // Функция отрисовки сетки с учётом активных фильтров
   async function renderFilteredGrid() {
-    // Если данные ещё не загружены, получим их
     if (marketplacesData.length === 0) {
       const { data } = await supabaseClient.from('marketplaces').select('*').eq('is_active', true);
       marketplacesData = data || [];
     }
     
-    // Получаем активные фильтры
     const activeCountry = document.querySelector('#filterCountries .filter-chip.active')?.dataset.country || 'all';
     const activeCategory = document.querySelector('#filterCategories .filter-chip.active')?.dataset.category || 'all';
     const activeGender = document.querySelector('#filterGenders .filter-chip.active')?.dataset.gender || 'all';
     
-    // Фильтруем
     let filtered = marketplacesData;
     if (activeCountry !== 'all') filtered = filtered.filter(mp => mp.country === activeCountry);
     if (activeCategory !== 'all') filtered = filtered.filter(mp => mp.categories && mp.categories.includes(activeCategory));
@@ -1688,7 +1793,6 @@ function attachMarketplacesHandlers() {
       </div>
     `).join('');
     
-    // Вешаем обработчики на кнопки инструкций
     document.querySelectorAll('.instruction-btn').forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation();
@@ -1697,10 +1801,8 @@ function attachMarketplacesHandlers() {
     });
   }
   
-  // Функция показа модального окна с инструкцией
   function showInstructionModal({ name, instruction, instructionImages, requiresVpn }) {
     const images = instructionImages ? JSON.parse(instructionImages) : [];
-    
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4';
     modal.innerHTML = `
@@ -1725,15 +1827,12 @@ function attachMarketplacesHandlers() {
     modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
   }
   
-  // Вешаем обработчики на фильтры
   function setupFilters() {
-    const filterGroups = ['#filterCountries', '#filterCategories', '#filterGenders'];
-    filterGroups.forEach(selector => {
+    ['#filterCountries', '#filterCategories', '#filterGenders'].forEach(selector => {
       const container = document.querySelector(selector);
       if (!container) return;
       container.querySelectorAll('.filter-chip').forEach(chip => {
         chip.addEventListener('click', () => {
-          // Убираем active у всех чипов в этой группе
           container.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
           chip.classList.add('active');
           renderFilteredGrid();
@@ -1742,7 +1841,6 @@ function attachMarketplacesHandlers() {
     });
   }
   
-  // Инициализация
   (async () => {
     await renderFilteredGrid();
     setupFilters();
