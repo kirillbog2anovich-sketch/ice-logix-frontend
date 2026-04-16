@@ -1010,33 +1010,43 @@ async function renderAdminOrdersList() {
     
     if (!data || data.length === 0) return '<p class="text-white/70 text-center py-4">Нет заказов</p>';
     
-    return data.map(order => `
-      <div class="bg-white/5 rounded-lg p-3">
-        <div class="flex justify-between items-start">
-          <div>
-            <p class="text-white font-mono text-sm">#${order.id.slice(0,8)}</p>
-            <p class="text-white/50 text-xs">${new Date(order.created_at).toLocaleString('ru-RU')}</p>
-            <p class="text-white/70 text-xs mt-1">Пользователь: ${order.user_id}</p>
-            <p class="text-cyan-400 text-sm">${order.prepayment_amount} ❄️</p>
+    // Получаем пользователей
+    const userIds = [...new Set(data.map(o => o.user_id))];
+    const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+    const userMap = {};
+    if (users) users.forEach(u => { userMap[u.user_id] = u; });
+    
+    return data.map(order => {
+      const user = userMap[order.user_id] || {};
+      return `
+        <div class="bg-white/5 rounded-lg p-3">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="text-white font-mono text-sm">#${order.id.slice(0,8)}</p>
+              <p class="text-white/50 text-xs">${new Date(order.created_at).toLocaleString('ru-RU')}</p>
+              <p class="text-white/70 text-xs mt-1">👤 ${user.full_name || '—'} ${user.username ? '@'+user.username : ''}</p>
+              <p class="text-white/50 text-xs">ID: ${order.user_id}</p>
+              <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️</p>
+            </div>
+            <div class="text-right">
+              <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
+              <select class="changeOrderStatus mt-2 text-xs p-1 rounded bg-white/20 border border-white/30" data-order-id="${order.id}" data-user-id="${order.user_id}">
+                <option value="">Изменить</option>
+                <option value="pending">Ожидает</option>
+                <option value="paid">Оплачен</option>
+                <option value="bought">Выкуплен</option>
+                <option value="on_sklad_cn">Склад КН</option>
+                <option value="in_transit">В пути</option>
+                <option value="in_belarus">В РБ</option>
+                <option value="delivered">Доставлен</option>
+                <option value="cancelled">Отменён</option>
+              </select>
+            </div>
           </div>
-          <div class="text-right">
-            <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
-            <select class="changeOrderStatus mt-2 text-xs p-1 rounded bg-white/20 border border-white/30" data-order-id="${order.id}" data-user-id="${order.user_id}">
-              <option value="">Изменить статус</option>
-              <option value="pending">Ожидает</option>
-              <option value="paid">Оплачен</option>
-              <option value="bought">Выкуплен</option>
-              <option value="on_sklad_cn">Склад КН</option>
-              <option value="in_transit">В пути</option>
-              <option value="in_belarus">В РБ</option>
-              <option value="delivered">Доставлен</option>
-              <option value="cancelled">Отменён</option>
-            </select>
-          </div>
+          ${order.tracking_number_cn ? `<p class="text-white/50 text-xs mt-1">Трек: ${order.tracking_number_cn}</p>` : ''}
         </div>
-        ${order.tracking_number_cn ? `<p class="text-white/50 text-xs mt-1">Трек: ${order.tracking_number_cn}</p>` : ''}
-      </div>
-    `).join('');
+      `;
+    }).join('');
   } catch (err) {
     return '<p class="text-red-400">Ошибка загрузки заказов</p>';
   }
@@ -1423,18 +1433,29 @@ if (exportBtn) {
       if (error) throw error;
       if (!data || data.length === 0) { alert('Нет заказов для экспорта'); return; }
       
-      const headers = ['ID', 'User ID', 'Status', 'Price (BYN)', 'Weight', 'Created At'];
-      const rows = data.map(o => [
-        o.id,
-        o.user_id,
-        o.status,
-        o.price_byn || '',
-        o.weight_estimated || '',
-        new Date(o.created_at).toLocaleString('ru-RU')
-      ]);
+      // Добавим информацию о пользователе (имя, username) — нужно получить из users
+      const userIds = [...new Set(data.map(o => o.user_id))];
+      const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+      const userMap = {};
+      if (users) users.forEach(u => { userMap[u.user_id] = u; });
       
-      let csvContent = headers.join(',') + '\n' + rows.map(r => r.join(',')).join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const headers = ['ID заказа', 'User ID', 'Имя', 'Username', 'Статус', 'Цена (BYN)', 'Вес (кг)', 'Дата создания'];
+      const rows = data.map(o => {
+        const u = userMap[o.user_id] || {};
+        return [
+          o.id,
+          o.user_id,
+          u.full_name || '',
+          u.username || '',
+          o.status,
+          o.price_byn || '',
+          o.weight_estimated || '',
+          new Date(o.created_at).toLocaleString('ru-RU')
+        ];
+      });
+      
+      let csvContent = headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM для Excel
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
@@ -1489,7 +1510,7 @@ if (exportBtn) {
     const response = await fetch('https://vrvwdagjpttvfvjanbwq.supabase.co/functions/v1/send-notification', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, message, order_id: orderId })
+      body: JSON.stringify({ user_id: userId, message: message, order_id: orderId })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
