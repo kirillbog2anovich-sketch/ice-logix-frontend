@@ -1064,103 +1064,125 @@ async function renderAdminOrdersList() {
     return '<p class="text-red-400">Ошибка загрузки заказов</p>';
   }
 }
+
+async function renderMarketplacesAdminList() {
+  try {
+    const { data, error } = await supabaseClient.from('marketplaces').select('*').order('sort_order', { ascending: true });
+    if (error) throw error;
+    if (!data || data.length === 0) return '<p class="text-white/70 text-center py-2">Нет площадок</p>';
+    return data.map(mp => `
+      <div class="flex items-center justify-between p-2 bg-white/5 rounded-lg">
+        <div class="flex items-center gap-2">
+          ${mp.logo_url ? `<img src="${mp.logo_url}" class="w-8 h-8 object-contain rounded">` : '<span class="w-8 h-8 flex items-center justify-center bg-white/20 rounded">🛍️</span>'}
+          <div>
+            <span class="text-white">${mp.name}</span>
+            <span class="text-white/50 text-xs block">${mp.country}</span>
+          </div>
+        </div>
+        <div>
+          <button class="editMarketplaceBtn text-cyan-400 mr-2" data-id="${mp.id}">✏️</button>
+          <button class="deleteMarketplaceBtn text-red-400" data-id="${mp.id}">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    return '<p class="text-red-400">Ошибка загрузки</p>';
+  }
+}
     
-    async function renderAdmin() {
-      if (!isOwner) return '<p class="text-center mt-10 text-red-400">Доступ запрещён</p>';
-      try {
-        let promoCodes = [];
-        let payoutRequests = [];
-        let reviews = [];
-        let products = [];
+async function renderAdmin() {
+  if (!isOwner) return '<p class="text-center mt-10 text-red-400">Доступ запрещён</p>';
+  try {
+    let promoCodes = [];
+    let payoutRequests = [];
+    let reviews = [];
+    let products = [];
+    
+    try { const { data } = await supabaseClient.from('promocodes').select('*').order('created_at', { ascending: false }); if (data) promoCodes = data; } catch(e) {}
+    try { const { data } = await supabaseClient.from('payout_requests').select('*').eq('status', 'pending'); if (data) payoutRequests = data; } catch(e) {}
+    try { const { data } = await supabaseClient.from('reviews').select('*').eq('is_published', false).order('created_at', { ascending: false }); if (data) reviews = data; } catch(e) {}
+    try { const { data } = await supabaseClient.from('products').select('*').order('created_at', { ascending: false }); if (data) products = data; } catch(e) {}
+    
+    return `
+      <div class="space-y-4">
+        <!-- Промокоды -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <h3 class="text-white font-bold mb-3">➕ Создать промокод</h3>
+          <input type="text" id="newPromoCode" class="w-full p-2 rounded-lg bg-white/20 mb-2" placeholder="Код">
+          <select id="promoType" class="w-full p-2 rounded-lg bg-white/20 mb-2"><option value="percent">Процент (%)</option><option value="fixed">Фикс (BYN)</option></select>
+          <input type="number" id="promoValue" class="w-full p-2 rounded-lg bg-white/20 mb-2" placeholder="Значение">
+          <button id="createPromoBtn" class="w-full bg-cyan-500 py-2 rounded-lg">Создать</button>
+        </div>
         
-        try {
-          const { data } = await supabaseClient.from('promocodes').select('*').order('created_at', { ascending: false });
-          if (data) promoCodes = data;
-        } catch(e) { console.log('Таблица promocodes не существует'); }
+        <!-- Список промокодов -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <h3 class="text-white font-bold mb-3">📋 Промокоды</h3>
+          ${promoCodes.length === 0 ? '<p class="text-white/70">Нет промокодов</p>' : `<div class="space-y-2">${promoCodes.map(p => `<div class="flex justify-between items-center p-2 bg-white/5 rounded-lg"><div><span class="font-bold text-cyan-400">${p.code}</span><span class="text-white/70 text-sm ml-2">${p.discount_type === 'percent' ? p.discount_value + '%' : p.discount_value + ' BYN'}</span><span class="text-white/50 text-xs ml-2">${p.is_active ? '✅ Активен' : '❌ Неактивен'}</span></div><button class="togglePromoBtn text-cyan-400 text-sm" data-id="${p.id}" data-active="${p.is_active}">${p.is_active ? 'Деактивировать' : 'Активировать'}</button></div>`).join('')}</div>`}
+        </div>
         
-        try {
-          const { data } = await supabaseClient.from('payout_requests').select('*').eq('status', 'pending');
-          if (data) payoutRequests = data;
-        } catch(e) { console.log('Таблица payout_requests не существует'); }
+        <!-- Отзывы на модерации -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <h3 class="text-white font-bold mb-3">📝 Отзывы на модерации</h3>
+          ${reviews.length === 0 ? '<p class="text-white/70">Нет отзывов</p>' : reviews.map(r => `<div class="p-2 bg-white/5 rounded-lg mb-2"><div class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div><p class="text-white/80 text-sm">${r.text}</p><p class="text-white/50 text-xs">${r.user_name||'Пользователь'} | ${new Date(r.created_at).toLocaleDateString()}</p><div class="flex gap-2 mt-2"><button class="approveReviewBtn bg-green-600 px-3 py-1 rounded text-sm" data-id="${r.id}">✅ Одобрить</button><button class="rejectReviewBtn bg-red-600 px-3 py-1 rounded text-sm" data-id="${r.id}">❌ Отклонить</button></div></div>`).join('')}
+        </div>
         
-        try {
-          const { data } = await supabaseClient.from('reviews').select('*').eq('is_published', false).order('created_at', { ascending: false });
-          if (data) reviews = data;
-        } catch(e) { console.log('Таблица reviews не существует'); }
+        <!-- Управление товарами -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <h3 class="text-white font-bold mb-3">📦 Управление товарами</h3>
+          <button id="addProductBtn" class="w-full bg-cyan-500 py-2 rounded-lg mb-3">➕ Добавить товар</button>
+          <div class="space-y-2 max-h-60 overflow-y-auto">
+            ${products.map(p => `<div class="flex justify-between items-center p-2 bg-white/5 rounded-lg"><div><span class="text-white">${p.title}</span><span class="text-cyan-400 ml-2">${p.price} ${p.currency}</span></div><button class="deleteProductBtn bg-red-600 px-2 py-1 rounded text-xs" data-id="${p.id}">Удалить</button></div>`).join('')}
+          </div>
+        </div>
         
-        try {
-          const { data } = await supabaseClient.from('products').select('*').order('created_at', { ascending: false });
-          if (data) products = data;
-        } catch(e) { console.log('Таблица products не существует'); }
+        <!-- Управление площадками -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <h3 class="text-white font-bold mb-3">🌐 Управление площадками</h3>
+          <button id="addMarketplaceBtn" class="w-full bg-cyan-500 py-2 rounded-lg mb-3">➕ Добавить площадку</button>
+          <div class="space-y-2 max-h-80 overflow-y-auto" id="marketplacesList">
+            ${await renderMarketplacesAdminList()}
+          </div>
+        </div>
         
-        return `
-          <div class="space-y-4">
-            <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-              <h3 class="text-white font-bold mb-3">➕ Создать промокод</h3>
-              <input type="text" id="newPromoCode" class="w-full p-2 rounded-lg bg-white/20 mb-2" placeholder="Код">
-              <select id="promoType" class="w-full p-2 rounded-lg bg-white/20 mb-2"><option value="percent">Процент (%)</option><option value="fixed">Фикс (BYN)</option></select>
-              <input type="number" id="promoValue" class="w-full p-2 rounded-lg bg-white/20 mb-2" placeholder="Значение">
-              <button id="createPromoBtn" class="w-full bg-cyan-500 py-2 rounded-lg">Создать</button>
+        <!-- Заявки на вывод -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <h3 class="text-white font-bold mb-3">💸 Заявки на вывод</h3>
+          ${payoutRequests.length === 0 ? '<p class="text-white/70">Нет заявок</p>' : payoutRequests.map(req => `<div class="flex justify-between items-center p-2 bg-white/5 rounded-lg mb-2"><div><span class="text-white">${req.user_id}</span><span class="text-cyan-400 ml-2">${req.amount} ❄️</span></div><div><button class="approvePayoutBtn bg-green-600 px-3 py-1 rounded text-sm mr-2" data-id="${req.id}">Одобрить</button><button class="rejectPayoutBtn bg-red-600 px-3 py-1 rounded text-sm" data-id="${req.id}">Отклонить</button></div></div>`).join('')}
+        </div>
+        
+        <!-- Управление заказами -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 mt-4">
+          <h3 class="text-white font-bold mb-3">📦 Управление заказами</h3>
+          <div class="mb-3">
+            <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
+              <button class="filter-chip" data-status="all">Все</button>
+              <button class="filter-chip" data-status="pending">Ожидает</button>
+              <button class="filter-chip" data-status="paid">Оплачен</button>
+              <button class="filter-chip" data-status="bought">Выкуплен</button>
+              <button class="filter-chip" data-status="on_sklad_cn">Склад КН</button>
+              <button class="filter-chip" data-status="in_transit">В пути</button>
+              <button class="filter-chip" data-status="in_belarus">В РБ</button>
+              <button class="filter-chip" data-status="delivered">Доставлен</button>
+              <button class="filter-chip" data-status="cancelled">Отменён</button>
             </div>
-            <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-              <h3 class="text-white font-bold mb-3">📋 Промокоды</h3>
-              ${promoCodes.length === 0 ? '<p class="text-white/70">Нет промокодов</p>' : `<div class="space-y-2">${promoCodes.map(p => `<div class="flex justify-between items-center p-2 bg-white/5 rounded-lg"><div><span class="font-bold text-cyan-400">${p.code}</span><span class="text-white/70 text-sm ml-2">${p.discount_type === 'percent' ? p.discount_value + '%' : p.discount_value + ' BYN'}</span><span class="text-white/50 text-xs ml-2">${p.is_active ? '✅ Активен' : '❌ Неактивен'}</span></div><button class="togglePromoBtn text-cyan-400 text-sm" data-id="${p.id}" data-active="${p.is_active}">${p.is_active ? 'Деактивировать' : 'Активировать'}</button></div>`).join('')}</div>`}
-            </div>
-            <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-              <h3 class="text-white font-bold mb-3">📝 Отзывы на модерации</h3>
-              ${reviews.length === 0 ? '<p class="text-white/70">Нет отзывов на модерации</p>' : reviews.map(r => `
-                <div class="p-2 bg-white/5 rounded-lg mb-2">
-                  <div class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</div>
-                  <p class="text-white/80 text-sm">${r.text}</p>
-                  <p class="text-white/50 text-xs">${r.user_name || 'Пользователь'} | ${new Date(r.created_at).toLocaleDateString()}</p>
-                  <div class="flex gap-2 mt-2"><button class="approveReviewBtn bg-green-600 px-3 py-1 rounded text-sm" data-id="${r.id}">✅ Одобрить</button><button class="rejectReviewBtn bg-red-600 px-3 py-1 rounded text-sm" data-id="${r.id}">❌ Отклонить</button></div>
-                </div>
-              `).join('')}
-            </div>
-            <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-              <h3 class="text-white font-bold mb-3">📦 Управление товарами</h3>
-              <button id="addProductBtn" class="w-full bg-cyan-500 py-2 rounded-lg mb-3">➕ Добавить товар</button>
-              <div class="space-y-2 max-h-60 overflow-y-auto">
-                ${products.map(p => `<div class="flex justify-between items-center p-2 bg-white/5 rounded-lg"><div><span class="text-white">${p.title}</span><span class="text-cyan-400 ml-2">${p.price} ${p.currency}</span></div><button class="deleteProductBtn bg-red-600 px-2 py-1 rounded text-xs" data-id="${p.id}">Удалить</button></div>`).join('')}
-              </div>
-            </div>
-            <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-              <h3 class="text-white font-bold mb-3">💸 Заявки на вывод</h3>
-              ${payoutRequests.length === 0 ? '<p class="text-white/70">Нет заявок</p>' : payoutRequests.map(req => `
-                <div class="flex justify-between items-center p-2 bg-white/5 rounded-lg mb-2"><div><span class="text-white">${req.user_id}</span><span class="text-cyan-400 ml-2">${req.amount} ❄️</span></div><div><button class="approvePayoutBtn bg-green-600 px-3 py-1 rounded text-sm mr-2" data-id="${req.id}">Одобрить</button><button class="rejectPayoutBtn bg-red-600 px-3 py-1 rounded text-sm" data-id="${req.id}">Отклонить</button></div></div>
-              `).join('')}
+            <div class="mt-2">
+              <button id="exportOrdersCsvBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg w-full">📥 Скачать CSV</button>
             </div>
           </div>
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-  <h3 class="text-white font-bold mb-3">🌐 Управление площадками</h3>
-  <button id="addMarketplaceBtn" class="w-full bg-cyan-500 py-2 rounded-lg mb-3">➕ Добавить площадку</button>
-  <div class="space-y-2 max-h-80 overflow-y-auto" id="marketplacesList">
-    ${await renderMarketplacesAdminList()}
-  </div>
-</div>
-        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 mt-4">
-  <h3 class="text-white font-bold mb-3">📦 Управление заказами</h3>
-  <div class="flex gap-2 mb-3">
-    <div class="mb-3">
-  <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
-    <button class="filter-chip active" data-status="all">Все</button>
-    <button class="filter-chip" data-status="pending">Ожидает</button>
-    <button class="filter-chip" data-status="paid">Оплачен</button>
-    <button class="filter-chip" data-status="bought">Выкуплен</button>
-    <button class="filter-chip" data-status="on_sklad_cn">Склад КН</button>
-    <button class="filter-chip" data-status="in_transit">В пути</button>
-    <button class="filter-chip" data-status="in_belarus">В РБ</button>
-    <button class="filter-chip" data-status="delivered">Доставлен</button>
-    <button class="filter-chip" data-status="cancelled">Отменён</button>
-  </div>
-  <div class="mt-2">
-    <button id="exportOrdersCsvBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg w-full">📥 Скачать CSV</button>
-  </div>
-</div>
-          ${renderFooter()}
-        `;
-      } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки админ-панели</p>'; }
-    }
+          <div id="adminOrdersList" class="space-y-2 max-h-96 overflow-y-auto">
+            ${await renderAdminOrdersList()}
+          </div>
+          <div class="flex justify-center gap-2 mt-3">
+            <button id="adminOrdersPrev" class="bg-white/20 px-4 py-2 rounded-lg" ${adminOrdersPage <= 1 ? 'disabled' : ''}>←</button>
+            <span class="text-white/70 py-2">Стр. ${adminOrdersPage} из ${adminOrdersTotalPages}</span>
+            <button id="adminOrdersNext" class="bg-white/20 px-4 py-2 rounded-lg" ${adminOrdersPage >= adminOrdersTotalPages ? 'disabled' : ''}>→</button>
+          </div>
+        </div>
+      </div>
+      ${renderFooter()}
+    `;
+  } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки админ-панели</p>'; }
+}
 
     function attachAdminHandlers() {
       const createBtn = document.getElementById('createPromoBtn');
@@ -1401,13 +1423,29 @@ document.addEventListener('click', async (e) => {
 });
 // === Управление заказами ===
 // Фильтр заказов через чипсы
+// Фильтр заказов через чипсы
 const chipContainer = document.getElementById('adminOrdersFilterChips');
 if (chipContainer) {
+  // Функция установки активного чипа
+  const setActiveChip = (status) => {
+    chipContainer.querySelectorAll('.filter-chip').forEach(c => {
+      if (c.dataset.status === status) {
+        c.classList.add('active');
+      } else {
+        c.classList.remove('active');
+      }
+    });
+  };
+  
+  // Устанавливаем начальное состояние
+  setActiveChip(adminOrdersFilter);
+  
+  // Вешаем обработчики
   chipContainer.querySelectorAll('.filter-chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      chipContainer.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      adminOrdersFilter = chip.dataset.status;
+      const newStatus = chip.dataset.status;
+      setActiveChip(newStatus);
+      adminOrdersFilter = newStatus;
       adminOrdersPage = 1;
       renderCurrentScreen();
     });
@@ -1438,32 +1476,56 @@ const exportBtn = document.getElementById('exportOrdersCsvBtn');
 if (exportBtn) {
   exportBtn.onclick = async () => {
     try {
-      let query = supabaseClient.from('orders').select('*');
+      let query = supabaseClient.from('orders').select('*').is('archived_at', null);
       if (adminOrdersFilter !== 'all') query = query.eq('status', adminOrdersFilter);
       const { data, error } = await query;
       if (error) throw error;
       if (!data || data.length === 0) { alert('Нет заказов для экспорта'); return; }
       
-      // ... (формирование csvContent как раньше) ...
+      const userIds = [...new Set(data.map(o => o.user_id))];
+      const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+      const userMap = {};
+      if (users) users.forEach(u => { userMap[u.user_id] = u; });
       
+      const headers = ['ID заказа', 'User ID', 'Имя', 'Username', 'Статус', 'Цена (BYN)', 'Вес (кг)', 'Дата создания'];
+      const rows = data.map(o => {
+        const u = userMap[o.user_id] || {};
+        return [
+          o.id, o.user_id, u.full_name || '', u.username || '',
+          o.status, o.price_byn || '', o.weight_estimated || '',
+          new Date(o.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk' })
+        ];
+      });
+      
+      const csvContent = headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
       const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
-      
-      // Проверяем, мобильное ли устройство (очень грубо)
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        // На мобилке открываем в новой вкладке, откуда можно сохранить
-        window.open(url, '_blank');
-        alert('Файл открыт в новой вкладке. Нажмите «Поделиться» и сохраните.');
-      } else {
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `orders_${new Date().toISOString().slice(0,10)}.csv`);
-        document.body.appendChild(link);
+      
+      // Удаляем старую ссылку, если есть
+      const oldLink = document.querySelector('.csv-download-link');
+      if (oldLink) oldLink.remove();
+      
+      // Создаём видимую ссылку
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
+      link.textContent = '📎 Нажмите здесь, чтобы скачать CSV';
+      link.className = 'csv-download-link block text-cyan-400 text-sm mt-2 underline';
+      exportBtn.parentNode.appendChild(link);
+      
+      // Пытаемся автоматически скачать
+      if (!isMobile) {
         link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+      } else {
+        // На мобильных автоматическое скачивание часто блокируется,
+        // поэтому просто показываем ссылку
+        alert('Файл готов. Нажмите на ссылку ниже, чтобы скачать.');
       }
+      
+      // Через 10 секунд убираем ссылку (чтобы не засорять интерфейс)
+      setTimeout(() => { if (link.parentNode) link.remove(); }, 10000);
+      
     } catch (err) {
       alert('Ошибка экспорта: ' + err.message);
     }
