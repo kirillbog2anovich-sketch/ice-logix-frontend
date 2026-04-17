@@ -1019,7 +1019,6 @@ async function renderAdminOrdersList() {
       alert('Ошибка загрузки пользователей: ' + usersError.message);
       throw usersError;
     }
-    alert(`Загружено пользователей: ${users ? users.length : 0}. Первый: ${users && users[0] ? JSON.stringify(users[0]) : 'нет'}`);
     
     const userMap = {};
     if (users) users.forEach(u => { userMap[u.user_id] = u; });
@@ -1407,18 +1406,19 @@ async function openMarketplaceForm(marketplace = null) {
 }
 
 // Обработчики кнопок редактирования и удаления (делегирование)
+// Архивация заказа
 document.addEventListener('click', async (e) => {
-  if (e.target.classList.contains('editMarketplaceBtn')) {
-    const id = e.target.dataset.id;
-    const { data } = await supabaseClient.from('marketplaces').select('*').eq('id', id).single();
-    if (data) openMarketplaceForm(data);
-  }
-  if (e.target.classList.contains('deleteMarketplaceBtn')) {
-    const id = e.target.dataset.id;
-    if (!confirm('Удалить площадку?')) return;
-    await supabaseClient.from('marketplaces').delete().eq('id', id);
-    alert('Удалено');
-    renderCurrentScreen();
+  if (e.target.classList.contains('archiveOrderBtn')) {
+    const orderId = e.target.dataset.orderId;
+    if (!confirm('Переместить заказ в архив? Он будет скрыт из основного списка.')) return;
+    try {
+      const { error } = await supabaseClient.from('orders').update({ archived_at: new Date().toISOString() }).eq('id', orderId);
+      if (error) throw error;
+      alert('Заказ перемещён в архив');
+      renderCurrentScreen();
+    } catch (err) {
+      alert('Ошибка: ' + err.message);
+    }
   }
 });
 // === Управление заказами ===
@@ -1502,30 +1502,18 @@ if (exportBtn) {
       const url = URL.createObjectURL(blob);
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       
-      // Удаляем старую ссылку, если есть
-      const oldLink = document.querySelector('.csv-download-link');
-      if (oldLink) oldLink.remove();
-      
-      // Создаём видимую ссылку
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
-      link.textContent = '📎 Нажмите здесь, чтобы скачать CSV';
-      link.className = 'csv-download-link block text-cyan-400 text-sm mt-2 underline';
-      exportBtn.parentNode.appendChild(link);
-      
-      // Пытаемся автоматически скачать
-      if (!isMobile) {
-        link.click();
+      if (isMobile) {
+        // На мобильных открываем в новой вкладке
+        window.open(url, '_blank');
       } else {
-        // На мобильных автоматическое скачивание часто блокируется,
-        // поэтому просто показываем ссылку
-        alert('Файл готов. Нажмите на ссылку ниже, чтобы скачать.');
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
       }
-      
-      // Через 10 секунд убираем ссылку (чтобы не засорять интерфейс)
-      setTimeout(() => { if (link.parentNode) link.remove(); }, 10000);
-      
     } catch (err) {
       alert('Ошибка экспорта: ' + err.message);
     }
@@ -1577,12 +1565,9 @@ if (exportBtn) {
     });
     const result = await response.json();
     if (!response.ok) {
-      alert('❌ Ошибка отправки уведомления: ' + (result.error || 'Неизвестная ошибка'));
       throw new Error(result.error);
     }
-    alert('✅ Уведомление успешно отправлено через бота');
   } catch (err) {
-    alert('⚠️ Исключение при отправке уведомления: ' + err.message);
   }
 }
 
