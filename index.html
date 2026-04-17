@@ -1541,12 +1541,12 @@ if (exportBtn) {
       link.className = 'csv-download-link block text-cyan-400 text-sm mt-2 underline';
       link.target = '_blank';
       exportBtn.parentNode.appendChild(link);
-
-      // Для мобильных сразу открываем в новой вкладке (пользователь сохранит через меню)
+      
+      // Для мобильных показываем подсказку
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        window.open(url, '_blank');
+        alert('Файл готов. Нажмите на ссылку и сохраните через меню "Поделиться".');
       } else {
-        link.click(); // на десктопе попробуем автоматически
+        link.click(); // на десктопе автоматически
       }
     } catch (err) {
       alert('Ошибка экспорта: ' + err.message);
