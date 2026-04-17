@@ -1416,6 +1416,16 @@ if (applyOrdersFilterBtn) {
   };
 }
 
+// Автоматическое применение фильтра при смене селекта
+const filterSelect = document.getElementById('adminOrdersFilter');
+if (filterSelect) {
+  filterSelect.addEventListener('change', () => {
+    adminOrdersFilter = filterSelect.value;
+    adminOrdersPage = 1;
+    renderCurrentScreen();
+  });
+}
+
 const prevBtn = document.getElementById('adminOrdersPrev');
 const nextBtn = document.getElementById('adminOrdersNext');
 if (prevBtn) prevBtn.onclick = () => { if (adminOrdersPage > 1) { adminOrdersPage--; renderCurrentScreen(); } };
