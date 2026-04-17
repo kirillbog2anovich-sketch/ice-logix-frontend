@@ -998,35 +998,46 @@ if (!userLimits.isTrusted) {
 
 async function renderAdminOrdersList() {
   try {
-    let query = supabaseClient.from('orders').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+    let query = supabaseClient.from('orders').select('*', { count: 'exact' }).is('archived_at', null).order('created_at', { ascending: false });
     if (adminOrdersFilter !== 'all') query = query.eq('status', adminOrdersFilter);
     
     const from = (adminOrdersPage - 1) * 10;
     const to = from + 9;
-    const { data, count, error } = await query.range(from, to);
+    const { data: orders, count, error } = await query.range(from, to);
     if (error) throw error;
     
     adminOrdersTotalPages = Math.ceil((count || 0) / 10);
     
-    if (!data || data.length === 0) return '<p class="text-white/70 text-center py-4">Нет заказов</p>';
+    if (!orders || orders.length === 0) return '<p class="text-white/70 text-center py-4">Нет заказов</p>';
     
     // Получаем пользователей
-    const userIds = [...new Set(data.map(o => o.user_id))];
-    const { data: users } = await supabaseClient.from('users').select('user_id, full_name').in('user_id', userIds);
+    const userIds = [...new Set(orders.map(o => o.user_id))];
+    const { data: users, error: usersError } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+    
+    // ОТЛАДКА: покажем alert с информацией о пользователях
+    if (usersError) {
+      alert('Ошибка загрузки пользователей: ' + usersError.message);
+      throw usersError;
+    }
+    alert(`Загружено пользователей: ${users ? users.length : 0}. Первый: ${users && users[0] ? JSON.stringify(users[0]) : 'нет'}`);
+    
     const userMap = {};
     if (users) users.forEach(u => { userMap[u.user_id] = u; });
     
-    return data.map(order => {
+    return orders.map(order => {
       const user = userMap[order.user_id] || {};
+      const userName = user.full_name || 'Без имени';
+      const userUsername = user.username ? '@' + user.username : '';
+      
       return `
         <div class="bg-white/5 rounded-lg p-3">
           <div class="flex justify-between items-start">
             <div>
               <p class="text-white font-mono text-sm">#${order.id.slice(0,8)}</p>
-              <p class="text-white/50 text-xs">${new Date(order.created_at).toLocaleString('ru-RU')}</p>
-              <p class="text-white/70 text-xs mt-1">👤 ${user.full_name || '—'} ${user.username ? '@'+user.username : ''}</p>
+              <p class="text-white/50 text-xs">${new Date(order.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk' })}</p>
+              <p class="text-white/70 text-xs mt-1">👤 ${userName} ${userUsername}</p>
               <p class="text-white/50 text-xs">ID: ${order.user_id}</p>
-              <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount} ❄️</p>
+              <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount || 0} ❄️</p>
             </div>
             <div class="text-right">
               <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
@@ -1041,6 +1052,7 @@ async function renderAdminOrdersList() {
                 <option value="delivered">Доставлен</option>
                 <option value="cancelled">Отменён</option>
               </select>
+              <button class="archiveOrderBtn mt-2 text-xs bg-red-600/50 hover:bg-red-600 px-2 py-1 rounded" data-order-id="${order.id}">🗑️ Архив</button>
             </div>
           </div>
           ${order.tracking_number_cn ? `<p class="text-white/50 text-xs mt-1">Трек: ${order.tracking_number_cn}</p>` : ''}
@@ -1048,6 +1060,7 @@ async function renderAdminOrdersList() {
       `;
     }).join('');
   } catch (err) {
+    alert('Ошибка в renderAdminOrdersList: ' + err.message);
     return '<p class="text-red-400">Ошибка загрузки заказов</p>';
   }
 }
@@ -1426,20 +1439,47 @@ document.addEventListener('change', async (e) => {
 const exportBtn = document.getElementById('exportOrdersCsvBtn');
 if (exportBtn) {
   exportBtn.onclick = async () => {
-    console.log('Нажата кнопка экспорта CSV');
+    alert('Начинаю экспорт...');
     try {
       let query = supabaseClient.from('orders').select('*');
       if (adminOrdersFilter !== 'all') query = query.eq('status', adminOrdersFilter);
       const { data, error } = await query;
       if (error) throw error;
-      console.log('Получено заказов:', data?.length);
+      alert(`Получено заказов: ${data ? data.length : 0}`);
       if (!data || data.length === 0) { alert('Нет заказов для экспорта'); return; }
       
-      // ... остальной код ...
-      console.log('Формирование CSV завершено, начинаю скачивание');
+      const userIds = [...new Set(data.map(o => o.user_id))];
+      const { data: users, error: usersError } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+      if (usersError) throw usersError;
+      const userMap = {};
+      if (users) users.forEach(u => { userMap[u.user_id] = u; });
+      
+      const headers = ['ID заказа', 'User ID', 'Имя', 'Username', 'Статус', 'Цена (BYN)', 'Вес (кг)', 'Дата создания'];
+      const rows = data.map(o => {
+        const u = userMap[o.user_id] || {};
+        return [
+          o.id,
+          o.user_id,
+          u.full_name || '',
+          u.username || '',
+          o.status,
+          o.price_byn || '',
+          o.weight_estimated || '',
+          new Date(o.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk' })
+        ];
+      });
+      
+      let csvContent = headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `orders_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
+      alert('Файл скачан!');
     } catch (err) {
-      console.error('Ошибка экспорта CSV:', err);
       alert('Ошибка экспорта: ' + err.message);
     }
   };
@@ -1498,23 +1538,27 @@ if (exportBtn) {
 
     // Функция для обновления статуса заказа с отправкой уведомления
     async function updateOrderStatus(orderId, newStatus, userId) {
-      try {
-        await supabaseClient.from('orders').update({ status: newStatus }).eq('id', orderId);
-        const statusMessages = {
-          'paid': '✅ Ваш заказ оплачен! Мы приступаем к выкупу.',
-          'bought': '🛍️ Товар выкуплен! Ожидайте отправки на склад.',
-          'on_sklad_cn': '📦 Товар на складе в Китае. Идёт подготовка к отправке.',
-          'in_transit': '🚚 Ваш заказ в пути! Трек-номер появится позже.',
-          'in_belarus': '🇧🇾 Товар в Беларуси! Скоро будет доставлен.',
-          'delivered': '🎉 Заказ доставлен! Спасибо, что выбрали ICE LOGIX!'
-        };
-        if (statusMessages[newStatus]) {
-          await sendNotification(userId, statusMessages[newStatus], orderId);
-        }
-      } catch (err) {
-        console.error('Ошибка обновления статуса:', err);
-      }
+  try {
+    const { error } = await supabaseClient.from('orders').update({ status: newStatus }).eq('id', orderId);
+    if (error) throw error;
+    
+    const statusMessages = {
+      'paid': '✅ Ваш заказ оплачен! Мы приступаем к выкупу.',
+      'bought': '🛍️ Товар выкуплен! Ожидайте отправки на склад.',
+      'on_sklad_cn': '📦 Товар на складе в Китае. Идёт подготовка к отправке.',
+      'in_transit': '🚚 Ваш заказ в пути! Трек-номер появится позже.',
+      'in_belarus': '🇧🇾 Товар в Беларуси! Скоро будет доставлен.',
+      'delivered': '🎉 Заказ доставлен! Спасибо, что выбрали ICE LOGIX!'
+    };
+    const message = statusMessages[newStatus];
+    if (message) {
+      alert(`Отправка уведомления пользователю ${userId}: ${message}`);
+      await sendNotification(userId, message, orderId);
     }
+  } catch (err) {
+    alert('Ошибка обновления статуса: ' + err.message);
+  }
+}
 
     // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
     function getStatusText(status) {
