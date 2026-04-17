@@ -436,6 +436,7 @@ const MAX_REQUESTS_TRUSTED = 100;
             }).select();
             if (error) throw error;
             alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${((window.tempOrder.total - window.tempOrder.discountAmount) * 0.75).toFixed(2)} ❄️`);
+            await sendNotification(userId, `✅ Ваш заказ #${data[0].id.slice(0,8)} оформлен! Ожидайте подтверждения оплаты.`);
             // Снятие лимита после первого заказа
 if (!userLimits.isTrusted) {
   await supabaseClient.from('users').update({ is_trusted: true }).eq('user_id', userId);
@@ -1038,7 +1039,6 @@ async function renderAdminOrdersList() {
               <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
               <select class="changeOrderStatus mt-2 text-xs p-1 rounded bg-white/20 border border-white/30" data-order-id="${order.id}" data-user-id="${order.user_id}" data-previous-status="${order.status}">
                 <option value="">Изменить</option>
-                <option value="pending">Ожидает</option>
                 <option value="paid">Оплачен</option>
                 <option value="bought">Выкуплен</option>
                 <option value="on_sklad_cn">Склад КН</option>
@@ -1151,7 +1151,6 @@ async function renderAdmin() {
           <div class="mb-3">
             <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
               <button class="filter-chip" data-status="all">Все</button>
-              <button class="filter-chip" data-status="pending">Ожидает</button>
               <button class="filter-chip" data-status="paid">Оплачен</button>
               <button class="filter-chip" data-status="bought">Выкуплен</button>
               <button class="filter-chip" data-status="on_sklad_cn">Склад КН</button>
@@ -1504,49 +1503,56 @@ function attachAdminHandlers() {
 
   // ================== ЭКСПОРТ CSV ==================
   const exportBtn = document.getElementById('exportOrdersCsvBtn');
-  if (exportBtn) {
-    exportBtn.onclick = async () => {
-      try {
-        let query = supabaseClient.from('orders').select('*').is('archived_at', null);
-        if (adminOrdersFilter !== 'all') query = query.eq('status', adminOrdersFilter);
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data || data.length === 0) { alert('Нет заказов для экспорта'); return; }
+if (exportBtn) {
+  exportBtn.onclick = async () => {
+    try {
+      let query = supabaseClient.from('orders').select('*').is('archived_at', null);
+      if (adminOrdersFilter !== 'all') query = query.eq('status', adminOrdersFilter);
+      const { data, error } = await query;
+      if (error) throw error;
+      if (!data || data.length === 0) { alert('Нет заказов для экспорта'); return; }
 
-        const userIds = [...new Set(data.map(o => o.user_id))];
-        const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
-        const userMap = {};
-        if (users) users.forEach(u => { userMap[u.user_id] = u; });
+      const userIds = [...new Set(data.map(o => o.user_id))];
+      const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+      const userMap = {};
+      if (users) users.forEach(u => { userMap[u.user_id] = u; });
 
-        const headers = ['ID заказа', 'User ID', 'Имя', 'Username', 'Статус', 'Цена (BYN)', 'Вес (кг)', 'Дата создания'];
-        const rows = data.map(o => {
-          const u = userMap[o.user_id] || {};
-          return [
-            o.id, o.user_id, u.full_name || '', u.username || '',
-            o.status, o.price_byn || '', o.weight_estimated || '',
-            new Date(new Date(o.created_at).getTime() + 3 * 60 * 60 * 1000).toLocaleString('ru-RU')
-          ];
-        });
+      const headers = ['ID заказа', 'User ID', 'Имя', 'Username', 'Статус', 'Цена (BYN)', 'Вес (кг)', 'Дата создания'];
+      const rows = data.map(o => {
+        const u = userMap[o.user_id] || {};
+        return [
+          o.id, o.user_id, u.full_name || '', u.username || '',
+          o.status, o.price_byn || '', o.weight_estimated || '',
+          new Date(new Date(o.created_at).getTime() + 3 * 60 * 60 * 1000).toLocaleString('ru-RU')
+        ];
+      });
 
-        const csvContent = headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
-        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
+      const csvContent = headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
 
-        const oldLink = document.querySelector('.csv-download-link');
-        if (oldLink) oldLink.remove();
+      const oldLink = document.querySelector('.csv-download-link');
+      if (oldLink) oldLink.remove();
 
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
-        link.textContent = '📎 Нажмите, чтобы скачать CSV';
-        link.className = 'csv-download-link block text-cyan-400 text-sm mt-2 underline';
-        link.target = '_blank';
-        exportBtn.parentNode.appendChild(link);
-      } catch (err) {
-        alert('Ошибка экспорта: ' + err.message);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
+      link.textContent = '📎 Нажмите, чтобы скачать CSV';
+      link.className = 'csv-download-link block text-cyan-400 text-sm mt-2 underline';
+      link.target = '_blank';
+      exportBtn.parentNode.appendChild(link);
+
+      // Для мобильных сразу открываем в новой вкладке (пользователь сохранит через меню)
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        window.open(url, '_blank');
+      } else {
+        link.click(); // на десктопе попробуем автоматически
       }
-    };
-  }
+    } catch (err) {
+      alert('Ошибка экспорта: ' + err.message);
+    }
+  };
+}
 }
 
     // Функция для обновления статуса заказа с отправкой уведомления
