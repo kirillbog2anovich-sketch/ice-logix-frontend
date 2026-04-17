@@ -1010,31 +1010,27 @@ async function renderAdminOrdersList() {
     
     if (!orders || orders.length === 0) return '<p class="text-white/70 text-center py-4">Нет заказов</p>';
     
-    // Получаем пользователей
     const userIds = [...new Set(orders.map(o => o.user_id))];
-    const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
-    
-    // ОТЛАДКА: покажем alert с информацией о пользователях
+    const { data: users, error: usersError } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
     if (usersError) {
-      alert('Ошибка загрузки пользователей: ' + usersError.message);
-      throw usersError;
+      console.error('Ошибка загрузки пользователей:', usersError);
+      // Продолжаем без имён, но не падаем
     }
-    
     const userMap = {};
     if (users) users.forEach(u => { userMap[u.user_id] = u; });
     
     return orders.map(order => {
       const user = userMap[order.user_id] || {};
-      const userName = user.full_name || 'Без имени';
-      const userUsername = user.username ? '@' + user.username : '';
+      const displayName = user.full_name || 'Без имени';
+      const displayUsername = user.username ? '@' + user.username : '';
       
       return `
         <div class="bg-white/5 rounded-lg p-3">
           <div class="flex justify-between items-start">
             <div>
               <p class="text-white font-mono text-sm">#${order.id.slice(0,8)}</p>
-              <p class="text-white/50 text-xs">${new Date(new Date(order.created_at).getTime() + 3 * 60 * 60 * 1000).toLocaleString('ru-RU')}</p>
-              <p class="text-white/70 text-xs mt-1">👤 ${user.full_name || 'Без имени'} ${user.username ? '@' + user.username : ''}</p>
+              <p class="text-white/50 text-xs">${new Date(new Date(order.created_at).getTime() + 3*60*60*1000).toLocaleString('ru-RU')}</p>
+              <p class="text-white/70 text-xs mt-1">👤 ${displayName} ${displayUsername}</p>
               <p class="text-white/50 text-xs">ID: ${order.user_id}</p>
               <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount || 0} ❄️</p>
             </div>
@@ -1059,8 +1055,8 @@ async function renderAdminOrdersList() {
       `;
     }).join('');
   } catch (err) {
-    alert('Ошибка в renderAdminOrdersList: ' + err.message);
-    return '<p class="text-red-400">Ошибка загрузки заказов</p>';
+    console.error('Ошибка в renderAdminOrdersList:', err);
+    return '<p class="text-red-400 text-center py-4">Ошибка загрузки заказов</p>';
   }
 }
 
@@ -1183,356 +1179,374 @@ async function renderAdmin() {
   } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки админ-панели</p>'; }
 }
 
-    function attachAdminHandlers() {
-      const createBtn = document.getElementById('createPromoBtn');
-      if (createBtn) {
-        createBtn.onclick = async () => {
-          const code = document.getElementById('newPromoCode')?.value.trim().toUpperCase();
-          const type = document.getElementById('promoType')?.value;
-          const value = parseFloat(document.getElementById('promoValue')?.value);
-          if (!code || !value) { alert('Заполните все поля'); return; }
-          try {
-            await supabaseClient.from('promocodes').insert({ code, discount_type: type, discount_value: value, is_active: true });
-            alert('Промокод создан');
-            renderCurrentScreen();
-          } catch (err) { alert('Ошибка: ' + err.message); }
-        };
-      }
-      
-      document.querySelectorAll('.togglePromoBtn').forEach(btn => {
-        btn.onclick = async () => {
-          const id = btn.getAttribute('data-id');
-          const currentActive = btn.getAttribute('data-active') === 'true';
-          try {
-            await supabaseClient.from('promocodes').update({ is_active: !currentActive }).eq('id', id);
-            alert('Статус обновлён');
-            renderCurrentScreen();
-          } catch (err) { alert('Ошибка: ' + err.message); }
-        };
-      });
-      
-      document.querySelectorAll('.approveReviewBtn').forEach(btn => {
-        btn.onclick = async () => {
-          const id = btn.getAttribute('data-id');
-          try {
-            await supabaseClient.from('reviews').update({ is_published: true }).eq('id', id);
-            alert('Отзыв опубликован');
-            renderCurrentScreen();
-          } catch (err) { alert('Ошибка: ' + err.message); }
-        };
-      });
-      
-      document.querySelectorAll('.rejectReviewBtn').forEach(btn => {
-        btn.onclick = async () => {
-          const id = btn.getAttribute('data-id');
-          try {
-            await supabaseClient.from('reviews').delete().eq('id', id);
-            alert('Отзыв отклонён');
-            renderCurrentScreen();
-          } catch (err) { alert('Ошибка: ' + err.message); }
-        };
-      });
-      
-      const addProductBtn = document.getElementById('addProductBtn');
-      if (addProductBtn) {
-        addProductBtn.onclick = () => {
-          const modal = document.createElement('div');
-          modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
-          modal.innerHTML = `
-            <div class="bg-white/10 backdrop-blur-md rounded-2xl max-w-md w-full p-5">
-              <h3 class="text-white font-bold text-lg mb-4">➕ Новый товар</h3>
-              <input type="text" id="productTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Название">
-              <textarea id="productDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Описание" rows="2"></textarea>
-              <input type="number" id="productPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Цена" value="0">
-              <select id="productCategory" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3"><option value="Обувь">Обувь</option><option value="Одежда">Одежда</option><option value="Аксессуары">Аксессуары</option></select>
-              <input type="text" id="productBrand" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Бренд">
-              <input type="url" id="productImage" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="URL изображения">
-              <input type="url" id="productUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Ссылка на товар">
-              <div class="flex gap-3 mt-4"><button id="saveProductBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">Сохранить</button><button id="cancelProductBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button></div>
-            </div>
-          `;
-          document.body.appendChild(modal);
-          modal.querySelector('#cancelProductBtn').onclick = () => modal.remove();
-          modal.querySelector('#saveProductBtn').onclick = async () => {
-            const title = modal.querySelector('#productTitle').value.trim();
-            const description = modal.querySelector('#productDesc').value.trim();
-            const price = parseFloat(modal.querySelector('#productPrice').value);
-            const category = modal.querySelector('#productCategory').value;
-            const brand = modal.querySelector('#productBrand').value.trim();
-            const image_url = modal.querySelector('#productImage').value.trim();
-            const url = modal.querySelector('#productUrl').value.trim();
-            if (!title || !price) { alert('Заполните название и цену'); return; }
-            try {
-              await supabaseClient.from('products').insert({ title, description, price, category, brand, image_url, url, currency: 'CNY', is_active: true });
-              alert('Товар добавлен');
-              modal.remove();
-              renderCurrentScreen();
-            } catch (err) { alert('Ошибка: ' + err.message); }
-          };
-        };
-      }
-      
-      document.querySelectorAll('.deleteProductBtn').forEach(btn => {
-        btn.onclick = async () => {
-          const id = btn.getAttribute('data-id');
-          if (confirm('Удалить товар?')) {
-            await supabaseClient.from('products').delete().eq('id', id);
-            renderCurrentScreen();
-          }
-        };
-      });
-      
-      document.querySelectorAll('.approvePayoutBtn').forEach(btn => {
-        btn.onclick = async () => {
-          const id = btn.getAttribute('data-id');
-          try {
-            await supabaseClient.from('payout_requests').update({ status: 'approved', processed_at: new Date() }).eq('id', id);
-            alert('Заявка одобрена');
-            renderCurrentScreen();
-          } catch (err) { alert('Ошибка: ' + err.message); }
-        };
-      });
-      
-      document.querySelectorAll('.rejectPayoutBtn').forEach(btn => {
-        btn.onclick = async () => {
-          const id = btn.getAttribute('data-id');
-          try {
-            await supabaseClient.from('payout_requests').update({ status: 'rejected', processed_at: new Date() }).eq('id', id);
-            alert('Заявка отклонена');
-            renderCurrentScreen();
-          } catch (err) { alert('Ошибка: ' + err.message); }
-        };
-      });
-      // === Управление площадками ===
-const addMarketplaceBtn = document.getElementById('addMarketplaceBtn');
-if (addMarketplaceBtn) addMarketplaceBtn.onclick = () => openMarketplaceForm();
-
-async function openMarketplaceForm(marketplace = null) {
-  const isEdit = !!marketplace;
-  const modal = document.createElement('div');
-  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto';
-  modal.innerHTML = `
-    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20">
-      <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая площадка'}</h3>
-      <div class="space-y-3">
-        <input type="text" id="mpName" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${marketplace?.name || ''}">
-        <input type="url" id="mpUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Ссылка на сайт *" value="${marketplace?.website_url || ''}">
-        <input type="text" id="mpCountry" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Страна *" value="${marketplace?.country || ''}">
-        <textarea id="mpDescription" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Описание">${marketplace?.description || ''}</textarea>
-        <textarea id="mpInstruction" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Инструкция">${marketplace?.instruction || ''}</textarea>
-        <div>
-          <label class="text-white/70 text-sm">Категории (можно несколько)</label>
-          <div class="flex flex-wrap gap-2 mt-1" id="mpCategories">
-            ${['Обувь', 'Одежда', 'Аксессуары'].map(cat => {
-              const checked = marketplace?.categories?.includes(cat) ? 'checked' : '';
-              return `<label class="text-white/80"><input type="checkbox" value="${cat}" ${checked}> ${cat}</label>`;
-            }).join('')}
-          </div>
-        </div>
-        <div>
-          <label class="text-white/70 text-sm">Пол (можно несколько)</label>
-          <div class="flex flex-wrap gap-2 mt-1" id="mpGender">
-            ${['Муж', 'Жен', 'Унисекс'].map(g => {
-              const checked = marketplace?.gender?.includes(g) ? 'checked' : '';
-              return `<label class="text-white/80"><input type="checkbox" value="${g}" ${checked}> ${g}</label>`;
-            }).join('')}
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <input type="checkbox" id="mpVpn" ${marketplace?.requires_vpn ? 'checked' : ''}>
-          <label class="text-white/80">Требуется VPN</label>
-        </div>
-        <div>
-          <label class="text-white/70 text-sm block mb-1">Логотип (URL или загрузить)</label>
-          <input type="text" id="mpLogoUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-2" placeholder="https://..." value="${marketplace?.logo_url || ''}">
-          <input type="file" id="mpLogoFile" accept="image/*" class="text-white/70 text-sm">
-        </div>
-        <input type="number" id="mpSortOrder" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Порядок сортировки" value="${marketplace?.sort_order || 0}">
-        <label class="flex items-center gap-2 text-white/80"><input type="checkbox" id="mpActive" ${marketplace?.is_active !== false ? 'checked' : ''}> Активна</label>
-      </div>
-      <div class="flex gap-3 mt-5">
-        <button id="saveMarketplaceBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">${isEdit ? 'Сохранить' : 'Добавить'}</button>
-        <button id="cancelMarketplaceBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  
-  const cancelBtn = modal.querySelector('#cancelMarketplaceBtn');
-  cancelBtn.onclick = () => modal.remove();
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-  
-  const saveBtn = modal.querySelector('#saveMarketplaceBtn');
-  saveBtn.onclick = async () => {
-    const name = modal.querySelector('#mpName').value.trim();
-    const url = modal.querySelector('#mpUrl').value.trim();
-    const country = modal.querySelector('#mpCountry').value.trim();
-    if (!name || !url || !country) { alert('Заполните обязательные поля'); return; }
-    
-    // Собираем выбранные категории и пол
-    const categories = Array.from(modal.querySelectorAll('#mpCategories input:checked')).map(cb => cb.value);
-    const gender = Array.from(modal.querySelectorAll('#mpGender input:checked')).map(cb => cb.value);
-    
-    const description = modal.querySelector('#mpDescription').value.trim();
-    const instruction = modal.querySelector('#mpInstruction').value.trim();
-    const requires_vpn = modal.querySelector('#mpVpn').checked;
-    const sort_order = parseInt(modal.querySelector('#mpSortOrder').value) || 0;
-    const is_active = modal.querySelector('#mpActive').checked;
-    
-    // Обработка логотипа
-    let logo_url = modal.querySelector('#mpLogoUrl').value.trim();
-    const logoFile = modal.querySelector('#mpLogoFile').files[0];
-    if (logoFile) {
-      const fileName = `logos/${Date.now()}_${logoFile.name}`;
-      const { data: uploadData, error: uploadError } = await supabaseClient.storage.from('marketplace-logos').upload(fileName, logoFile);
-      if (uploadError) { alert('Ошибка загрузки лого: ' + uploadError.message); return; }
-      const { data: publicUrl } = supabaseClient.storage.from('marketplace-logos').getPublicUrl(fileName);
-      logo_url = publicUrl.publicUrl;
-    }
-    
-    const payload = { name, website_url: url, country, categories, gender, description, instruction, requires_vpn, sort_order, is_active, logo_url };
-    
-    try {
-      if (isEdit) {
-        await supabaseClient.from('marketplaces').update(payload).eq('id', marketplace.id);
-      } else {
-        await supabaseClient.from('marketplaces').insert(payload);
-      }
-      alert(isEdit ? 'Площадка обновлена' : 'Площадка добавлена');
-      modal.remove();
-      renderCurrentScreen(); // обновим админку
-    } catch (err) { alert('Ошибка: ' + err.message); }
-  };
-}
-
-// Архивация заказа (без дублирования)
-if (window._archiveHandler) {
-  document.removeEventListener('click', window._archiveHandler);
-}
-window._archiveHandler = async (e) => {
-  if (e.target.classList.contains('archiveOrderBtn')) {
-    const orderId = e.target.dataset.orderId;
-    if (!confirm('Переместить заказ в архив? Он будет скрыт из основного списка.')) return;
-    try {
-      const { error } = await supabaseClient.from('orders').update({ archived_at: new Date().toISOString() }).eq('id', orderId);
-      if (error) throw error;
-      alert('Заказ перемещён в архив');
-      renderCurrentScreen();
-    } catch (err) {
-      alert('Ошибка: ' + err.message);
-    }
+function attachAdminHandlers() {
+  // ================== ПРОМОКОДЫ ==================
+  const createBtn = document.getElementById('createPromoBtn');
+  if (createBtn) {
+    createBtn.onclick = async () => {
+      const code = document.getElementById('newPromoCode')?.value.trim().toUpperCase();
+      const type = document.getElementById('promoType')?.value;
+      const value = parseFloat(document.getElementById('promoValue')?.value);
+      if (!code || !value) { alert('Заполните все поля'); return; }
+      try {
+        await supabaseClient.from('promocodes').insert({ code, discount_type: type, discount_value: value, is_active: true });
+        alert('Промокод создан');
+        renderCurrentScreen();
+      } catch (err) { alert('Ошибка: ' + err.message); }
+    };
   }
-};
-document.addEventListener('click', window._archiveHandler);
 
-// Фильтр заказов через чипсы
-const chipContainer = document.getElementById('adminOrdersFilterChips');
-if (chipContainer) {
-  // Функция установки активного чипа
-  const setActiveChip = (status) => {
-    chipContainer.querySelectorAll('.filter-chip').forEach(c => {
-      if (c.dataset.status === status) {
-        c.classList.add('active');
-      } else {
-        c.classList.remove('active');
-      }
-    });
-  };
-  
-  // Устанавливаем начальное состояние
-  setActiveChip(adminOrdersFilter);
-  
-  // Вешаем обработчики
-  chipContainer.querySelectorAll('.filter-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const newStatus = chip.dataset.status;
-      setActiveChip(newStatus);
-      adminOrdersFilter = newStatus;
-      adminOrdersPage = 1;
-      renderCurrentScreen();
-    });
+  document.querySelectorAll('.togglePromoBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      const currentActive = btn.getAttribute('data-active') === 'true';
+      try {
+        await supabaseClient.from('promocodes').update({ is_active: !currentActive }).eq('id', id);
+        alert('Статус обновлён');
+        renderCurrentScreen();
+      } catch (err) { alert('Ошибка: ' + err.message); }
+    };
   });
-}
 
-const prevBtn = document.getElementById('adminOrdersPrev');
-const nextBtn = document.getElementById('adminOrdersNext');
-if (prevBtn) prevBtn.onclick = () => { if (adminOrdersPage > 1) { adminOrdersPage--; renderCurrentScreen(); } };
-if (nextBtn) nextBtn.onclick = () => { if (adminOrdersPage < adminOrdersTotalPages) { adminOrdersPage++; renderCurrentScreen(); } };
+  // ================== ОТЗЫВЫ ==================
+  document.querySelectorAll('.approveReviewBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      try {
+        await supabaseClient.from('reviews').update({ is_published: true }).eq('id', id);
+        alert('Отзыв опубликован');
+        renderCurrentScreen();
+      } catch (err) { alert('Ошибка: ' + err.message); }
+    };
+  });
 
-// Изменение статуса
-// Единый обработчик смены статуса (делегирование)
-document.addEventListener('change', async (e) => {
-  if (e.target.classList.contains('changeOrderStatus')) {
-    const newStatus = e.target.value;
-    if (!newStatus) return;
-    const orderId = e.target.dataset.orderId;
-    const userId = e.target.dataset.userId;
-    if (!confirm(`Изменить статус заказа на "${getStatusText(newStatus)}"?`)) {
-      // Возвращаем предыдущее значение селекта, если отмена
-      e.target.value = e.target.dataset.previousStatus || '';
-      return;
-    }
-    try {
-      await updateOrderStatus(orderId, newStatus, userId);
-      renderCurrentScreen();
-    } catch (err) {
-      alert('Ошибка: ' + err.message);
-      e.target.value = e.target.dataset.previousStatus || '';
-    }
+  document.querySelectorAll('.rejectReviewBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      try {
+        await supabaseClient.from('reviews').delete().eq('id', id);
+        alert('Отзыв отклонён');
+        renderCurrentScreen();
+      } catch (err) { alert('Ошибка: ' + err.message); }
+    };
+  });
+
+  // ================== ТОВАРЫ ==================
+  const addProductBtn = document.getElementById('addProductBtn');
+  if (addProductBtn) {
+    addProductBtn.onclick = () => {
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+      modal.innerHTML = `
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl max-w-md w-full p-5">
+          <h3 class="text-white font-bold text-lg mb-4">➕ Новый товар</h3>
+          <input type="text" id="productTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Название">
+          <textarea id="productDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Описание" rows="2"></textarea>
+          <input type="number" id="productPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Цена" value="0">
+          <select id="productCategory" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3"><option value="Обувь">Обувь</option><option value="Одежда">Одежда</option><option value="Аксессуары">Аксессуары</option></select>
+          <input type="text" id="productBrand" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Бренд">
+          <input type="url" id="productImage" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="URL изображения">
+          <input type="url" id="productUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Ссылка на товар">
+          <div class="flex gap-3 mt-4"><button id="saveProductBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">Сохранить</button><button id="cancelProductBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button></div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.querySelector('#cancelProductBtn').onclick = () => modal.remove();
+      modal.querySelector('#saveProductBtn').onclick = async () => {
+        const title = modal.querySelector('#productTitle').value.trim();
+        const description = modal.querySelector('#productDesc').value.trim();
+        const price = parseFloat(modal.querySelector('#productPrice').value);
+        const category = modal.querySelector('#productCategory').value;
+        const brand = modal.querySelector('#productBrand').value.trim();
+        const image_url = modal.querySelector('#productImage').value.trim();
+        const url = modal.querySelector('#productUrl').value.trim();
+        if (!title || !price) { alert('Заполните название и цену'); return; }
+        try {
+          await supabaseClient.from('products').insert({ title, description, price, category, brand, image_url, url, currency: 'CNY', is_active: true });
+          alert('Товар добавлен');
+          modal.remove();
+          renderCurrentScreen();
+        } catch (err) { alert('Ошибка: ' + err.message); }
+      };
+    };
   }
-});
 
-// Экспорт CSV
-const exportBtn = document.getElementById('exportOrdersCsvBtn');
-if (exportBtn) {
-  exportBtn.onclick = async () => {
-    try {
-      let query = supabaseClient.from('orders').select('*').is('archived_at', null);
-      if (adminOrdersFilter !== 'all') query = query.eq('status', adminOrdersFilter);
-      const { data, error } = await query;
-      if (error) throw error;
-      if (!data || data.length === 0) { alert('Нет заказов для экспорта'); return; }
-      
-      const userIds = [...new Set(data.map(o => o.user_id))];
-      const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
-      const userMap = {};
-      if (users) users.forEach(u => { userMap[u.user_id] = u; });
-      
-      const headers = ['ID заказа', 'User ID', 'Имя', 'Username', 'Статус', 'Цена (BYN)', 'Вес (кг)', 'Дата создания'];
-      const rows = data.map(o => {
-        const u = userMap[o.user_id] || {};
-        return [
-          o.id, o.user_id, u.full_name || '', u.username || '',
-          o.status, o.price_byn || '', o.weight_estimated || '',
-          new Date(new Date(o.created_at).getTime() + 3 * 60 * 60 * 1000).toLocaleString('ru-RU')
-        ];
-      });
-      
-      const csvContent = headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
-      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      
-      // Удаляем старую ссылку
-      const oldLink = document.querySelector('.csv-download-link');
-      if (oldLink) oldLink.remove();
-      
-      // Создаём настоящую ссылку (кликабельную)
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
-      link.textContent = '📎 Нажмите, чтобы скачать CSV';
-      link.className = 'csv-download-link block text-cyan-400 text-sm mt-2 underline';
-      link.target = '_blank'; // важно для мобильных
-      
-      exportBtn.parentNode.appendChild(link);
-      
-      // На десктопе можно попробовать автоматически, но не обязательно
-      // Для надёжности просто показываем ссылку
-    } catch (err) {
-      alert('Ошибка экспорта: ' + err.message);
+  document.querySelectorAll('.deleteProductBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      if (confirm('Удалить товар?')) {
+        await supabaseClient.from('products').delete().eq('id', id);
+        renderCurrentScreen();
+      }
+    };
+  });
+
+  // ================== ЗАЯВКИ НА ВЫВОД ==================
+  document.querySelectorAll('.approvePayoutBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      try {
+        await supabaseClient.from('payout_requests').update({ status: 'approved', processed_at: new Date() }).eq('id', id);
+        alert('Заявка одобрена');
+        renderCurrentScreen();
+      } catch (err) { alert('Ошибка: ' + err.message); }
+    };
+  });
+
+  document.querySelectorAll('.rejectPayoutBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      try {
+        await supabaseClient.from('payout_requests').update({ status: 'rejected', processed_at: new Date() }).eq('id', id);
+        alert('Заявка отклонена');
+        renderCurrentScreen();
+      } catch (err) { alert('Ошибка: ' + err.message); }
+    };
+  });
+
+  // ================== УПРАВЛЕНИЕ ПЛОЩАДКАМИ ==================
+  const addMarketplaceBtn = document.getElementById('addMarketplaceBtn');
+  if (addMarketplaceBtn) addMarketplaceBtn.onclick = () => openMarketplaceForm();
+
+  async function openMarketplaceForm(marketplace = null) {
+    const isEdit = !!marketplace;
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto';
+    modal.innerHTML = `
+      <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20">
+        <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая площадка'}</h3>
+        <div class="space-y-3">
+          <input type="text" id="mpName" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${marketplace?.name || ''}">
+          <input type="url" id="mpUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Ссылка на сайт *" value="${marketplace?.website_url || ''}">
+          <input type="text" id="mpCountry" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Страна *" value="${marketplace?.country || ''}">
+          <textarea id="mpDescription" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Описание">${marketplace?.description || ''}</textarea>
+          <textarea id="mpInstruction" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Инструкция">${marketplace?.instruction || ''}</textarea>
+          <div>
+            <label class="text-white/70 text-sm">Категории (можно несколько)</label>
+            <div class="flex flex-wrap gap-2 mt-1" id="mpCategories">
+              ${['Обувь', 'Одежда', 'Аксессуары'].map(cat => {
+                const checked = marketplace?.categories?.includes(cat) ? 'checked' : '';
+                return `<label class="text-white/80"><input type="checkbox" value="${cat}" ${checked}> ${cat}</label>`;
+              }).join('')}
+            </div>
+          </div>
+          <div>
+            <label class="text-white/70 text-sm">Пол (можно несколько)</label>
+            <div class="flex flex-wrap gap-2 mt-1" id="mpGender">
+              ${['Муж', 'Жен', 'Унисекс'].map(g => {
+                const checked = marketplace?.gender?.includes(g) ? 'checked' : '';
+                return `<label class="text-white/80"><input type="checkbox" value="${g}" ${checked}> ${g}</label>`;
+              }).join('')}
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="mpVpn" ${marketplace?.requires_vpn ? 'checked' : ''}>
+            <label class="text-white/80">Требуется VPN</label>
+          </div>
+          <div>
+            <label class="text-white/70 text-sm block mb-1">Логотип (URL или загрузить)</label>
+            <input type="text" id="mpLogoUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-2" placeholder="https://..." value="${marketplace?.logo_url || ''}">
+            <input type="file" id="mpLogoFile" accept="image/*" class="text-white/70 text-sm">
+          </div>
+          <input type="number" id="mpSortOrder" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Порядок сортировки" value="${marketplace?.sort_order || 0}">
+          <label class="flex items-center gap-2 text-white/80"><input type="checkbox" id="mpActive" ${marketplace?.is_active !== false ? 'checked' : ''}> Активна</label>
+        </div>
+        <div class="flex gap-3 mt-5">
+          <button id="saveMarketplaceBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">${isEdit ? 'Сохранить' : 'Добавить'}</button>
+          <button id="cancelMarketplaceBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('#cancelMarketplaceBtn').onclick = () => modal.remove();
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    const saveBtn = modal.querySelector('#saveMarketplaceBtn');
+    saveBtn.onclick = async () => {
+      const name = modal.querySelector('#mpName').value.trim();
+      const url = modal.querySelector('#mpUrl').value.trim();
+      const country = modal.querySelector('#mpCountry').value.trim();
+      if (!name || !url || !country) { alert('Заполните обязательные поля'); return; }
+      const categories = Array.from(modal.querySelectorAll('#mpCategories input:checked')).map(cb => cb.value);
+      const gender = Array.from(modal.querySelectorAll('#mpGender input:checked')).map(cb => cb.value);
+      const description = modal.querySelector('#mpDescription').value.trim();
+      const instruction = modal.querySelector('#mpInstruction').value.trim();
+      const requires_vpn = modal.querySelector('#mpVpn').checked;
+      const sort_order = parseInt(modal.querySelector('#mpSortOrder').value) || 0;
+      const is_active = modal.querySelector('#mpActive').checked;
+      let logo_url = modal.querySelector('#mpLogoUrl').value.trim();
+      const logoFile = modal.querySelector('#mpLogoFile').files[0];
+      if (logoFile) {
+        const fileName = `logos/${Date.now()}_${logoFile.name}`;
+        const { error: uploadError } = await supabaseClient.storage.from('marketplace-logos').upload(fileName, logoFile);
+        if (uploadError) { alert('Ошибка загрузки лого: ' + uploadError.message); return; }
+        const { data: publicUrl } = supabaseClient.storage.from('marketplace-logos').getPublicUrl(fileName);
+        logo_url = publicUrl.publicUrl;
+      }
+      const payload = { name, website_url: url, country, categories, gender, description, instruction, requires_vpn, sort_order, is_active, logo_url };
+      try {
+        if (isEdit) {
+          await supabaseClient.from('marketplaces').update(payload).eq('id', marketplace.id);
+        } else {
+          await supabaseClient.from('marketplaces').insert(payload);
+        }
+        alert(isEdit ? 'Площадка обновлена' : 'Площадка добавлена');
+        modal.remove();
+        renderCurrentScreen();
+      } catch (err) { alert('Ошибка: ' + err.message); }
+    };
+  }
+
+  // ... продолжение во второй части ...
+    // ================== РЕДАКТИРОВАНИЕ / УДАЛЕНИЕ ПЛОЩАДОК ==================
+    document.addEventListener('click', async (e) => {
+    if (e.target.classList.contains('editMarketplaceBtn')) {
+      const id = e.target.dataset.id;
+      const { data } = await supabaseClient.from('marketplaces').select('*').eq('id', id).single();
+      if (data) openMarketplaceForm(data);
+    }
+    if (e.target.classList.contains('deleteMarketplaceBtn')) {
+      const id = e.target.dataset.id;
+      if (!confirm('Удалить площадку?')) return;
+      await supabaseClient.from('marketplaces').delete().eq('id', id);
+      alert('Удалено');
+      renderCurrentScreen();
+    }
+  });
+
+  // ================== АРХИВАЦИЯ ЗАКАЗА ==================
+  if (window._archiveHandler) {
+    document.removeEventListener('click', window._archiveHandler);
+  }
+  window._archiveHandler = async (e) => {
+    if (e.target.classList.contains('archiveOrderBtn')) {
+      const orderId = e.target.dataset.orderId;
+      if (!confirm('Переместить заказ в архив? Он будет скрыт из основного списка.')) return;
+      try {
+        const { error } = await supabaseClient.from('orders').update({ archived_at: new Date().toISOString() }).eq('id', orderId);
+        if (error) throw error;
+        alert('Заказ перемещён в архив');
+        renderCurrentScreen();
+      } catch (err) {
+        alert('Ошибка: ' + err.message);
+      }
     }
   };
-}
+  document.addEventListener('click', window._archiveHandler);
+
+  // ================== ФИЛЬТР ЗАКАЗОВ (ЧИПСЫ) ==================
+  const chipContainer = document.getElementById('adminOrdersFilterChips');
+  if (chipContainer) {
+    const setActiveChip = (status) => {
+      chipContainer.querySelectorAll('.filter-chip').forEach(c => {
+        if (c.dataset.status === status) {
+          c.classList.add('active');
+        } else {
+          c.classList.remove('active');
+        }
+      });
+    };
+    setActiveChip(adminOrdersFilter);
+    chipContainer.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const newStatus = chip.dataset.status;
+        setActiveChip(newStatus);
+        adminOrdersFilter = newStatus;
+        adminOrdersPage = 1;
+        renderCurrentScreen();
+      });
+    });
+  }
+
+  // ================== ПАГИНАЦИЯ ЗАКАЗОВ ==================
+  const prevBtn = document.getElementById('adminOrdersPrev');
+  const nextBtn = document.getElementById('adminOrdersNext');
+  if (prevBtn) prevBtn.onclick = () => { if (adminOrdersPage > 1) { adminOrdersPage--; renderCurrentScreen(); } };
+  if (nextBtn) nextBtn.onclick = () => { if (adminOrdersPage < adminOrdersTotalPages) { adminOrdersPage++; renderCurrentScreen(); } };
+
+  // ================== СМЕНА СТАТУСА ЗАКАЗА (ДЕЛЕГИРОВАНИЕ) ==================
+  if (!window._statusChangeHandler) {
+    window._statusChangeHandler = async (e) => {
+      if (e.target.classList.contains('changeOrderStatus')) {
+        const select = e.target;
+        const newStatus = select.value;
+        if (!newStatus) return;
+        const orderId = select.dataset.orderId;
+        const userId = select.dataset.userId;
+        const previousStatus = select.dataset.previousStatus;
+        if (!confirm(`Изменить статус заказа на "${getStatusText(newStatus)}"?`)) {
+          select.value = previousStatus || '';
+          return;
+        }
+        try {
+          const { error } = await supabaseClient.from('orders').update({ status: newStatus }).eq('id', orderId);
+          if (error) throw error;
+          const statusMessages = {
+            'paid': '✅ Ваш заказ оплачен! Мы приступаем к выкупу.',
+            'bought': '🛍️ Товар выкуплен! Ожидайте отправки на склад.',
+            'on_sklad_cn': '📦 Товар на складе в Китае. Идёт подготовка к отправке.',
+            'in_transit': '🚚 Ваш заказ в пути! Трек-номер появится позже.',
+            'in_belarus': '🇧🇾 Товар в Беларуси! Скоро будет доставлен.',
+            'delivered': '🎉 Заказ доставлен! Спасибо, что выбрали ICE LOGIX!'
+          };
+          const message = statusMessages[newStatus];
+          if (message) {
+            await sendNotification(userId, message, orderId);
+          }
+          renderCurrentScreen();
+        } catch (err) {
+          alert('Ошибка: ' + err.message);
+          select.value = previousStatus || '';
+        }
+      }
+    };
+    document.addEventListener('change', window._statusChangeHandler);
+  }
+
+  // ================== ЭКСПОРТ CSV ==================
+  const exportBtn = document.getElementById('exportOrdersCsvBtn');
+  if (exportBtn) {
+    exportBtn.onclick = async () => {
+      try {
+        let query = supabaseClient.from('orders').select('*').is('archived_at', null);
+        if (adminOrdersFilter !== 'all') query = query.eq('status', adminOrdersFilter);
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data || data.length === 0) { alert('Нет заказов для экспорта'); return; }
+
+        const userIds = [...new Set(data.map(o => o.user_id))];
+        const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+        const userMap = {};
+        if (users) users.forEach(u => { userMap[u.user_id] = u; });
+
+        const headers = ['ID заказа', 'User ID', 'Имя', 'Username', 'Статус', 'Цена (BYN)', 'Вес (кг)', 'Дата создания'];
+        const rows = data.map(o => {
+          const u = userMap[o.user_id] || {};
+          return [
+            o.id, o.user_id, u.full_name || '', u.username || '',
+            o.status, o.price_byn || '', o.weight_estimated || '',
+            new Date(new Date(o.created_at).getTime() + 3 * 60 * 60 * 1000).toLocaleString('ru-RU')
+          ];
+        });
+
+        const csvContent = headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+
+        const oldLink = document.querySelector('.csv-download-link');
+        if (oldLink) oldLink.remove();
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
+        link.textContent = '📎 Нажмите, чтобы скачать CSV';
+        link.className = 'csv-download-link block text-cyan-400 text-sm mt-2 underline';
+        link.target = '_blank';
+        exportBtn.parentNode.appendChild(link);
+      } catch (err) {
+        alert('Ошибка экспорта: ' + err.message);
+      }
+    };
+  }
 }
 
     // Функция для обновления статуса заказа с отправкой уведомления
