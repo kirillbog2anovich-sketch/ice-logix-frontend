@@ -1012,7 +1012,7 @@ async function renderAdminOrdersList() {
     
     // Получаем пользователей
     const userIds = [...new Set(orders.map(o => o.user_id))];
-    const { data: users, error: usersError } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+    const { data: users } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
     
     // ОТЛАДКА: покажем alert с информацией о пользователях
     if (usersError) {
@@ -1034,7 +1034,7 @@ async function renderAdminOrdersList() {
             <div>
               <p class="text-white font-mono text-sm">#${order.id.slice(0,8)}</p>
               <p class="text-white/50 text-xs">${new Date(new Date(order.created_at).getTime() + 3 * 60 * 60 * 1000).toLocaleString('ru-RU')}</p>
-              <p class="text-white/70 text-xs mt-1">👤 👤 ${user.full_name || '—'} ${user.username ? '@'+user.username : ''}</p>
+              <p class="text-white/70 text-xs mt-1">👤 ${user.full_name || 'Без имени'} ${user.username ? '@' + user.username : ''}</p>
               <p class="text-white/50 text-xs">ID: ${order.user_id}</p>
               <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount || 0} ❄️</p>
             </div>
@@ -1512,30 +1512,22 @@ if (exportBtn) {
       const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       
-      // Удаляем старую ссылку, если есть
+      // Удаляем старую ссылку
       const oldLink = document.querySelector('.csv-download-link');
       if (oldLink) oldLink.remove();
       
-      // Создаём видимую ссылку
+      // Создаём настоящую ссылку (кликабельную)
       const link = document.createElement('a');
       link.href = url;
       link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
       link.textContent = '📎 Нажмите, чтобы скачать CSV';
       link.className = 'csv-download-link block text-cyan-400 text-sm mt-2 underline';
+      link.target = '_blank'; // важно для мобильных
       
-      // Вставляем ссылку после кнопки
       exportBtn.parentNode.appendChild(link);
       
-      // Пытаемся автоматически скачать (сработает на десктопе)
-      link.click();
-      
-      // Если через 3 секунды файл не скачался, оставляем ссылку
-      setTimeout(() => {
-        if (link.parentNode) {
-          // Можно оставить как есть
-        }
-      }, 3000);
-      
+      // На десктопе можно попробовать автоматически, но не обязательно
+      // Для надёжности просто показываем ссылку
     } catch (err) {
       alert('Ошибка экспорта: ' + err.message);
     }
@@ -1559,11 +1551,23 @@ if (exportBtn) {
     };
     const message = statusMessages[newStatus];
     if (message) {
-      alert(`Отправка уведомления пользователю ${userId}: ${message}`);
       await sendNotification(userId, message, orderId);
     }
   } catch (err) {
-    alert('Ошибка обновления статуса: ' + err.message);
+    console.error('Ошибка обновления статуса:', err);
+    throw err;
+  }
+}
+
+async function sendNotification(userId, message, orderId = null) {
+  try {
+    await fetch('https://vrvwdagjpttvfvjanbwq.supabase.co/functions/v1/send-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, message, order_id: orderId })
+    });
+  } catch (err) {
+    console.error('Ошибка отправки уведомления:', err);
   }
 }
 
