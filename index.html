@@ -1033,7 +1033,7 @@ async function renderAdminOrdersList() {
           <div class="flex justify-between items-start">
             <div>
               <p class="text-white font-mono text-sm">#${order.id.slice(0,8)}</p>
-              <p class="text-white/50 text-xs">${new Date(order.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk' })}</p>
+              <p class="text-white/50 text-xs">${new Date(new Date(order.created_at).getTime() + 3 * 60 * 60 * 1000).toLocaleString('ru-RU')}</p>
               <p class="text-white/70 text-xs mt-1">👤 ${userName} ${userUsername}</p>
               <p class="text-white/50 text-xs">ID: ${order.user_id}</p>
               <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount || 0} ❄️</p>
@@ -1405,9 +1405,11 @@ async function openMarketplaceForm(marketplace = null) {
   };
 }
 
-// Обработчики кнопок редактирования и удаления (делегирование)
-// Архивация заказа
-document.addEventListener('click', async (e) => {
+// Архивация заказа (без дублирования)
+if (window._archiveHandler) {
+  document.removeEventListener('click', window._archiveHandler);
+}
+window._archiveHandler = async (e) => {
   if (e.target.classList.contains('archiveOrderBtn')) {
     const orderId = e.target.dataset.orderId;
     if (!confirm('Переместить заказ в архив? Он будет скрыт из основного списка.')) return;
@@ -1420,9 +1422,9 @@ document.addEventListener('click', async (e) => {
       alert('Ошибка: ' + err.message);
     }
   }
-});
-// === Управление заказами ===
-// Фильтр заказов через чипсы
+};
+document.addEventListener('click', window._archiveHandler);
+
 // Фильтр заказов через чипсы
 const chipContainer = document.getElementById('adminOrdersFilterChips');
 if (chipContainer) {
@@ -1493,27 +1495,21 @@ if (exportBtn) {
         return [
           o.id, o.user_id, u.full_name || '', u.username || '',
           o.status, o.price_byn || '', o.weight_estimated || '',
-          new Date(o.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk' })
+          new Date(new Date(o.created_at).getTime() + 3 * 60 * 60 * 1000).toLocaleString('ru-RU')
         ];
       });
       
       const csvContent = headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
       const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       
-      if (isMobile) {
-        // На мобильных открываем в новой вкладке
-        window.open(url, '_blank');
-      } else {
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      }
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (err) {
       alert('Ошибка экспорта: ' + err.message);
     }
