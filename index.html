@@ -1212,14 +1212,6 @@ async function renderAdmin() {
             <span class="text-white/70 py-2 text-sm">Стр. ${adminOrdersPage} из ${adminOrdersTotalPages}</span>
             <button id="adminOrdersNext" class="bg-white/20 px-4 py-2 rounded-lg text-sm" ${adminOrdersPage >= adminOrdersTotalPages ? 'disabled' : ''}>→</button>
           </div>
-        </div>
-          <div class="flex justify-center gap-2 mt-3">
-            <button id="adminOrdersPrev" class="bg-white/20 px-4 py-2 rounded-lg" ${adminOrdersPage <= 1 ? 'disabled' : ''}>←</button>
-            <span class="text-white/70 py-2">Стр. ${adminOrdersPage} из ${adminOrdersTotalPages}</span>
-            <button id="adminOrdersNext" class="bg-white/20 px-4 py-2 rounded-lg" ${adminOrdersPage >= adminOrdersTotalPages ? 'disabled' : ''}>→</button>
-          </div>
-        </div>
-      </div>
       ${renderFooter()}
     `;
   } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки админ-панели</p>'; }
