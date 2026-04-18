@@ -1000,8 +1000,20 @@ if (!userLimits.isTrusted) {
 
 async function renderAdminOrdersList() {
   try {
-    let query = supabaseClient.from('orders').select('*', { count: 'exact' }).is('archived_at', null).order('created_at', { ascending: false });
-    if (adminOrdersFilter !== 'all') query = query.eq('status', adminOrdersFilter);
+    // Формируем запрос в зависимости от режима (активные / архив)
+    let query = supabaseClient.from('orders').select('*', { count: 'exact' });
+    
+    if (adminOrdersMode === 'active') {
+      query = query.is('archived_at', null);
+    } else {
+      query = query.not('archived_at', 'is', null);
+    }
+    
+    if (adminOrdersFilter !== 'all') {
+      query = query.eq('status', adminOrdersFilter);
+    }
+    
+    query = query.order('created_at', { ascending: false });
     
     const from = (adminOrdersPage - 1) * 10;
     const to = from + 9;
@@ -1010,21 +1022,49 @@ async function renderAdminOrdersList() {
     
     adminOrdersTotalPages = Math.ceil((count || 0) / 10);
     
-    if (!orders || orders.length === 0) return '<p class="text-white/70 text-center py-4">Нет заказов</p>';
+    if (!orders || orders.length === 0) {
+      return '<p class="text-white/70 text-center py-4">Нет заказов</p>';
+    }
     
+    // Получаем информацию о пользователях
     const userIds = [...new Set(orders.map(o => o.user_id))];
-    const { data: users, error: usersError } = await supabaseClient.from('users').select('user_id, full_name, username').in('user_id', userIds);
+    const { data: users, error: usersError } = await supabaseClient
+      .from('users')
+      .select('user_id, full_name, username')
+      .in('user_id', userIds);
+      
     if (usersError) {
       console.error('Ошибка загрузки пользователей:', usersError);
-      // Продолжаем без имён, но не падаем
     }
+    
     const userMap = {};
-    if (users) users.forEach(u => { userMap[u.user_id] = u; });
+    if (users) {
+      users.forEach(u => { userMap[u.user_id] = u; });
+    }
     
     return orders.map(order => {
       const user = userMap[order.user_id] || {};
       const displayName = user.full_name || 'Без имени';
       const displayUsername = user.username ? '@' + user.username : '';
+      
+      // В зависимости от режима показываем либо кнопку архивации, либо восстановления
+      const actionButton = adminOrdersMode === 'active'
+        ? `<button class="archiveOrderBtn mt-2 text-xs bg-red-600/50 hover:bg-red-600 px-2 py-1 rounded" data-order-id="${order.id}">🗑️ Архив</button>`
+        : `<button class="restoreOrderBtn mt-2 text-xs bg-green-600/50 hover:bg-green-600 px-2 py-1 rounded" data-order-id="${order.id}">↩️ Восстановить</button>`;
+      
+      // Селект изменения статуса показываем только для активных заказов
+      const statusSelect = adminOrdersMode === 'active'
+        ? `<select class="changeOrderStatus mt-2 text-xs p-1 rounded bg-white/20 border border-white/30" data-order-id="${order.id}" data-user-id="${order.user_id}" data-previous-status="${order.status}">
+            <option value="">Изменить</option>
+            <option value="paid">Оплачен</option>
+            <option value="bought">Выкуплен</option>
+            <option value="on_sklad_cn">Склад КН</option>
+            <option value="in_transit">В пути</option>
+            <option value="in_belarus">В РБ</option>
+            <option value="delivered">Доставлен</option>
+            <option value="cancelled">Отменён</option>
+          </select>`
+        : '';
       
       return `
         <div class="bg-white/5 rounded-lg p-3">
@@ -1032,23 +1072,14 @@ async function renderAdminOrdersList() {
             <div>
               <p class="text-white font-mono text-sm">#${order.id.slice(0,8)}</p>
               <p class="text-white/50 text-xs">${new Date(new Date(order.created_at).getTime() + 3*60*60*1000).toLocaleString('ru-RU')}</p>
-              <p class="text-white/70 text-xs mt-1">👤 ${user.full_name || 'Без имени'} ${user.username ? '@' + user.username : ''}</p>
+              <p class="text-white/70 text-xs mt-1">👤 ${displayName} ${displayUsername}</p>
               <p class="text-white/50 text-xs">ID: ${order.user_id}</p>
               <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount || 0} ❄️</p>
             </div>
             <div class="text-right">
               <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
-              <select class="changeOrderStatus mt-2 text-xs p-1 rounded bg-white/20 border border-white/30" data-order-id="${order.id}" data-user-id="${order.user_id}" data-previous-status="${order.status}">
-                <option value="">Изменить</option>
-                <option value="paid">Оплачен</option>
-                <option value="bought">Выкуплен</option>
-                <option value="on_sklad_cn">Склад КН</option>
-                <option value="in_transit">В пути</option>
-                <option value="in_belarus">В РБ</option>
-                <option value="delivered">Доставлен</option>
-                <option value="cancelled">Отменён</option>
-              </select>
-              <button class="archiveOrderBtn mt-2 text-xs bg-red-600/50 hover:bg-red-600 px-2 py-1 rounded" data-order-id="${order.id}">🗑️ Архив</button>
+              ${statusSelect}
+              ${actionButton}
             </div>
           </div>
           ${order.tracking_number_cn ? `<p class="text-white/50 text-xs mt-1">Трек: ${order.tracking_number_cn}</p>` : ''}
@@ -1149,14 +1180,17 @@ async function renderAdmin() {
         <!-- Управление заказами -->
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 mt-4">
           <h3 class="text-white font-bold mb-3">📦 Управление заказами</h3>
-          <div class="flex gap-2 mb-2">
-            <button id="showActiveOrdersBtn" class="filter-chip ${adminOrdersMode === 'active' ? 'active' : ''}">📋 Активные</button>
-            <button id="showArchivedOrdersBtn" class="filter-chip ${adminOrdersMode === 'archived' ? 'active' : ''}">🗄️ Архив</button>
-          </div>
-          <div class="mb-3">
-            <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
-              <button class="filter-chip" data-status="all">Все</button>
-              <button class="filter-chip" data-status="paid">Оплачен</button>
+          <!-- Переключатели режима (отдельные кнопки) -->
+<div class="flex gap-2 mb-3">
+  <button id="showActiveOrdersBtn" class="px-4 py-2 rounded-lg ${adminOrdersMode === 'active' ? 'bg-cyan-500 text-white' : 'bg-white/20 text-white/70'}">📋 Активные</button>
+  <button id="showArchivedOrdersBtn" class="px-4 py-2 rounded-lg ${adminOrdersMode === 'archived' ? 'bg-cyan-500 text-white' : 'bg-white/20 text-white/70'}">🗄️ Архив</button>
+</div>
+
+<!-- Фильтр по статусу (чипсы) -->
+<div class="mb-3">
+  <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
+    <button class="filter-chip" data-status="all">Все</button>
+    <button class="filter-chip" data-status="paid">Оплачен</button>
               <button class="filter-chip" data-status="bought">Выкуплен</button>
               <button class="filter-chip" data-status="on_sklad_cn">Склад КН</button>
               <button class="filter-chip" data-status="in_transit">В пути</button>
@@ -1504,19 +1538,19 @@ function attachAdminHandlers() {
 
   // ================== ПЕРЕКЛЮЧЕНИЕ РЕЖИМА АКТИВНЫЕ / АРХИВ ==================
   const activeBtn = document.getElementById('showActiveOrdersBtn');
-  const archiveBtn = document.getElementById('showArchivedOrdersBtn');
-  if (activeBtn) activeBtn.addEventListener('click', () => {
-    adminOrdersMode = 'active';
-    adminOrdersPage = 1;
-    adminOrdersFilter = 'all';
-    renderCurrentScreen();
-  });
-  if (archiveBtn) archiveBtn.addEventListener('click', () => {
-    adminOrdersMode = 'archived';
-    adminOrdersPage = 1;
-    adminOrdersFilter = 'all';
-    renderCurrentScreen();
-  });
+const archiveBtn = document.getElementById('showArchivedOrdersBtn');
+if (activeBtn) activeBtn.addEventListener('click', () => {
+  adminOrdersMode = 'active';
+  adminOrdersPage = 1;
+  adminOrdersFilter = 'all';
+  renderCurrentScreen();
+});
+if (archiveBtn) archiveBtn.addEventListener('click', () => {
+  adminOrdersMode = 'archived';
+  adminOrdersPage = 1;
+  adminOrdersFilter = 'all';
+  renderCurrentScreen();
+});
 
   // ================== ВОССТАНОВЛЕНИЕ ЗАКАЗА ИЗ АРХИВА ==================
   document.addEventListener('click', async (e) => {
