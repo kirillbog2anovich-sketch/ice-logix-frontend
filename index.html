@@ -1449,26 +1449,30 @@ function attachAdminHandlers() {
     }
   });
 
-  // ================== АРХИВАЦИЯ ЗАКАЗА ==================
-  // Восстановление заказа из архива (без дублирования)
-if (window._restoreHandler) {
-  document.removeEventListener('click', window._restoreHandler);
-}
-window._restoreHandler = async (e) => {
-  if (e.target.classList.contains('restoreOrderBtn')) {
-    const orderId = e.target.dataset.orderId;
-    if (!confirm('Восстановить заказ из архива?')) return;
-    try {
-      const { error } = await supabaseClient.from('orders').update({ archived_at: null }).eq('id', orderId);
-      if (error) throw error;
-      alert('Заказ восстановлен');
-      renderCurrentScreen();
-    } catch (err) {
-      alert('Ошибка: ' + err.message);
-    }
+    // ================== АРХИВАЦИЯ ЗАКАЗА (ДЕЛЕГИРОВАНИЕ) ==================
+  // Используем один глобальный обработчик, который не нужно пересоздавать
+  if (!window._globalArchiveHandler) {
+    window._globalArchiveHandler = async (e) => {
+      const archiveBtn = e.target.closest('.archiveOrderBtn');
+      if (!archiveBtn) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const orderId = archiveBtn.dataset.orderId;
+      if (!confirm('Переместить заказ в архив? Он будет скрыт из основного списка.')) return;
+      
+      try {
+        const { error } = await supabaseClient.from('orders').update({ archived_at: new Date().toISOString() }).eq('id', orderId);
+        if (error) throw error;
+        alert('Заказ перемещён в архив');
+        renderCurrentScreen();
+      } catch (err) {
+        alert('Ошибка: ' + err.message);
+      }
+    };
+    document.addEventListener('click', window._globalArchiveHandler);
   }
-};
-document.addEventListener('click', window._restoreHandler);
 
   // ================== ФИЛЬТР ЗАКАЗОВ (ЧИПСЫ) ==================
   const chipContainer = document.getElementById('adminOrdersFilterChips');
@@ -1554,11 +1558,18 @@ if (archiveBtn) archiveBtn.addEventListener('click', () => {
   renderCurrentScreen();
 });
 
-  // ================== ВОССТАНОВЛЕНИЕ ЗАКАЗА ИЗ АРХИВА ==================
-  document.addEventListener('click', async (e) => {
-    if (e.target.classList.contains('restoreOrderBtn')) {
-      const orderId = e.target.dataset.orderId;
+    // ================== ВОССТАНОВЛЕНИЕ ЗАКАЗА (ДЕЛЕГИРОВАНИЕ) ==================
+    if (!window._globalRestoreHandler) {
+    window._globalRestoreHandler = async (e) => {
+      const restoreBtn = e.target.closest('.restoreOrderBtn');
+      if (!restoreBtn) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const orderId = restoreBtn.dataset.orderId;
       if (!confirm('Восстановить заказ из архива?')) return;
+      
       try {
         const { error } = await supabaseClient.from('orders').update({ archived_at: null }).eq('id', orderId);
         if (error) throw error;
@@ -1567,8 +1578,9 @@ if (archiveBtn) archiveBtn.addEventListener('click', () => {
       } catch (err) {
         alert('Ошибка: ' + err.message);
       }
-    }
-  });
+    };
+    document.addEventListener('click', window._globalRestoreHandler);
+  }
 }
 
     // Функция для обновления статуса заказа с отправкой уведомления
