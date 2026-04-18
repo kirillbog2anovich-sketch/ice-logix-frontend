@@ -1022,12 +1022,12 @@ async function renderAdminOrdersList() {
     
     adminOrdersTotalPages = Math.ceil((count || 0) / 10);
     
-    if (!orders || orders.length === 0) {
-      return '<p class="text-white/70 text-center py-4">Нет заказов</p>';
-    }
+    if (!orders || orders.length === 0) return '<p class="text-white/70 text-center py-4">Нет заказов</p>';
     
-    // Получаем информацию о пользователях
-    const userIds = [...new Set(orders.map(o => o.user_id))];
+    // Убираем дубликаты по id (если вдруг есть)
+    const uniqueOrders = Array.from(new Map(orders.map(o => [o.id, o])).values());
+    
+    const userIds = [...new Set(uniqueOrders.map(o => o.user_id))];
     const { data: users, error: usersError } = await supabaseClient
       .from('users')
       .select('user_id, full_name, username')
@@ -1213,9 +1213,6 @@ async function renderAdmin() {
             <button id="adminOrdersNext" class="bg-white/20 px-4 py-2 rounded-lg text-sm" ${adminOrdersPage >= adminOrdersTotalPages ? 'disabled' : ''}>→</button>
           </div>
         </div>
-          <div id="adminOrdersList" class="space-y-2 max-h-96 overflow-y-auto">
-            ${await renderAdminOrdersList()}
-          </div>
           <div class="flex justify-center gap-2 mt-3">
             <button id="adminOrdersPrev" class="bg-white/20 px-4 py-2 rounded-lg" ${adminOrdersPage <= 1 ? 'disabled' : ''}>←</button>
             <span class="text-white/70 py-2">Стр. ${adminOrdersPage} из ${adminOrdersTotalPages}</span>
