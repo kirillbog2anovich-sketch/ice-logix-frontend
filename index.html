@@ -1148,22 +1148,13 @@ async function renderAdmin() {
         
         <!-- Управление заказами -->
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 mt-4">
-  <h3 class="text-white font-bold mb-3">📦 Управление заказами</h3>
-  <div class="flex gap-2 mb-2">
-    <button id="showActiveOrdersBtn" class="filter-chip ${adminOrdersMode === 'active' ? 'active' : ''}">📋 Активные</button>
-    <button id="showArchivedOrdersBtn" class="filter-chip ${adminOrdersMode === 'archived' ? 'active' : ''}">🗄️ Архив</button>
-  </div>
-  <div class="mb-3">
-    <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
-      <button class="filter-chip" data-status="all">Все</button>
-      <!-- ... остальные чипсы статусов ... -->
-    </div>
-  </div>
-  <div id="adminOrdersList" class="space-y-2 max-h-96 overflow-y-auto">
-    ${await renderAdminOrdersList()}
-  </div>
-  <!-- пагинация -->
-</div>
+          <h3 class="text-white font-bold mb-3">📦 Управление заказами</h3>
+          <div class="flex gap-2 mb-2">
+            <button id="showActiveOrdersBtn" class="filter-chip ${adminOrdersMode === 'active' ? 'active' : ''}">📋 Активные</button>
+            <button id="showArchivedOrdersBtn" class="filter-chip ${adminOrdersMode === 'archived' ? 'active' : ''}">🗄️ Архив</button>
+          </div>
+          <div class="mb-3">
+            <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
               <button class="filter-chip" data-status="all">Все</button>
               <button class="filter-chip" data-status="paid">Оплачен</button>
               <button class="filter-chip" data-status="bought">Выкуплен</button>
@@ -1173,8 +1164,8 @@ async function renderAdmin() {
               <button class="filter-chip" data-status="delivered">Доставлен</button>
               <button class="filter-chip" data-status="cancelled">Отменён</button>
             </div>
-            <div class="mt-2">
-            </div>
+          </div>
+                      </div>
           </div>
           <div id="adminOrdersList" class="space-y-2 max-h-96 overflow-y-auto">
             ${await renderAdminOrdersList()}
@@ -1407,8 +1398,6 @@ function attachAdminHandlers() {
       } catch (err) { alert('Ошибка: ' + err.message); }
     };
   }
-
-  // ... продолжение во второй части ...
     // ================== РЕДАКТИРОВАНИЕ / УДАЛЕНИЕ ПЛОЩАДОК ==================
     document.addEventListener('click', async (e) => {
     if (e.target.classList.contains('editMarketplaceBtn')) {
@@ -1474,9 +1463,8 @@ function attachAdminHandlers() {
   const nextBtn = document.getElementById('adminOrdersNext');
   if (prevBtn) prevBtn.onclick = () => { if (adminOrdersPage > 1) { adminOrdersPage--; renderCurrentScreen(); } };
   if (nextBtn) nextBtn.onclick = () => { if (adminOrdersPage < adminOrdersTotalPages) { adminOrdersPage++; renderCurrentScreen(); } };
-
-  // ================== СМЕНА СТАТУСА ЗАКАЗА (ДЕЛЕГИРОВАНИЕ) ==================
-  if (!window._statusChangeHandler) {
+    // ================== СМЕНА СТАТУСА ЗАКАЗА (ДЕЛЕГИРОВАНИЕ) ==================
+    if (!window._statusChangeHandler) {
     window._statusChangeHandler = async (e) => {
       if (e.target.classList.contains('changeOrderStatus')) {
         const select = e.target;
@@ -1514,37 +1502,37 @@ function attachAdminHandlers() {
     document.addEventListener('change', window._statusChangeHandler);
   }
 
-  // Переключение режима активные/архив
+  // ================== ПЕРЕКЛЮЧЕНИЕ РЕЖИМА АКТИВНЫЕ / АРХИВ ==================
   const activeBtn = document.getElementById('showActiveOrdersBtn');
-const archiveBtn = document.getElementById('showArchivedOrdersBtn');
-if (activeBtn) activeBtn.addEventListener('click', () => {
-  adminOrdersMode = 'active';
-  adminOrdersPage = 1;
-  adminOrdersFilter = 'all';
-  renderCurrentScreen();
-});
-if (archiveBtn) archiveBtn.addEventListener('click', () => {
-  adminOrdersMode = 'archived';
-  adminOrdersPage = 1;
-  adminOrdersFilter = 'all';
-  renderCurrentScreen();
-});
+  const archiveBtn = document.getElementById('showArchivedOrdersBtn');
+  if (activeBtn) activeBtn.addEventListener('click', () => {
+    adminOrdersMode = 'active';
+    adminOrdersPage = 1;
+    adminOrdersFilter = 'all';
+    renderCurrentScreen();
+  });
+  if (archiveBtn) archiveBtn.addEventListener('click', () => {
+    adminOrdersMode = 'archived';
+    adminOrdersPage = 1;
+    adminOrdersFilter = 'all';
+    renderCurrentScreen();
+  });
 
-// Восстановление заказа из архива
-document.addEventListener('click', async (e) => {
-  if (e.target.classList.contains('restoreOrderBtn')) {
-    const orderId = e.target.dataset.orderId;
-    if (!confirm('Восстановить заказ из архива?')) return;
-    try {
-      const { error } = await supabaseClient.from('orders').update({ archived_at: null }).eq('id', orderId);
-      if (error) throw error;
-      alert('Заказ восстановлен');
-      renderCurrentScreen();
-    } catch (err) {
-      alert('Ошибка: ' + err.message);
+  // ================== ВОССТАНОВЛЕНИЕ ЗАКАЗА ИЗ АРХИВА ==================
+  document.addEventListener('click', async (e) => {
+    if (e.target.classList.contains('restoreOrderBtn')) {
+      const orderId = e.target.dataset.orderId;
+      if (!confirm('Восстановить заказ из архива?')) return;
+      try {
+        const { error } = await supabaseClient.from('orders').update({ archived_at: null }).eq('id', orderId);
+        if (error) throw error;
+        alert('Заказ восстановлен');
+        renderCurrentScreen();
+      } catch (err) {
+        alert('Ошибка: ' + err.message);
+      }
     }
-  }
-});
+  });
 }
 
     // Функция для обновления статуса заказа с отправкой уведомления
