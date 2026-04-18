@@ -1177,30 +1177,42 @@ async function renderAdmin() {
           ${payoutRequests.length === 0 ? '<p class="text-white/70">Нет заявок</p>' : payoutRequests.map(req => `<div class="flex justify-between items-center p-2 bg-white/5 rounded-lg mb-2"><div><span class="text-white">${req.user_id}</span><span class="text-cyan-400 ml-2">${req.amount} ❄️</span></div><div><button class="approvePayoutBtn bg-green-600 px-3 py-1 rounded text-sm mr-2" data-id="${req.id}">Одобрить</button><button class="rejectPayoutBtn bg-red-600 px-3 py-1 rounded text-sm" data-id="${req.id}">Отклонить</button></div></div>`).join('')}
         </div>
         
-        <!-- Управление заказами -->
+                <!-- Управление заказами -->
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 mt-4">
           <h3 class="text-white font-bold mb-3">📦 Управление заказами</h3>
-          <!-- Переключатели режима (отдельные кнопки) -->
-<div class="flex gap-2 mb-3">
-  <button id="showActiveOrdersBtn" class="px-4 py-2 rounded-lg ${adminOrdersMode === 'active' ? 'bg-cyan-500 text-white' : 'bg-white/20 text-white/70'}">📋 Активные</button>
-  <button id="showArchivedOrdersBtn" class="px-4 py-2 rounded-lg ${adminOrdersMode === 'archived' ? 'bg-cyan-500 text-white' : 'bg-white/20 text-white/70'}">🗄️ Архив</button>
-</div>
-
-<!-- Фильтр по статусу (чипсы) -->
-<div class="mb-3">
-  <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
-    <button class="filter-chip" data-status="all">Все</button>
-    <button class="filter-chip" data-status="paid">Оплачен</button>
-              <button class="filter-chip" data-status="bought">Выкуплен</button>
-              <button class="filter-chip" data-status="on_sklad_cn">Склад КН</button>
-              <button class="filter-chip" data-status="in_transit">В пути</button>
-              <button class="filter-chip" data-status="in_belarus">В РБ</button>
-              <button class="filter-chip" data-status="delivered">Доставлен</button>
-              <button class="filter-chip" data-status="cancelled">Отменён</button>
+          
+          <!-- Переключатели Активные / Архив -->
+          <div class="flex gap-2 mb-3">
+            <button id="showActiveOrdersBtn" class="px-4 py-2 rounded-lg text-sm font-medium ${adminOrdersMode === 'active' ? 'bg-cyan-500 text-white' : 'bg-white/20 text-white/70'}">📋 Активные</button>
+            <button id="showArchivedOrdersBtn" class="px-4 py-2 rounded-lg text-sm font-medium ${adminOrdersMode === 'archived' ? 'bg-cyan-500 text-white' : 'bg-white/20 text-white/70'}">🗄️ Архив</button>
+          </div>
+          
+          <!-- Фильтр по статусу (чипсы) -->
+          <div class="mb-3">
+            <div class="flex flex-wrap gap-1.5" id="adminOrdersFilterChips">
+              <button class="filter-chip text-xs px-3 py-1.5" data-status="all">Все</button>
+              <button class="filter-chip text-xs px-3 py-1.5" data-status="paid">Оплачен</button>
+              <button class="filter-chip text-xs px-3 py-1.5" data-status="bought">Выкуплен</button>
+              <button class="filter-chip text-xs px-3 py-1.5" data-status="on_sklad_cn">Склад КН</button>
+              <button class="filter-chip text-xs px-3 py-1.5" data-status="in_transit">В пути</button>
+              <button class="filter-chip text-xs px-3 py-1.5" data-status="in_belarus">В РБ</button>
+              <button class="filter-chip text-xs px-3 py-1.5" data-status="delivered">Доставлен</button>
+              <button class="filter-chip text-xs px-3 py-1.5" data-status="cancelled">Отменён</button>
             </div>
           </div>
-                      </div>
+          
+          <!-- Список заказов -->
+          <div id="adminOrdersList" class="space-y-2 max-h-96 overflow-y-auto">
+            ${await renderAdminOrdersList()}
           </div>
+          
+          <!-- Пагинация -->
+          <div class="flex justify-center gap-2 mt-3">
+            <button id="adminOrdersPrev" class="bg-white/20 px-4 py-2 rounded-lg text-sm" ${adminOrdersPage <= 1 ? 'disabled' : ''}>←</button>
+            <span class="text-white/70 py-2 text-sm">Стр. ${adminOrdersPage} из ${adminOrdersTotalPages}</span>
+            <button id="adminOrdersNext" class="bg-white/20 px-4 py-2 rounded-lg text-sm" ${adminOrdersPage >= adminOrdersTotalPages ? 'disabled' : ''}>→</button>
+          </div>
+        </div>
           <div id="adminOrdersList" class="space-y-2 max-h-96 overflow-y-auto">
             ${await renderAdminOrdersList()}
           </div>
@@ -1449,24 +1461,25 @@ function attachAdminHandlers() {
   });
 
   // ================== АРХИВАЦИЯ ЗАКАЗА ==================
-  if (window._archiveHandler) {
-    document.removeEventListener('click', window._archiveHandler);
-  }
-  window._archiveHandler = async (e) => {
-    if (e.target.classList.contains('archiveOrderBtn')) {
-      const orderId = e.target.dataset.orderId;
-      if (!confirm('Переместить заказ в архив? Он будет скрыт из основного списка.')) return;
-      try {
-        const { error } = await supabaseClient.from('orders').update({ archived_at: new Date().toISOString() }).eq('id', orderId);
-        if (error) throw error;
-        alert('Заказ перемещён в архив');
-        renderCurrentScreen();
-      } catch (err) {
-        alert('Ошибка: ' + err.message);
-      }
+  // Восстановление заказа из архива (без дублирования)
+if (window._restoreHandler) {
+  document.removeEventListener('click', window._restoreHandler);
+}
+window._restoreHandler = async (e) => {
+  if (e.target.classList.contains('restoreOrderBtn')) {
+    const orderId = e.target.dataset.orderId;
+    if (!confirm('Восстановить заказ из архива?')) return;
+    try {
+      const { error } = await supabaseClient.from('orders').update({ archived_at: null }).eq('id', orderId);
+      if (error) throw error;
+      alert('Заказ восстановлен');
+      renderCurrentScreen();
+    } catch (err) {
+      alert('Ошибка: ' + err.message);
     }
-  };
-  document.addEventListener('click', window._archiveHandler);
+  }
+};
+document.addEventListener('click', window._restoreHandler);
 
   // ================== ФИЛЬТР ЗАКАЗОВ (ЧИПСЫ) ==================
   const chipContainer = document.getElementById('adminOrdersFilterChips');
