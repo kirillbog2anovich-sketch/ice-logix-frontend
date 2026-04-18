@@ -1147,14 +1147,23 @@ async function renderAdmin() {
         </div>
         
         <!-- Управление заказами -->
-        <div class="flex gap-2 mb-2">
-  <button id="showActiveOrdersBtn" class="filter-chip ${adminOrdersMode === 'active' ? 'active' : ''}">📋 Активные</button>
-  <button id="showArchivedOrdersBtn" class="filter-chip ${adminOrdersMode === 'archived' ? 'active' : ''}">🗄️ Архив</button>
-</div>
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 mt-4">
-          <h3 class="text-white font-bold mb-3">📦 Управление заказами</h3>
-          <div class="mb-3">
-            <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
+  <h3 class="text-white font-bold mb-3">📦 Управление заказами</h3>
+  <div class="flex gap-2 mb-2">
+    <button id="showActiveOrdersBtn" class="filter-chip ${adminOrdersMode === 'active' ? 'active' : ''}">📋 Активные</button>
+    <button id="showArchivedOrdersBtn" class="filter-chip ${adminOrdersMode === 'archived' ? 'active' : ''}">🗄️ Архив</button>
+  </div>
+  <div class="mb-3">
+    <div class="flex flex-wrap gap-2" id="adminOrdersFilterChips">
+      <button class="filter-chip" data-status="all">Все</button>
+      <!-- ... остальные чипсы статусов ... -->
+    </div>
+  </div>
+  <div id="adminOrdersList" class="space-y-2 max-h-96 overflow-y-auto">
+    ${await renderAdminOrdersList()}
+  </div>
+  <!-- пагинация -->
+</div>
               <button class="filter-chip" data-status="all">Все</button>
               <button class="filter-chip" data-status="paid">Оплачен</button>
               <button class="filter-chip" data-status="bought">Выкуплен</button>
@@ -1506,16 +1515,18 @@ function attachAdminHandlers() {
   }
 
   // Переключение режима активные/архив
-const activeBtn = document.getElementById('showActiveOrdersBtn');
+  const activeBtn = document.getElementById('showActiveOrdersBtn');
 const archiveBtn = document.getElementById('showArchivedOrdersBtn');
 if (activeBtn) activeBtn.addEventListener('click', () => {
   adminOrdersMode = 'active';
   adminOrdersPage = 1;
+  adminOrdersFilter = 'all';
   renderCurrentScreen();
 });
 if (archiveBtn) archiveBtn.addEventListener('click', () => {
   adminOrdersMode = 'archived';
   adminOrdersPage = 1;
+  adminOrdersFilter = 'all';
   renderCurrentScreen();
 });
 
