@@ -496,29 +496,35 @@ if (!userLimits.isTrusted) {
     }
 
     function attachProfileHandlers() {
-      document.getElementById('myOrdersBtn').onclick = () => { currentSubScreen = 'myOrders'; renderCurrentScreen(); };
-      document.getElementById('wishlistBtn').onclick = () => switchTab('wishlist');
-      document.getElementById('dropshipperBtn').onclick = () => switchTab('dropshipper');
-      document.getElementById('academyBtn').onclick = () => switchTab('academy');
-      const adminBtn = document.getElementById('adminPanelBtn');
-      if (adminBtn) adminBtn.onclick = () => switchTab('admin');
-      document.getElementById('logoutBtn').onclick = () => tg.close();
-      const copyBtn = document.getElementById('copyReferralLinkBtn');
-      if (copyBtn) {
-        copyBtn.onclick = () => {
-          const link = userReferralCode ? `https://t.me/ice_logix_bot?start=ref_${userReferralCode}` : '';
-          if (link) { navigator.clipboard.writeText(link); alert('Ссылка скопирована!'); }
-      const myOrdersBtn = document.getElementById('myOrdersBtn');
+  const myOrdersBtn = document.getElementById('myOrdersBtn');
   if (myOrdersBtn) myOrdersBtn.onclick = () => { currentSubScreen = 'myOrders'; renderCurrentScreen(); };
-  
+
+  const wishlistBtn = document.getElementById('wishlistBtn');
+  if (wishlistBtn) wishlistBtn.onclick = () => switchTab('wishlist');
+
   const dropshipperBtn = document.getElementById('dropshipperBtn');
   if (dropshipperBtn) dropshipperBtn.onclick = () => switchTab('dropshipper');
-  
+
   const academyBtn = document.getElementById('academyBtn');
   if (academyBtn) academyBtn.onclick = () => switchTab('academy');
-        };
+
+  const adminBtn = document.getElementById('adminPanelBtn');
+  if (adminBtn) adminBtn.onclick = () => switchTab('admin');
+
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) logoutBtn.onclick = () => tg.close();
+
+  const copyBtn = document.getElementById('copyReferralLinkBtn');
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      const link = userReferralCode ? `https://t.me/ice_logix_bot?start=ref_${userReferralCode}` : '';
+      if (link) {
+        navigator.clipboard.writeText(link);
+        alert('Ссылка скопирована!');
       }
-    }
+    };
+  }
+}
 
     // ==================== РЕНДЕР КАБИНЕТА ДРОПШИППЕРА ====================
     async function renderDropshipper() {
