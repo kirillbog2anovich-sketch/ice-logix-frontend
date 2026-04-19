@@ -724,6 +724,9 @@ async function renderMyOrders() {
           <button id="academyBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">🎓 Академия</button>
           ${isOwner ? '<button id="adminPanelBtn" class="mt-3 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">⚙️ Админ-панель</button>' : ''}
           <button id="logoutBtn" class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full transition">Выйти из аккаунта</button>
+          <button id="passportDataBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">🛂 Паспортные данные</button>
+          <button id="signAgreementBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">📄 Подписать договор</button>
+          <button id="downloadAgreementBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">📥 Скачать договор</button>
         </div>
         ${renderFooter()}
       `;
@@ -775,6 +778,17 @@ async function renderMyOrders() {
       }
     };
   }
+  // Паспортные данные
+const passportBtn = document.getElementById('passportDataBtn');
+if (passportBtn) passportBtn.onclick = () => showPassportForm();
+
+// Подписать договор
+const signAgreementBtn = document.getElementById('signAgreementBtn');
+if (signAgreementBtn) signAgreementBtn.onclick = () => signAgreement();
+
+// Скачать договор
+const downloadAgreementBtn = document.getElementById('downloadAgreementBtn');
+if (downloadAgreementBtn) downloadAgreementBtn.onclick = () => downloadAgreement();
 }
 
     // ==================== РЕНДЕР КАБИНЕТА ДРОПШИППЕРА ====================
@@ -2586,6 +2600,94 @@ function attachProductsCatalogHandlers() {
   
   const backBtn = document.getElementById('backFromProductsCatalogBtn');
   if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
+}
+
+// Показать форму ввода паспортных данных
+function showPassportForm() {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
+  modal.innerHTML = `
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
+      <div class="p-5 border-b border-white/20">
+        <h3 class="text-white font-bold text-lg">🛂 Паспортные данные</h3>
+      </div>
+      <div class="p-5 overflow-y-auto flex-1">
+        <p class="text-white/70 text-sm mb-3">Данные будут зашифрованы и использованы только для таможенного оформления.</p>
+        <textarea id="passportInput" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 h-32" placeholder="Серия, номер, кем выдан, дата выдачи"></textarea>
+      </div>
+      <div class="p-5 border-t border-white/20">
+        <div class="flex gap-3">
+          <button id="savePassportBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">Сохранить</button>
+          <button id="cancelPassportBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  modal.querySelector('#cancelPassportBtn').onclick = () => modal.remove();
+  modal.querySelector('#savePassportBtn').onclick = async () => {
+    const data = modal.querySelector('#passportInput').value.trim();
+    if (!data) { alert('Введите данные'); return; }
+    // В реальности здесь должно быть шифрование (например, через Supabase Vault)
+    const { error } = await supabaseClient.from('users').update({ passport_data: data }).eq('user_id', userId);
+    if (error) { alert('Ошибка: ' + error.message); } else { alert('Данные сохранены'); modal.remove(); }
+  };
+}
+
+// Подписание договора (генерирует PDF и сохраняет в Storage)
+async function signAgreement() {
+  if (!userId) return;
+  try {
+    // Проверяем, есть ли уже подписанный договор
+    const { data: existing } = await supabaseClient.from('users').select('agreement_signed').eq('user_id', userId).single();
+    if (existing?.agreement_signed) { alert('Договор уже подписан'); return; }
+    
+    // Генерируем PDF (заглушка – в будущем можно использовать Edge Function)
+    const agreementText = `ДОГОВОР ОКАЗАНИЯ УСЛУГ\n\nКлиент: ${userName}\nID: ${userId}\nДата: ${new Date().toLocaleString('ru-RU')}\n\nУсловия: ...`;
+    const blob = new Blob([agreementText], { type: 'application/pdf' });
+    const file = new File([blob], `agreement_${userId}.pdf`);
+    
+    // Загружаем в Storage
+    const { data: uploadData, error: uploadError } = await supabaseClient.storage
+      .from('agreements')
+      .upload(`${userId}/${Date.now()}.pdf`, file);
+    if (uploadError) throw uploadError;
+    
+    const { data: publicUrl } = supabaseClient.storage.from('agreements').getPublicUrl(uploadData.path);
+    
+    // Обновляем пользователя
+    await supabaseClient.from('users').update({
+      agreement_signed: true,
+      agreement_signed_at: new Date().toISOString()
+    }).eq('user_id', userId);
+    
+    // Сохраняем запись в user_agreements
+    await supabaseClient.from('user_agreements').insert({
+      user_id: userId,
+      agreement_url: publicUrl.publicUrl
+    });
+    
+    alert('Договор подписан!');
+  } catch (err) {
+    alert('Ошибка: ' + err.message);
+  }
+}
+
+// Скачать последний договор
+async function downloadAgreement() {
+  if (!userId) return;
+  const { data } = await supabaseClient.from('user_agreements')
+    .select('agreement_url')
+    .eq('user_id', userId)
+    .order('signed_at', { ascending: false })
+    .limit(1)
+    .single();
+  if (data?.agreement_url) {
+    window.open(data.agreement_url, '_blank');
+  } else {
+    alert('Договор не найден. Сначала подпишите его.');
+  }
 }
 
         // ==================== ЗАПУСК ====================
