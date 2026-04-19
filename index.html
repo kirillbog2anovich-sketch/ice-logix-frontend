@@ -547,38 +547,70 @@ function attachHomeHandlers() {
       if (applyPromoBtn) {
         applyPromoBtn.onclick = async () => {
           const code = promoInput?.value.trim().toUpperCase();
-          if (!code) { promoMessage.innerText = 'Введите код'; promoMessage.classList.remove('hidden'); return; }
-          try {
-            const { data, error } = await supabaseClient
-  .from('promocodes')
-  .select('*')
-  .eq('code', code)
-  .maybeSingle();
-
-console.log('Промокод запрос:', { data, error });
-
-if (error) {
-  promoMessage.innerText = 'Ошибка базы данных';
-  return;
-}
-if (!data) {
-  promoMessage.innerText = 'Промокод не найден';
-  return;
-}
-if (!data.is_active) {
-  promoMessage.innerText = 'Промокод неактивен';
+if (!code) {
+  promoMessage.innerText = 'Введите код';
+  promoMessage.classList.remove('hidden');
   return;
 }
 
-// Если дошли сюда — промокод валиден
-let discountAmount = 0;
-if (data.discount_type === 'percent') {
-  discountAmount = window.tempOrder.total * (data.discount_value / 100);
-} else {
-  discountAmount = data.discount_value; }
-       } catch (err) { alert('Ошибка: ' + err.message); }
-    };
+// Убедимся, что tempOrder существует (если нет - создадим на основе полей)
+if (!window.tempOrder) {
+  const price = parseFloat(priceInp?.value) || 0;
+  const weight = parseFloat(weightInp?.value) || 0;
+  if (price <= 0 || weight <= 0) {
+    promoMessage.innerText = 'Сначала укажите цену и вес';
+    promoMessage.classList.remove('hidden');
+    return;
   }
+  window.tempOrder = {
+    url: urlInp?.value || '',
+    price: price,
+    weight: weight,
+    total: (price * 0.45) + (weight * 12),
+    discountAmount: 0
+  };
+}
+
+try {
+  const { data, error } = await supabaseClient
+    .from('promocodes')
+    .select('*')
+    .eq('code', code)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) {
+    promoMessage.innerText = 'Ошибка проверки кода';
+    promoMessage.classList.remove('hidden');
+    console.error(error);
+    return;
+  }
+  if (!data) {
+    promoMessage.innerText = 'Неверный или неактивный промокод';
+    promoMessage.classList.remove('hidden');
+    return;
+  }
+
+  let discountAmount = 0;
+  if (data.discount_type === 'percent') {
+    discountAmount = window.tempOrder.total * (data.discount_value / 100);
+  } else {
+    discountAmount = data.discount_value;
+  }
+  if (discountAmount > window.tempOrder.total) discountAmount = window.tempOrder.total;
+
+  window.tempOrder.discountAmount = discountAmount;
+  window.tempOrder.appliedPromo = data;
+  update(); // функция пересчёта итого
+  promoMessage.innerText = `Промокод применён! Скидка: ${discountAmount.toFixed(2)} ❄️`;
+  promoMessage.classList.remove('hidden');
+  promoMessage.style.color = '#4ade80';
+} catch (err) {
+  promoMessage.innerText = 'Ошибка: ' + err.message;
+  promoMessage.classList.remove('hidden');
+          }
+        }
+      }
       
       const createBtn = document.getElementById('createOrderFinal');
       if (createBtn) {
