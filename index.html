@@ -739,27 +739,49 @@ async function renderMyOrders() {
       const shareLink = userReferralCode ? `https://t.me/${tg.initDataUnsafe?.user?.username ? tg.initDataUnsafe.user.username : 'ice_logix_bot'}?start=ref_${userReferralCode}` : '';
       
       return `
-        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 text-center shadow-lg">
-          <div class="user-avatar mx-auto w-24 h-24 text-4xl flex items-center justify-center bg-white/20 rounded-full mb-3">${userName.charAt(0)}</div>
-          <h2 class="text-xl font-bold">${userName}</h2>
-          <p class="text-white/70 mt-1">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p>
-          <div class="mt-4 p-3 bg-white/5 rounded-xl">
-            <p class="text-white/70 text-sm">🤝 Реферальная программа</p>
-            <p class="text-white text-sm mt-1">Приглашено: <span class="text-cyan-400 font-bold">${referralStats.count}</span> | Бонусов: <span class="text-green-400 font-bold">${referralStats.bonus} ❄️</span></p>
-            ${userReferralCode ? `<p class="text-white/50 text-xs mt-1">Ваш код: <span class="text-cyan-400">${userReferralCode}</span></p><button id="copyReferralLinkBtn" class="mt-2 bg-white/20 px-4 py-1 rounded-full text-sm">📋 Скопировать ссылку</button>` : ''}
-          </div>
-          <button id="myOrdersBtn" class="mt-4 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">📋 Мои заказы</button>
-          <button id="wishlistBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">❤️ Избранное</button>
-          <button id="dropshipperBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">📦 ${isDropshipper ? 'Кабинет дропшиппера' : 'Стать дропшиппером'}</button>
-          <button id="academyBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">🎓 Академия</button>
-          ${isOwner ? '<button id="adminPanelBtn" class="mt-3 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">⚙️ Админ-панель</button>' : ''}
-          <button id="passportDataBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">🛂 Паспортные данные</button>
-          <!-- Если нужна кнопка скачивания договора, оставьте её здесь -->
-          <button id="downloadAgreementBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">📄 Мой договор</button>
-          <button id="logoutBtn" class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full transition">Выйти из аккаунта</button>
-        </div>
-        ${renderFooter()}
-      `;
+  <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 text-center shadow-lg">
+    <div class="relative mx-auto w-24 h-24">
+      <div class="user-avatar w-24 h-24 text-4xl flex items-center justify-center bg-white/20 rounded-full overflow-hidden" id="profileAvatar">
+        ${userAvatarUrl ? `<img src="${userAvatarUrl}" class="w-full h-full object-cover">` : userName.charAt(0).toUpperCase()}
+      </div>
+      <button id="changeAvatarBtn" class="absolute bottom-0 right-0 bg-cyan-500 rounded-full w-8 h-8 flex items-center justify-center text-sm">📷</button>
+    </div>
+    <div class="flex items-center justify-center gap-2 mt-3">
+      <h2 class="text-xl font-bold" id="profileNameDisplay">${userName}</h2>
+      <button id="editNameBtn" class="text-cyan-400 text-sm">✏️</button>
+    </div>
+    <p class="text-white/70 mt-1">Баланс: <span class="text-cyan-400 font-bold">${balance} ❄️</span></p>
+    
+    <!-- История транзакций (кратко) -->
+    <div class="mt-4 p-3 bg-white/5 rounded-xl">
+      <div class="flex justify-between items-center">
+        <p class="text-white/70 text-sm">💰 Последние транзакции</p>
+        <button id="showAllTransactionsBtn" class="text-cyan-400 text-xs">Все →</button>
+      </div>
+      <div id="recentTransactions" class="mt-2 text-left"></div>
+    </div>
+    
+    <div class="mt-4 p-3 bg-white/5 rounded-xl">
+      <p class="text-white/70 text-sm">🤝 Реферальная программа</p>
+      <p class="text-white text-sm mt-1">Приглашено: <span class="text-cyan-400 font-bold">${referralStats.count}</span> | Бонусов: <span class="text-green-400 font-bold">${referralStats.bonus} ❄️</span></p>
+      ${userReferralCode ? `<p class="text-white/50 text-xs mt-1">Ваш код: <span class="text-cyan-400">${userReferralCode}</span></p><button id="copyReferralLinkBtn" class="mt-2 bg-white/20 px-4 py-1 rounded-full text-sm">📋 Скопировать ссылку</button>` : ''}
+    </div>
+    
+    <div class="grid grid-cols-2 gap-2 mt-4">
+      <button id="myOrdersBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">📋 Мои заказы</button>
+      <button id="wishlistBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">❤️ Избранное</button>
+      <button id="dropshipperBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">📦 ${isDropshipper ? 'Кабинет дропшиппера' : 'Стать дропшиппером'}</button>
+      <button id="academyBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">🎓 Академия</button>
+      ${isOwner ? '<button id="adminPanelBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">⚙️ Админ-панель</button>' : ''}
+      <button id="passportDataBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">🛂 Паспорт</button>
+      <button id="notificationsSettingsBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">🔔 Уведомления</button>
+      <button id="phoneBindingBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">📱 Телефон</button>
+    </div>
+    
+    <button id="logoutBtn" class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full transition">Выйти из аккаунта</button>
+  </div>
+  ${renderFooter()}
+`;
     }
 
     function attachProfileHandlers() {
@@ -815,6 +837,27 @@ if (passportBtn) passportBtn.onclick = () => showPassportForm();
 // Скачать договор
 const downloadAgreementBtn = document.getElementById('downloadAgreementBtn');
 if (downloadAgreementBtn) downloadAgreementBtn.onclick = () => downloadAgreement();
+
+// Смена аватара
+const changeAvatarBtn = document.getElementById('changeAvatarBtn');
+if (changeAvatarBtn) changeAvatarBtn.onclick = () => showAvatarUploader();
+
+// Редактирование имени
+const editNameBtn = document.getElementById('editNameBtn');
+if (editNameBtn) editNameBtn.onclick = () => showEditNameForm();
+
+// Все транзакции
+const allTransactionsBtn = document.getElementById('showAllTransactionsBtn');
+if (allTransactionsBtn) allTransactionsBtn.onclick = () => showAllTransactions();
+
+// Настройки уведомлений
+const notifSettingsBtn = document.getElementById('notificationsSettingsBtn');
+if (notifSettingsBtn) notifSettingsBtn.onclick = () => showNotificationSettings();
+
+// Привязка телефона
+const phoneBindingBtn = document.getElementById('phoneBindingBtn');
+if (phoneBindingBtn) phoneBindingBtn.onclick = () => showPhoneBinding();
+
 }
 
     // ==================== РЕНДЕР КАБИНЕТА ДРОПШИППЕРА ====================
@@ -2301,6 +2344,7 @@ function ensureBackButtonForSubscreen() {
       } else if (currentTab === 'profile') {
         contentDiv.innerHTML = await renderProfile();
         attachProfileHandlers();
+        loadProfileExtras();
       } else if (currentTab === 'dropshipper') {
         contentDiv.innerHTML = await renderDropshipper();
         attachDropshipperHandlers();
@@ -2758,6 +2802,107 @@ async function downloadAgreement() {
   } else {
     alert('Договор не найден. Сначала подпишите его.');
   }
+}
+
+// Загрузка дополнительных данных профиля (аватар, транзакции)
+async function loadProfileExtras() {
+  if (!userId) return;
+  // Обновляем аватар
+  const { data } = await supabaseClient.from('users').select('avatar_url, full_name').eq('user_id', userId).single();
+  if (data) {
+    if (data.avatar_url) {
+      document.getElementById('profileAvatar').innerHTML = `<img src="${data.avatar_url}" class="w-full h-full object-cover">`;
+      userAvatarUrl = data.avatar_url;
+    }
+    if (data.full_name) {
+      document.getElementById('profileNameDisplay').innerText = data.full_name;
+      userName = data.full_name;
+    }
+  }
+  // Загружаем последние транзакции
+  const { data: txs } = await supabaseClient.from('transaction_history')
+    .select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(3);
+  const container = document.getElementById('recentTransactions');
+  if (container && txs) {
+    container.innerHTML = txs.map(tx => `
+      <div class="flex justify-between text-xs py-1">
+        <span class="text-white/70">${getTransactionTypeText(tx.type)}</span>
+        <span class="${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}">${tx.amount >= 0 ? '+' : ''}${tx.amount} ❄️</span>
+      </div>
+    `).join('');
+  }
+}
+
+function getTransactionTypeText(type) {
+  const map = { 'deposit': 'Пополнение', 'withdrawal': 'Вывод', 'payment': 'Оплата заказа', 'refund': 'Возврат', 'bonus': 'Бонус', 'referral': 'Реферал' };
+  return map[type] || type;
+}
+
+// Загрузка аватара
+function showAvatarUploader() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fileName = `avatars/${userId}_${Date.now()}.jpg`;
+    const { error: uploadError } = await supabaseClient.storage.from('avatars').upload(fileName, file);
+    if (uploadError) { alert('Ошибка загрузки: ' + uploadError.message); return; }
+    const { data: publicUrl } = supabaseClient.storage.from('avatars').getPublicUrl(fileName);
+    await supabaseClient.from('users').update({ avatar_url: publicUrl.publicUrl }).eq('user_id', userId);
+    document.getElementById('profileAvatar').innerHTML = `<img src="${publicUrl.publicUrl}" class="w-full h-full object-cover">`;
+    userAvatarUrl = publicUrl.publicUrl;
+  };
+  input.click();
+}
+
+// Редактирование имени
+function showEditNameForm() {
+  const newName = prompt('Введите новое имя:', userName);
+  if (newName && newName.trim()) {
+    supabaseClient.from('users').update({ full_name: newName.trim() }).eq('user_id', userId).then(({ error }) => {
+      if (error) alert('Ошибка: ' + error.message);
+      else {
+        userName = newName.trim();
+        document.getElementById('profileNameDisplay').innerText = userName;
+        document.querySelector('#userNameHeader').innerText = userName;
+      }
+    });
+  }
+}
+
+// Все транзакции (модальное окно)
+async function showAllTransactions() {
+  const { data, error } = await supabaseClient.from('transaction_history').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+  if (error) { alert('Ошибка загрузки'); return; }
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
+  modal.innerHTML = `
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
+      <div class="p-5 border-b border-white/20">
+        <h3 class="text-white font-bold text-lg">💰 История транзакций</h3>
+      </div>
+      <div class="p-5 overflow-y-auto flex-1">
+        ${data && data.length > 0 ? data.map(tx => `
+          <div class="flex justify-between py-2 border-b border-white/10">
+            <div>
+              <p class="text-white">${getTransactionTypeText(tx.type)}</p>
+              <p class="text-white/50 text-xs">${new Date(tx.created_at).toLocaleString('ru-RU')}</p>
+              ${tx.description ? `<p class="text-white/70 text-sm">${tx.description}</p>` : ''}
+            </div>
+            <p class="${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'} font-bold">${tx.amount >= 0 ? '+' : ''}${tx.amount} ❄️</p>
+          </div>
+        `).join('') : '<p class="text-white/70 text-center py-4">Нет транзакций</p>'}
+      </div>
+      <div class="p-5 border-t border-white/20">
+        <button id="closeTransactionsModal" class="w-full bg-white/20 py-2 rounded-xl">Закрыть</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('#closeTransactionsModal').onclick = () => modal.remove();
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
 }
 
         // ==================== ЗАПУСК ====================
