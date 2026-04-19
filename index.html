@@ -2909,6 +2909,138 @@ async function showAllTransactions() {
   modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
 }
 
+async function showNotificationSettings() {
+  // Загружаем текущие настройки
+  const { data } = await supabaseClient.from('users').select('notification_settings').eq('user_id', userId).single();
+  const settings = data?.notification_settings || { status_changes: true, news: true, promotions: true };
+  
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
+  modal.innerHTML = `
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
+      <div class="p-5 border-b border-white/20">
+        <h3 class="text-white font-bold text-lg">🔔 Настройки уведомлений</h3>
+      </div>
+      <div class="p-5 overflow-y-auto flex-1 space-y-4">
+        <div class="flex items-center justify-between">
+          <span class="text-white">Изменение статуса заказа</span>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="notifyStatusChanges" class="sr-only peer" ${settings.status_changes ? 'checked' : ''}>
+            <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-cyan-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-white">Новости и обновления</span>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="notifyNews" class="sr-only peer" ${settings.news ? 'checked' : ''}>
+            <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-cyan-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-white">Акции и специальные предложения</span>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="notifyPromotions" class="sr-only peer" ${settings.promotions ? 'checked' : ''}>
+            <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-cyan-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+      </div>
+      <div class="p-5 border-t border-white/20">
+        <div class="flex gap-3">
+          <button id="saveNotificationSettings" class="flex-1 bg-cyan-500 py-2 rounded-xl">Сохранить</button>
+          <button id="closeNotificationModal" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  modal.querySelector('#closeNotificationModal').onclick = () => modal.remove();
+  modal.querySelector('#saveNotificationSettings').onclick = async () => {
+    const newSettings = {
+      status_changes: document.getElementById('notifyStatusChanges').checked,
+      news: document.getElementById('notifyNews').checked,
+      promotions: document.getElementById('notifyPromotions').checked
+    };
+    await supabaseClient.from('users').update({ notification_settings: newSettings }).eq('user_id', userId);
+    alert('Настройки сохранены');
+    modal.remove();
+  };
+}
+
+async function showPhoneBinding() {
+  // Проверяем, есть ли уже номер
+  const { data } = await supabaseClient.from('users').select('phone').eq('user_id', userId).single();
+  const currentPhone = data?.phone || '';
+  
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
+  modal.innerHTML = `
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
+      <div class="p-5 border-b border-white/20">
+        <h3 class="text-white font-bold text-lg">📱 Привязка телефона</h3>
+      </div>
+      <div class="p-5 overflow-y-auto flex-1">
+        <p class="text-white/70 text-sm mb-3">Номер телефона нужен для восстановления доступа и уведомлений.</p>
+        <label class="text-white/70 text-sm">Номер телефона</label>
+        <input type="tel" id="phoneInput" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="+375XXXXXXXXX" value="${currentPhone}">
+        <button id="sendCodeBtn" class="w-full bg-cyan-500 py-2 rounded-xl mb-3">📨 Отправить код подтверждения</button>
+        <div id="codeSection" class="hidden">
+          <label class="text-white/70 text-sm">Код из SMS</label>
+          <input type="text" id="codeInput" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="123456">
+          <button id="verifyCodeBtn" class="w-full bg-green-500 py-2 rounded-xl">✅ Подтвердить</button>
+        </div>
+      </div>
+      <div class="p-5 border-t border-white/20">
+        <button id="closePhoneModal" class="w-full bg-white/20 py-2 rounded-xl">Закрыть</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  const phoneInput = document.getElementById('phoneInput');
+  const codeSection = document.getElementById('codeSection');
+  let currentCode = null;
+  
+  modal.querySelector('#closePhoneModal').onclick = () => modal.remove();
+  
+  document.getElementById('sendCodeBtn').onclick = async () => {
+    const phone = phoneInput.value.trim();
+    if (!phone) { alert('Введите номер'); return; }
+    // Генерируем код
+    currentCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // Отправляем код через бота (сохраняем в базе временно)
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    await supabaseClient.from('recovery_codes').insert({
+      user_id: userId,
+      code: currentCode,
+      expires_at: expiresAt
+    });
+    // В будущем здесь будет вызов бота для отправки SMS, пока просто показываем код в alert для теста
+    alert(`Ваш код подтверждения: ${currentCode}`);
+    codeSection.classList.remove('hidden');
+  };
+  
+  document.getElementById('verifyCodeBtn').onclick = async () => {
+    const enteredCode = document.getElementById('codeInput').value.trim();
+    if (!enteredCode) { alert('Введите код'); return; }
+    const { data, error } = await supabaseClient.from('recovery_codes')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('code', enteredCode)
+      .eq('used', false)
+      .gte('expires_at', new Date().toISOString())
+      .single();
+    if (error || !data) { alert('Неверный или просроченный код'); return; }
+    
+    // Помечаем код использованным
+    await supabaseClient.from('recovery_codes').update({ used: true }).eq('id', data.id);
+    // Сохраняем номер
+    await supabaseClient.from('users').update({ phone: phoneInput.value.trim() }).eq('user_id', userId);
+    alert('Номер успешно привязан!');
+    modal.remove();
+  };
+}
+
         // ==================== ЗАПУСК ====================
         init();
   </script>
