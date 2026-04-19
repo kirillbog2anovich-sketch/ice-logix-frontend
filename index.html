@@ -248,9 +248,6 @@ const MAX_REQUESTS_TRUSTED = 100;
     
     return data.map(p => `
       <div class="banner-slide" data-promotion-id="${p.id}" style="background-image: url('${p.banner_url}'); background-size: cover; background-position: center;">
-        <div class="banner-title">${p.title}</div>
-        <div class="banner-desc">${p.description || ''}</div>
-        <div class="text-xs text-white/60 mt-1">Скидка: ${p.discount_type === 'percent' ? p.discount_value + '%' : p.discount_value + ' BYN'}</div>
       </div>
     `).join('');
   } catch (err) {
@@ -493,9 +490,9 @@ function attachHomeHandlers() {
           <label class="text-white/70 text-sm">Ссылка на товар</label>
           <input type="text" id="orderUrl" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.url}" placeholder="https://...">
           <label class="text-white/70 text-sm block mt-2">Цена (¥)</label>
-          <input type="number" id="orderPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.price && d.price !== 520 ? d.price : ''}" placeholder="0">
+          <input type="number" id="orderPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.price && d.price !== 0 ? d.price : ''}" placeholder="0">
           <label class="text-white/70 text-sm block mt-2">Вес (кг)</label>
-          <div class="flex items-center gap-3 mt-1"><input type="number" id="orderWeight" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" value="${d.weight && d.weight !== 1 ? d.weight : ''}" placeholder="0"><span class="text-white/80 bg-white/10 px-3 py-1 rounded-full">кг</span></div>
+          <div class="flex items-center gap-3 mt-1"><input type="number" id="orderWeight" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" value="${d.weight && d.weight !== 0 ? d.weight : ''}" placeholder="0"><span class="text-white/80 bg-white/10 px-3 py-1 rounded-full">кг</span></div>
           <div class="mt-3"><label class="text-white/70 text-sm">Промокод</label><div class="flex gap-2 mt-1"><input type="text" id="promoCode" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Введите промокод"><button id="applyPromoBtn" class="bg-cyan-500 px-4 py-3 rounded-xl">Применить</button></div><p id="promoMessage" class="text-xs mt-1 hidden"></p></div>
           <p class="mt-4 text-lg">Итого: <span id="orderTotal" class="font-bold text-cyan-400">${(d.total - (d.discountAmount || 0)).toFixed(2)}</span> ❄️</p>
           ${d.discountAmount > 0 ? `<p class="text-green-400 text-sm mt-1">Скидка: -${d.discountAmount} ❄️</p>` : ''}
@@ -1526,7 +1523,7 @@ function attachAdminHandlers() {
   if (addProductBtn) {
     addProductBtn.onclick = () => {
       const modal = document.createElement('div');
-      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto pt-16';
+      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
       modal.innerHTML = `
   <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
     <div class="p-5 border-b border-white/20">
@@ -1614,7 +1611,7 @@ function attachAdminHandlers() {
   async function openMarketplaceForm(marketplace = null) {
     const isEdit = !!marketplace;
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto pt-16';
+    modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
     modal.innerHTML = `
     <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
       <div class="p-5 border-b border-white/20">
@@ -1869,7 +1866,7 @@ if (addPromotionBtn) addPromotionBtn.onclick = () => openPromotionForm();
 async function openPromotionForm(promotion = null) {
   const isEdit = !!promotion;
   const modal = document.createElement('div');
-  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto pt-16';
+  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
   modal.innerHTML = `
     <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
       <div class="p-5 border-b border-white/20">
