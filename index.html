@@ -237,20 +237,26 @@ const MAX_REQUESTS_TRUSTED = 100;
 
     async function renderPromoBanners() {
   try {
-    const now = new Date().toISOString();
     const { data, error } = await supabaseClient
       .from('promotions')
       .select('*')
       .eq('is_active', true)
-      .or(`starts_at.is.null,starts_at.lte.${now}`)
-      .or(`expires_at.is.null,expires_at.gte.${now}`)
-      .order('created_at', { ascending: false })
-      .limit(5);
+      .order('created_at', { ascending: false });
       
     if (error) throw error;
     if (!data || data.length === 0) return '';
     
-    return data.map(p => `
+    const now = new Date();
+    // Фильтруем по датам вручную
+    const activePromos = data.filter(p => {
+      if (p.starts_at && new Date(p.starts_at) > now) return false;
+      if (p.expires_at && new Date(p.expires_at) < now) return false;
+      return true;
+    });
+    
+    if (activePromos.length === 0) return '';
+    
+    return activePromos.map(p => `
       <div class="banner-slide" data-promotion-id="${p.id}">
         <div class="banner-title">${p.title}</div>
         <div class="banner-desc">${p.description || ''}</div>
@@ -308,6 +314,45 @@ const MAX_REQUESTS_TRUSTED = 100;
     ${renderFooter()}
   `;
 }
+
+// ==================== ОБРАБОТЧИК ГЛАВНОЙ ====================
+function attachHomeHandlers() {
+      document.querySelector('[data-story="reports"]')?.addEventListener('click', () => switchTab('reports'));
+      document.querySelector('[data-story="reviews"]')?.addEventListener('click', () => switchTab('reviews'));
+      document.querySelector('[data-story="promo"]')?.addEventListener('click', () => alert('Акции будут позже'));
+      document.querySelector('[data-story="academy"]')?.addEventListener('click', () => switchTab('academy'));
+      document.querySelector('[data-story="drops"]')?.addEventListener('click', () => alert('Дропы будут позже'));
+      document.querySelector('[data-story="referral"]')?.addEventListener('click', () => switchTab('profile'));
+      document.getElementById('moreMarketplacesBtn')?.addEventListener('click', () => switchTab('catalogs'));
+      document.getElementById('moreProductsBtn')?.addEventListener('click', () => switchTab('products'));
+      document.querySelectorAll('.marketplace-story').forEach(el => {
+        el.addEventListener('click', () => {
+          const url = el.getAttribute('data-url');
+          if (url) window.open(url, '_blank');
+          else alert('Ссылка на площадку будет добавлена позже');
+        });
+      });
+      document.querySelectorAll('.banner-slide').forEach(el => {
+        el.addEventListener('click', () => alert('Подробнее о акции будет позже'));
+      });
+      document.querySelectorAll('.social-icon').forEach(el => {
+        el.addEventListener('click', () => alert('Соцсети будут подключены позже'));
+      });
+      document.querySelectorAll('.footer-link').forEach(el => {
+        el.addEventListener('click', () => alert(el.innerText + ' будет доступно позже'));
+      });
+      loadHomeProducts();
+      document.querySelectorAll('.banner-slide').forEach(el => {
+  el.addEventListener('click', () => {
+    const promoId = el.dataset.promotionId;
+    if (promoId) {
+      // При клике на баннер активируем акцию в калькуляторе
+      window.activePromotionId = promoId;
+      alert('Акция применена! Перейдите в калькулятор.');
+    }
+  });
+});
+    }
 
     async function loadHomeProducts() {
       try {
@@ -1491,9 +1536,9 @@ function attachAdminHandlers() {
   if (addProductBtn) {
     addProductBtn.onclick = () => {
       const modal = document.createElement('div');
-      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+      modal.className = 'fixed inset-0 bg-black/80 flex items-start justify-center z-50 p-4 overflow-y-auto';
       modal.innerHTML = `
-        <div class="bg-white/10 backdrop-blur-md rounded-2xl max-w-md w-full p-5 max-h-[90vh] overflow-y-auto">
+        <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[85vh] overflow-y-auto">
           <h3 class="text-white font-bold text-lg mb-4">➕ Новый товар</h3>
           <input type="text" id="productTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Название">
           <textarea id="productDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Описание" rows="2"></textarea>
@@ -1566,9 +1611,9 @@ function attachAdminHandlers() {
   async function openMarketplaceForm(marketplace = null) {
     const isEdit = !!marketplace;
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto';
+    modal.className = 'fixed inset-0 bg-black/80 flex items-start justify-center z-50 p-4 overflow-y-auto';
     modal.innerHTML = `
-      <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[90vh] overflow-y-auto">
+      <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[85vh] overflow-y-auto">
         <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая площадка'}</h3>
         <div class="space-y-3">
           <input type="text" id="mpName" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${marketplace?.name || ''}">
@@ -1815,9 +1860,9 @@ if (addPromotionBtn) addPromotionBtn.onclick = () => openPromotionForm();
 async function openPromotionForm(promotion = null) {
   const isEdit = !!promotion;
   const modal = document.createElement('div');
-  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto';
+  modal.className = 'fixed inset-0 bg-black/80 flex items-start justify-center z-50 p-4 overflow-y-auto';
   modal.innerHTML = `
-    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[90vh] overflow-y-auto">
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[85vh] overflow-y-auto">
       <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая акция'}</h3>
       <div class="space-y-3">
         <input type="text" id="promoTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${promotion?.title || ''}">
@@ -1958,45 +2003,6 @@ async function sendNotification(userId, message, orderId = null) {
         'cancelled': 'status-cancelled'
       };
       return classes[status] || 'status-pending';
-    }
-
-        // ==================== ОБРАБОТЧИК ГЛАВНОЙ ====================
-        function attachHomeHandlers() {
-      document.querySelector('[data-story="reports"]')?.addEventListener('click', () => switchTab('reports'));
-      document.querySelector('[data-story="reviews"]')?.addEventListener('click', () => switchTab('reviews'));
-      document.querySelector('[data-story="promo"]')?.addEventListener('click', () => alert('Акции будут позже'));
-      document.querySelector('[data-story="academy"]')?.addEventListener('click', () => switchTab('academy'));
-      document.querySelector('[data-story="drops"]')?.addEventListener('click', () => alert('Дропы будут позже'));
-      document.querySelector('[data-story="referral"]')?.addEventListener('click', () => switchTab('profile'));
-      document.getElementById('moreMarketplacesBtn')?.addEventListener('click', () => switchTab('catalogs'));
-      document.getElementById('moreProductsBtn')?.addEventListener('click', () => switchTab('products'));
-      document.querySelectorAll('.marketplace-story').forEach(el => {
-        el.addEventListener('click', () => {
-          const url = el.getAttribute('data-url');
-          if (url) window.open(url, '_blank');
-          else alert('Ссылка на площадку будет добавлена позже');
-        });
-      });
-      document.querySelectorAll('.banner-slide').forEach(el => {
-        el.addEventListener('click', () => alert('Подробнее о акции будет позже'));
-      });
-      document.querySelectorAll('.social-icon').forEach(el => {
-        el.addEventListener('click', () => alert('Соцсети будут подключены позже'));
-      });
-      document.querySelectorAll('.footer-link').forEach(el => {
-        el.addEventListener('click', () => alert(el.innerText + ' будет доступно позже'));
-      });
-      loadHomeProducts();
-      document.querySelectorAll('.banner-slide').forEach(el => {
-  el.addEventListener('click', () => {
-    const promoId = el.dataset.promotionId;
-    if (promoId) {
-      // При клике на баннер активируем акцию в калькуляторе
-      window.activePromotionId = promoId;
-      alert('Акция применена! Перейдите в калькулятор.');
-    }
-  });
-});
     }
 
     // ==================== КНОПКА НАЗАД ====================
