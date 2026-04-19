@@ -776,6 +776,9 @@ async function renderMyOrders() {
       <button id="passportDataBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">🛂 Паспорт</button>
       <button id="notificationsSettingsBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">🔔 Уведомления</button>
       <button id="phoneBindingBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">📱 Телефон</button>
+      <button id="cartBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm relative">
+  🛒 Корзина <span id="cartBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
+</button>
     </div>
     
     <button id="logoutBtn" class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full transition">Выйти из аккаунта</button>
@@ -857,6 +860,9 @@ if (notifSettingsBtn) notifSettingsBtn.onclick = () => showNotificationSettings(
 // Привязка телефона
 const phoneBindingBtn = document.getElementById('phoneBindingBtn');
 if (phoneBindingBtn) phoneBindingBtn.onclick = () => showPhoneBinding();
+
+const cartBtn = document.getElementById('cartBtn');
+if (cartBtn) cartBtn.onclick = () => switchTab('cart');
 
 }
 
