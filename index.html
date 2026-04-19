@@ -451,6 +451,47 @@ if (!userLimits.isTrusted) {
       }
     }
 
+    // ==================== РЕНДЕР МОИХ ЗАКАЗОВ (ДЛЯ ПРОФИЛЯ) ====================
+async function renderMyOrders() {
+  if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
+  try {
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+      
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      return '<p class="text-center mt-10 text-white/70">У вас пока нет заказов</p>';
+    }
+    
+    return `
+      <button id="backToProfileBtn" class="global-back-btn">← Назад</button>
+      <div class="space-y-3">
+        ${data.map(order => `
+          <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10">
+            <div class="flex justify-between items-start">
+              <div>
+                <p class="text-white font-bold">Заказ #${order.id.slice(0,8)}</p>
+                <p class="text-white/70 text-xs">${new Date(new Date(order.created_at).getTime() + 3*60*60*1000).toLocaleString('ru-RU')}</p>
+                <p class="text-white/70 text-xs mt-1">Вес: ${order.weight_estimated} кг</p>
+                <p class="text-cyan-400 text-sm mt-1">${Number(order.prepayment_amount || 0).toFixed(2)} ❄️</p>
+                ${order.tracking_number_cn ? `<p class="text-white/70 text-xs mt-2">📦 Трек: ${order.tracking_number_cn}</p>` : ''}
+              </div>
+              <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ${renderFooter()}
+    `;
+  } catch (err) {
+    console.error('Ошибка в renderMyOrders:', err);
+    return '<p class="text-center mt-10 text-red-400">Ошибка загрузки заказов</p>';
+  }
+}
+
         // ==================== РЕНДЕР ПРОФИЛЯ (С РЕФЕРАЛКАМИ) ====================
         async function renderProfile() {
       let referralStats = { count: 0, bonus: 0 };
@@ -1852,11 +1893,11 @@ function ensureBackButtonForSubscreen() {
       const contentDiv = document.getElementById('content');
       
       if (currentSubScreen === 'myOrders') {
-        contentDiv.innerHTML = await renderMyOrders();
-        const backBtn = document.getElementById('backToProfileBtn');
-        if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
-        return;
-      }
+  contentDiv.innerHTML = await renderMyOrders();
+  const backBtn = document.getElementById('backToProfileBtn');
+  if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
+  return;
+}
 
       if (currentSubScreen === 'marketplaces') {
     contentDiv.innerHTML = await renderMarketplaces();
