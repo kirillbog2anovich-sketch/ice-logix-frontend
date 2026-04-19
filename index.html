@@ -265,33 +265,49 @@ const MAX_REQUESTS_TRUSTED = 100;
 
         // ==================== РЕНДЕР ГЛАВНОЙ СТРАНИЦЫ ====================
         async function renderHome() {
-      const marketplaces = [
-        { id: 1, name: 'Poizon', url: 'https://poizon.com' },
-        { id: 2, name: 'Taobao', url: 'https://taobao.com' },
-        { id: 3, name: '1688', url: 'https://1688.com' },
-        { id: 4, name: 'Zalando', url: 'https://zalando.de' },
-        { id: 5, name: 'Nike', url: 'https://nike.com' }
-      ];
-      const banners = [
-        { title: '🔥 Розыгрыш iPhone 15', desc: 'Участвуй до 30 апреля' },
-        { title: '🎁 Скидка 10% на доставку', desc: 'Для новых клиентов' },
-        { title: '✈️ Бесплатная консолидация', desc: 'При заказе от 3 товаров' }
-      ];
-      return `
-        <div class="scroll-x mb-6">
-          <div class="story-card" data-story="reports"><div class="story-icon">📸</div><span class="story-label">Отчёты</span></div>
-          <div class="story-card" data-story="reviews"><div class="story-icon">⭐</div><span class="story-label">Отзывы</span></div>
-          <div class="story-card" data-story="promo"><div class="story-icon">🎁</div><span class="story-label">Акции</span></div>
-          <div class="story-card" data-story="academy"><div class="story-icon">🎓</div><span class="story-label">Обучение</span></div>
-          <div class="story-card" data-story="drops"><div class="story-icon">📦</div><span class="story-label">Дропы</span></div>
-          <div class="story-card" data-story="referral"><div class="story-icon">👥</div><span class="story-label">Рефералы</span></div>
-        </div>
-          <div class="scroll-x mb-6" id="promoBannersContainer">
-          ${await renderPromoBanners()}
-        </div>
-        ${renderFooter()}
-      `;
-    }
+  const marketplaces = [
+    { id: 1, name: 'Poizon', url: 'https://poizon.com' },
+    { id: 2, name: 'Taobao', url: 'https://taobao.com' },
+    { id: 3, name: '1688', url: 'https://1688.com' },
+    { id: 4, name: 'Zalando', url: 'https://zalando.de' },
+    { id: 5, name: 'Nike', url: 'https://nike.com' }
+  ];
+  
+  return `
+    <div class="scroll-x mb-6">
+      <div class="story-card" data-story="reports"><div class="story-icon">📸</div><span class="story-label">Отчёты</span></div>
+      <div class="story-card" data-story="reviews"><div class="story-icon">⭐</div><span class="story-label">Отзывы</span></div>
+      <div class="story-card" data-story="promo"><div class="story-icon">🎁</div><span class="story-label">Акции</span></div>
+      <div class="story-card" data-story="academy"><div class="story-icon">🎓</div><span class="story-label">Обучение</span></div>
+      <div class="story-card" data-story="drops"><div class="story-icon">📦</div><span class="story-label">Дропы</span></div>
+      <div class="story-card" data-story="referral"><div class="story-icon">👥</div><span class="story-label">Рефералы</span></div>
+    </div>
+    
+    <div class="scroll-x mb-6" id="promoBannersContainer">
+      ${await renderPromoBanners()}
+    </div>
+    
+    <div class="mb-6">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-white font-bold">🔥 Популярные площадки</h3>
+        <button id="moreMarketplacesBtn" class="text-cyan-400 text-sm">Больше →</button>
+      </div>
+      <div class="scroll-x">
+        ${marketplaces.map(mp => `<div class="story-card marketplace-story" data-url="${mp.url}" style="min-width: 70px;"><div class="story-icon text-2xl">🛍️</div><span class="story-label">${mp.name}</span></div>`).join('')}
+      </div>
+    </div>
+    
+    <div class="mb-6">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-white font-bold">✨ Рекомендуем</h3>
+        <button id="moreProductsBtn" class="text-cyan-400 text-sm">Больше →</button>
+      </div>
+      <div class="grid grid-cols-2 gap-3" id="homeProductsGrid"></div>
+    </div>
+    
+    ${renderFooter()}
+  `;
+}
 
     async function loadHomeProducts() {
       try {
@@ -1418,6 +1434,7 @@ async function renderAdmin() {
 }
 
 function attachAdminHandlers() {
+
   // ================== ПРОМОКОДЫ ==================
   const createBtn = document.getElementById('createPromoBtn');
   if (createBtn) {
@@ -1476,7 +1493,7 @@ function attachAdminHandlers() {
       const modal = document.createElement('div');
       modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
       modal.innerHTML = `
-        <div class="bg-white/10 backdrop-blur-md rounded-2xl max-w-md w-full p-5">
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl max-w-md w-full p-5 max-h-[90vh] overflow-y-auto">
           <h3 class="text-white font-bold text-lg mb-4">➕ Новый товар</h3>
           <input type="text" id="productTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Название">
           <textarea id="productDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Описание" rows="2"></textarea>
@@ -1551,7 +1568,7 @@ function attachAdminHandlers() {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto';
     modal.innerHTML = `
-      <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20">
+      <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[90vh] overflow-y-auto">
         <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая площадка'}</h3>
         <div class="space-y-3">
           <input type="text" id="mpName" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${marketplace?.name || ''}">
@@ -1800,7 +1817,7 @@ async function openPromotionForm(promotion = null) {
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto';
   modal.innerHTML = `
-    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20">
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[90vh] overflow-y-auto">
       <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая акция'}</h3>
       <div class="space-y-3">
         <input type="text" id="promoTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${promotion?.title || ''}">
