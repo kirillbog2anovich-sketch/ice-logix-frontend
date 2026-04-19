@@ -1179,6 +1179,20 @@ function attachWishlistHandlers() {
       }
     });
   });
+
+  async function addToCart(productId, quantity = 1) {
+  if (!userId) { alert('Авторизуйтесь'); return; }
+  // Проверяем, есть ли уже такой товар
+  const { data: existing } = await supabaseClient.from('cart').select('id, quantity').eq('user_id', userId).eq('product_id', productId).maybeSingle();
+  if (existing) {
+    await supabaseClient.from('cart').update({ quantity: existing.quantity + quantity, updated_at: new Date() }).eq('id', existing.id);
+  } else {
+    await supabaseClient.from('cart').insert({ user_id: userId, product_id: productId, quantity });
+  }
+  updateCartBadge();
+  alert('Товар добавлен в корзину');
+}
+
 }
 
     // ==================== РЕНДЕР ОТЧЁТОВ ====================
@@ -2289,6 +2303,19 @@ function attachProductsCatalogHandlers() {
   if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
 }
 
+async function addToCart(productId, quantity = 1) {
+  if (!userId) { alert('Авторизуйтесь'); return; }
+  // Проверяем, есть ли уже такой товар
+  const { data: existing } = await supabaseClient.from('cart').select('id, quantity').eq('user_id', userId).eq('product_id', productId).maybeSingle();
+  if (existing) {
+    await supabaseClient.from('cart').update({ quantity: existing.quantity + quantity, updated_at: new Date() }).eq('id', existing.id);
+  } else {
+    await supabaseClient.from('cart').insert({ user_id: userId, product_id: productId, quantity });
+  }
+  updateCartBadge();
+  alert('Товар добавлен в корзину');
+}
+
 // Вспомогательная функция для кнопки Назад в подэкранах
 function ensureBackButtonForSubscreen() {
   // Уже добавлена кнопка вручную в каждом рендере, но можно оставить пустой
@@ -2360,7 +2387,11 @@ function ensureBackButtonForSubscreen() {
       } else if (currentTab === 'reviews') {
         contentDiv.innerHTML = await renderReviews();
         attachReviewsHandlers();
-      } else {
+      } else if (currentTab === 'cart') {
+        contentDiv.innerHTML = await renderCart();
+        attachCartHandlers();
+      }
+        else {
         contentDiv.innerHTML = '<div class="text-center py-10">Страница не найдена</div>';
       }
       
@@ -3039,6 +3070,145 @@ async function showPhoneBinding() {
     alert('Номер успешно привязан!');
     modal.remove();
   };
+}
+
+async function renderCart() {
+  if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
+  try {
+    const { data, error } = await supabaseClient
+      .from('cart')
+      .select('*, products(*)')
+      .eq('user_id', userId)
+      .order('added_at', { ascending: false });
+    if (error) throw error;
+    
+    if (!data || data.length === 0) {
+      return '<div class="text-center py-10"><p class="text-white/70 mb-4">🛒 Ваша корзина пуста</p><button id="goToCatalogBtn" class="bg-cyan-500 px-6 py-2 rounded-full">Перейти в каталог</button></div>' + renderFooter();
+    }
+    
+    let totalPrice = 0;
+    const itemsHtml = data.map(item => {
+      const product = item.products;
+      const itemTotal = product.price * item.quantity;
+      totalPrice += itemTotal;
+      return `
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
+          <img src="${product.image_url || 'https://via.placeholder.com/60'}" class="w-16 h-16 object-cover rounded-lg">
+          <div class="flex-1">
+            <p class="text-white font-bold">${product.title}</p>
+            <p class="text-cyan-400 text-sm">${product.price} ${product.currency} × ${item.quantity}</p>
+            <p class="text-white/70 text-xs">${itemTotal.toFixed(2)} BYN (примерно)</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="decrease" data-id="${item.id}">−</button>
+            <span class="text-white">${item.quantity}</span>
+            <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="increase" data-id="${item.id}">+</button>
+            <button class="cart-remove-btn text-red-400 ml-2" data-id="${item.id}">🗑️</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    return `
+      <button id="backFromCartBtn" class="global-back-btn">← Назад</button>
+      <div class="space-y-3">
+        ${itemsHtml}
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 mt-4">
+          <div class="flex justify-between items-center">
+            <span class="text-white font-bold text-lg">Итого:</span>
+            <span class="text-cyan-400 font-bold text-xl">${totalPrice.toFixed(2)} BYN</span>
+          </div>
+          <p class="text-white/50 text-xs mt-1">*Примерная стоимость, точный расчёт в калькуляторе</p>
+          <button id="clearCartBtn" class="w-full mt-3 bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full text-sm">🗑️ Очистить корзину</button>
+          <button id="checkoutCartBtn" class="w-full mt-2 bg-green-500 hover:bg-green-600 py-3 rounded-full font-bold">✨ Оформить заказ</button>
+        </div>
+      </div>
+      ${renderFooter()}
+    `;
+  } catch (err) {
+    return '<p class="text-center mt-10 text-red-400">Ошибка загрузки корзины</p>';
+  }
+}
+
+function attachCartHandlers() {
+  const backBtn = document.getElementById('backFromCartBtn');
+  if (backBtn) backBtn.onclick = () => switchTab('home');
+  
+  const goToCatalogBtn = document.getElementById('goToCatalogBtn');
+  if (goToCatalogBtn) goToCatalogBtn.onclick = () => switchTab('catalogs');
+  
+  // Обработчики изменения количества и удаления
+  document.querySelectorAll('.cart-qty-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const cartId = btn.dataset.id;
+      const row = btn.closest('[data-cart-id]');
+      const qtySpan = row.querySelector('span');
+      let newQty = parseInt(qtySpan.innerText);
+      
+      if (action === 'increase') newQty++;
+      else if (action === 'decrease') newQty = Math.max(1, newQty - 1);
+      
+      const { error } = await supabaseClient.from('cart').update({ quantity: newQty, updated_at: new Date() }).eq('id', cartId);
+      if (!error) {
+        qtySpan.innerText = newQty;
+        renderCurrentScreen(); // Перерисовываем для обновления итого
+      }
+    });
+  });
+  
+  document.querySelectorAll('.cart-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const cartId = btn.dataset.id;
+      await supabaseClient.from('cart').delete().eq('id', cartId);
+      renderCurrentScreen();
+    });
+  });
+  
+  const clearCartBtn = document.getElementById('clearCartBtn');
+  if (clearCartBtn) clearCartBtn.onclick = async () => {
+    if (!confirm('Удалить все товары из корзины?')) return;
+    await supabaseClient.from('cart').delete().eq('user_id', userId);
+    renderCurrentScreen();
+  };
+  
+  const checkoutCartBtn = document.getElementById('checkoutCartBtn');
+  if (checkoutCartBtn) checkoutCartBtn.onclick = async () => {
+    // Получаем товары из корзины
+    const { data: cartItems } = await supabaseClient.from('cart').select('*, products(*)').eq('user_id', userId);
+    if (!cartItems || cartItems.length === 0) {
+      alert('Корзина пуста');
+      return;
+    }
+    // Формируем заказ из первого товара (для примера), в будущем можно сделать множественный заказ
+    const firstItem = cartItems[0];
+    const product = firstItem.products;
+    window.tempOrder = {
+      url: product.url,
+      price: product.price,
+      weight: 1, // временно
+      total: product.price * 0.45 + 12,
+      discountAmount: 0,
+      appliedPromo: null
+    };
+    switchTab('neworder');
+  };
+}
+
+async function updateCartBadge() {
+  if (!userId) return;
+  const { count } = await supabaseClient.from('cart').select('*', { count: 'exact', head: true }).eq('user_id', userId);
+  const badge = document.getElementById('cartBadge');
+  if (badge) {
+    if (count > 0) {
+      badge.innerText = count > 99 ? '99+' : count;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
 }
 
         // ==================== ЗАПУСК ====================
