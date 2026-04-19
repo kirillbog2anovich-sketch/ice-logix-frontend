@@ -3095,6 +3095,7 @@ async function renderCart() {
     let totalPrice = 0;
     const itemsHtml = data.map(item => {
       const product = item.products;
+      if (!product) return '';
       const itemTotal = product.price * item.quantity;
       totalPrice += itemTotal;
       return `
@@ -3132,6 +3133,7 @@ async function renderCart() {
       ${renderFooter()}
     `;
   } catch (err) {
+    console.error('Ошибка в renderCart:', err);
     return '<p class="text-center mt-10 text-red-400">Ошибка загрузки корзины</p>';
   }
 }
