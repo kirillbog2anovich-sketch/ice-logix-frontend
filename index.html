@@ -225,6 +225,9 @@ const MAX_REQUESTS_TRUSTED = 100;
     }
 
     function switchTab(tabName) {
+      if (tabName !== 'neworder') {
+      window.tempOrder = null;
+      }
       if (currentTab && currentTab !== tabName) previousTab = currentTab;
       currentTab = tabName;
       document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
