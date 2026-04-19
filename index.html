@@ -247,7 +247,7 @@ const MAX_REQUESTS_TRUSTED = 100;
     if (!data || data.length === 0) return '';
     
     return data.map(p => `
-      <div class="banner-slide" data-promotion-id="${p.id}">
+      <div class="banner-slide" data-promotion-id="${p.id}" style="background-image: url('${p.banner_url}'); background-size: cover; background-position: center;">
         <div class="banner-title">${p.title}</div>
         <div class="banner-desc">${p.description || ''}</div>
         <div class="text-xs text-white/60 mt-1">Скидка: ${p.discount_type === 'percent' ? p.discount_value + '%' : p.discount_value + ' BYN'}</div>
@@ -1528,18 +1528,31 @@ function attachAdminHandlers() {
       const modal = document.createElement('div');
       modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto pt-16';
       modal.innerHTML = `
-        <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[85vh] overflow-y-auto">
-          <h3 class="text-white font-bold text-lg mb-4">➕ Новый товар</h3>
-          <input type="text" id="productTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Название">
-          <textarea id="productDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Описание" rows="2"></textarea>
-          <input type="number" id="productPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Цена" value="0">
-          <select id="productCategory" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3"><option value="Обувь">Обувь</option><option value="Одежда">Одежда</option><option value="Аксессуары">Аксессуары</option></select>
-          <input type="text" id="productBrand" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Бренд">
-          <input type="url" id="productImage" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="URL изображения">
-          <input type="url" id="productUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Ссылка на товар">
-          <div class="flex gap-3 mt-4"><button id="saveProductBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">Сохранить</button><button id="cancelProductBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button></div>
-        </div>
-      `;
+  <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
+    <div class="p-5 border-b border-white/20">
+      <h3 class="text-white font-bold text-lg">➕ Новый товар</h3>
+    </div>
+    <div class="p-5 overflow-y-auto flex-1">
+      <div class="space-y-3">
+        <input type="text" id="productTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название">
+        <textarea id="productDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Описание" rows="2"></textarea>
+        <input type="number" id="productPrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Цена" value="0">
+        <select id="productCategory" class="w-full p-3 rounded-xl bg-white/20 border border-white/30">
+          <option value="Обувь">Обувь</option><option value="Одежда">Одежда</option><option value="Аксессуары">Аксессуары</option>
+        </select>
+        <input type="text" id="productBrand" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Бренд">
+        <input type="url" id="productImage" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="URL изображения">
+        <input type="url" id="productUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Ссылка на товар">
+      </div>
+    </div>
+    <div class="p-5 border-t border-white/20">
+      <div class="flex gap-3">
+        <button id="saveProductBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">Сохранить</button>
+        <button id="cancelProductBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
+      </div>
+    </div>
+  </div>
+`;
       document.body.appendChild(modal);
       modal.querySelector('#cancelProductBtn').onclick = () => modal.remove();
       modal.querySelector('#saveProductBtn').onclick = async () => {
@@ -1603,8 +1616,11 @@ function attachAdminHandlers() {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto pt-16';
     modal.innerHTML = `
-      <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[85vh] overflow-y-auto">
-        <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая площадка'}</h3>
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
+      <div class="p-5 border-b border-white/20">
+        <h3 class="text-white font-bold text-lg">${isEdit ? '✏️ Редактировать' : '➕ Новая площадка'}</h3>
+      </div>
+      <div class="p-5 overflow-y-auto flex-1">
         <div class="space-y-3">
           <input type="text" id="mpName" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${marketplace?.name || ''}">
           <input type="url" id="mpUrl" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Ссылка на сайт *" value="${marketplace?.website_url || ''}">
@@ -1641,12 +1657,15 @@ function attachAdminHandlers() {
           <input type="number" id="mpSortOrder" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Порядок сортировки" value="${marketplace?.sort_order || 0}">
           <label class="flex items-center gap-2 text-white/80"><input type="checkbox" id="mpActive" ${marketplace?.is_active !== false ? 'checked' : ''}> Активна</label>
         </div>
-        <div class="flex gap-3 mt-5">
+      </div>
+      <div class="p-5 border-t border-white/20">
+        <div class="flex gap-3">
           <button id="saveMarketplaceBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">${isEdit ? 'Сохранить' : 'Добавить'}</button>
           <button id="cancelMarketplaceBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
         </div>
       </div>
-    `;
+    </div>
+  `;
     document.body.appendChild(modal);
     modal.querySelector('#cancelMarketplaceBtn').onclick = () => modal.remove();
     modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
@@ -1852,28 +1871,34 @@ async function openPromotionForm(promotion = null) {
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto pt-16';
   modal.innerHTML = `
-    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20 max-h-[85vh] overflow-y-auto">
-      <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая акция'}</h3>
-      <div class="space-y-3">
-        <input type="text" id="promoTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${promotion?.title || ''}">
-        <textarea id="promoDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Описание">${promotion?.description || ''}</textarea>
-        <input type="url" id="promoBanner" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="URL баннера" value="${promotion?.banner_url || ''}">
-        <select id="promoDiscountType" class="w-full p-3 rounded-xl bg-white/20 border border-white/30">
-          <option value="percent" ${promotion?.discount_type === 'percent' ? 'selected' : ''}>Процент (%)</option>
-          <option value="fixed" ${promotion?.discount_type === 'fixed' ? 'selected' : ''}>Фикс (BYN)</option>
-        </select>
-        <input type="number" id="promoDiscountValue" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Значение скидки *" value="${promotion?.discount_value || ''}">
-        <input type="number" id="promoMinAmount" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Мин. сумма заказа (0 - без ограничений)" value="${promotion?.min_order_amount || 0}">
-        <label class="text-white/70 text-sm">Дата начала</label>
-        <input type="datetime-local" id="promoStartsAt" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" value="${promotion?.starts_at ? new Date(promotion.starts_at).toISOString().slice(0,16) : ''}">
-        <label class="text-white/70 text-sm">Дата окончания</label>
-        <input type="datetime-local" id="promoExpiresAt" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" value="${promotion?.expires_at ? new Date(promotion.expires_at).toISOString().slice(0,16) : ''}">
-        <input type="number" id="promoUsageLimit" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Лимит использований (пусто - безлимит)" value="${promotion?.usage_limit || ''}">
-        <label class="flex items-center gap-2 text-white/80"><input type="checkbox" id="promoActive" ${promotion?.is_active !== false ? 'checked' : ''}> Активна</label>
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
+      <div class="p-5 border-b border-white/20">
+        <h3 class="text-white font-bold text-lg">${isEdit ? '✏️ Редактировать' : '➕ Новая акция'}</h3>
       </div>
-      <div class="flex gap-3 mt-5">
-        <button id="savePromotionBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">${isEdit ? 'Сохранить' : 'Создать'}</button>
-        <button id="cancelPromotionBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
+      <div class="p-5 overflow-y-auto flex-1">
+        <div class="space-y-3">
+          <input type="text" id="promoTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${promotion?.title || ''}">
+          <textarea id="promoDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Описание">${promotion?.description || ''}</textarea>
+          <input type="url" id="promoBanner" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="URL баннера" value="${promotion?.banner_url || ''}">
+          <select id="promoDiscountType" class="w-full p-3 rounded-xl bg-white/20 border border-white/30">
+            <option value="percent" ${promotion?.discount_type === 'percent' ? 'selected' : ''}>Процент (%)</option>
+            <option value="fixed" ${promotion?.discount_type === 'fixed' ? 'selected' : ''}>Фикс (BYN)</option>
+          </select>
+          <input type="number" id="promoDiscountValue" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Значение скидки *" value="${promotion?.discount_value || ''}">
+          <input type="number" id="promoMinAmount" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Мин. сумма заказа (0 - без ограничений)" value="${promotion?.min_order_amount || 0}">
+          <label class="text-white/70 text-sm">Дата начала</label>
+          <input type="datetime-local" id="promoStartsAt" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" value="${promotion?.starts_at ? new Date(promotion.starts_at).toISOString().slice(0,16) : ''}">
+          <label class="text-white/70 text-sm">Дата окончания</label>
+          <input type="datetime-local" id="promoExpiresAt" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" value="${promotion?.expires_at ? new Date(promotion.expires_at).toISOString().slice(0,16) : ''}">
+          <input type="number" id="promoUsageLimit" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Лимит использований (пусто - безлимит)" value="${promotion?.usage_limit || ''}">
+          <label class="flex items-center gap-2 text-white/80"><input type="checkbox" id="promoActive" ${promotion?.is_active !== false ? 'checked' : ''}> Активна</label>
+        </div>
+      </div>
+      <div class="p-5 border-t border-white/20">
+        <div class="flex gap-3">
+          <button id="savePromotionBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">${isEdit ? 'Сохранить' : 'Создать'}</button>
+          <button id="cancelPromotionBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
+        </div>
       </div>
     </div>
   `;
