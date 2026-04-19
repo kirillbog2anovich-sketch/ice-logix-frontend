@@ -661,6 +661,8 @@ async function renderMyOrders() {
     }
 
     function attachDropshipperHandlers() {
+      const backBtn = document.getElementById('backToProfileBtn');
+      if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
       const saveBtn = document.getElementById('saveDropshipperSettings');
       if (saveBtn) {
         saveBtn.onclick = async () => {
@@ -676,8 +678,6 @@ async function renderMyOrders() {
             alert('Настройки сохранены');
             renderCurrentScreen();
           } catch (err) { alert('Ошибка: ' + err.message); }
-          const backBtn = document.getElementById('backToProfileBtn');
-if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
         };
       }
       const payoutBtn = document.getElementById('requestPayoutBtn');
@@ -695,20 +695,21 @@ if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
       }
     }
 
-    // ==================== РЕНДЕР АКАДЕМИИ (КУРСЫ И УРОКИ) ====================
-    async function renderAcademy() {
-      try {
-        const { data: courses, error } = await supabaseClient.from('courses').select('*').eq('is_active', true).order('created_at', { ascending: true });
-        if (error) throw error;
-        if (!courses || courses.length === 0) {
-          return `
-            <div class="text-center py-10">
-              <p class="text-white/70">Курсы пока не добавлены</p>
-              ${isOwner ? '<button id="addCourseBtn" class="mt-4 bg-cyan-500 px-4 py-2 rounded-full">➕ Добавить курс</button>' : ''}
-            </div>
-            ${renderFooter()}
-          `;
-        }
+    // ==================== РЕНДЕР АКАДЕМИИ ====================
+async function renderAcademy() {
+  try {
+    const { data: courses, error } = await supabaseClient.from('courses').select('*').eq('is_active', true).order('created_at', { ascending: true });
+    if (error) throw error;
+    if (!courses || courses.length === 0) {
+      return `
+        <button id="backFromAcademyBtn" class="global-back-btn">← Назад</button>
+        <div class="text-center py-10">
+          <p class="text-white/70">Курсы пока не добавлены</p>
+          ${isOwner ? '<button id="addCourseBtn" class="mt-4 bg-cyan-500 px-4 py-2 rounded-full">➕ Добавить курс</button>' : ''}
+        </div>
+        ${renderFooter()}
+      `;
+    }
         
         let userProgress = {};
         if (userId) {
@@ -760,6 +761,8 @@ if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
     }
 
     function attachAcademyHandlers() {
+     const backBtn = document.getElementById('backFromAcademyBtn');
+      if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
       const addBtn = document.getElementById('addCourseBtn');
       if (addBtn && isOwner) {
         addBtn.onclick = () => {
@@ -844,58 +847,63 @@ if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
           } catch (err) { alert('Ошибка загрузки урока'); }
         };
       });
-      const backBtn = document.getElementById('backToProfileBtn');
-      if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
     }
 
 
     // ==================== РЕНДЕР ИЗБРАННОГО ====================
-    async function renderWishlist() {
-      if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
-      try {
-        const { data: wishlistItems, error } = await supabaseClient.from('wishlist').select('product_id, products(*)').eq('user_id', userId);
-        if (error) throw error;
-        if (!wishlistItems || wishlistItems.length === 0) return '<p class="text-center mt-10 text-white/70">У вас пока нет избранных товаров</p>';
-        
-        return `
+async function renderWishlist() {
+  if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
+  try {
+    const { data: wishlistItems, error } = await supabaseClient.from('wishlist').select('product_id, products(*)').eq('user_id', userId);
+    if (error) throw error;
+    if (!wishlistItems || wishlistItems.length === 0) {
+      return `
         <button id="backFromWishlistBtn" class="global-back-btn">← Назад</button>
-            <div class="grid grid-cols-2 gap-4">
-            ${wishlistItems.map(item => `
-              <div class="product-card" data-product-id="${item.products.id}">
-                <div class="aspect-square bg-white/10 flex items-center justify-center relative"><img src="${item.products.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover"><span class="absolute top-2 right-2 wishlist-heart text-xl text-red-500 cursor-pointer" data-product-id="${item.products.id}">❤️</span></div>
-                <div class="p-2"><p class="text-white font-bold text-sm truncate">${item.products.title}</p><p class="text-cyan-400 text-xs">${item.products.price} ${item.products.currency}</p><button class="buyNowBtn mt-2 w-full bg-cyan-500/50 py-1 rounded text-xs" data-url="${item.products.url}" data-price="${item.products.price}">Купить сейчас</button></div>
-              </div>
-            `).join('')}
+        <p class="text-center mt-10 text-white/70">У вас пока нет избранных товаров</p>
+        ${renderFooter()}
+      `;
+    }
+    return `
+      <button id="backFromWishlistBtn" class="global-back-btn">← Назад</button>
+      <div class="grid grid-cols-2 gap-4">
+        ${wishlistItems.map(item => `
+          <div class="product-card" data-product-id="${item.products.id}">
+            <div class="aspect-square bg-white/10 flex items-center justify-center relative"><img src="${item.products.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover"><span class="absolute top-2 right-2 wishlist-heart text-xl text-red-500 cursor-pointer" data-product-id="${item.products.id}">❤️</span></div>
+            <div class="p-2"><p class="text-white font-bold text-sm truncate">${item.products.title}</p><p class="text-cyan-400 text-xs">${item.products.price} ${item.products.currency}</p><button class="buyNowBtn mt-2 w-full bg-cyan-500/50 py-1 rounded text-xs" data-url="${item.products.url}" data-price="${item.products.price}">Купить сейчас</button></div>
           </div>
-          ${renderFooter()}
-        `;
-      } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки избранного</p>'; }
-    }
+        `).join('')}
+      </div>
+      ${renderFooter()}
+    `;
+  } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки избранного</p>'; }
+}
 
-    function attachWishlistHandlers() {
-      document.querySelectorAll('.wishlist-heart').forEach(heart => {
-        heart.onclick = async (e) => {
-          e.stopPropagation();
-          const productId = heart.getAttribute('data-product-id');
-          await supabaseClient.from('wishlist').delete().eq('user_id', userId).eq('product_id', productId);
-          wishlist.delete(productId);
-          renderCurrentScreen();
-        };
-      });
-      document.querySelectorAll('.buyNowBtn').forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          const url = btn.getAttribute('data-url');
-          const price = parseFloat(btn.getAttribute('data-price'));
-          if (url) {
-            window.tempOrder = { url: url, price: price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
-            switchTab('neworder');
-          }
-         };
-      });
-      const backBtn = document.getElementById('backFromWishlistBtn');
-      if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
-    }
+function attachWishlistHandlers() {
+  const backBtn = document.getElementById('backFromWishlistBtn');
+  if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
+
+  document.querySelectorAll('.wishlist-heart').forEach(heart => {
+    heart.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const productId = heart.dataset.productId;
+      await supabaseClient.from('wishlist').delete().eq('user_id', userId).eq('product_id', productId);
+      wishlist.delete(productId);
+      renderCurrentScreen();
+    });
+  });
+
+  document.querySelectorAll('.buyNowBtn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const url = btn.dataset.url;
+      const price = parseFloat(btn.dataset.price);
+      if (url) {
+        window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
+        switchTab('neworder');
+      }
+    });
+  });
+}
 
     // ==================== РЕНДЕР ОТЧЁТОВ ====================
     async function renderReports() {
