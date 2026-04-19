@@ -2812,6 +2812,8 @@ async function loadProfileExtras() {
   if (data) {
     if (data.avatar_url) {
       document.getElementById('profileAvatar').innerHTML = `<img src="${data.avatar_url}" class="w-full h-full object-cover">`;
+      const headerAvatar = document.querySelector('#avatar');
+      if (headerAvatar) headerAvatar.innerHTML = `<img src="${data.avatar_url}" class="w-full h-full object-cover">`;
       userAvatarUrl = data.avatar_url;
     }
     if (data.full_name) {
@@ -2852,6 +2854,8 @@ function showAvatarUploader() {
     const { data: publicUrl } = supabaseClient.storage.from('avatars').getPublicUrl(fileName);
     await supabaseClient.from('users').update({ avatar_url: publicUrl.publicUrl }).eq('user_id', userId);
     document.getElementById('profileAvatar').innerHTML = `<img src="${publicUrl.publicUrl}" class="w-full h-full object-cover">`;
+    const headerAvatar = document.querySelector('#avatar');
+    if (headerAvatar) headerAvatar.innerHTML = `<img src="${publicUrl.publicUrl}" class="w-full h-full object-cover">`;
     userAvatarUrl = publicUrl.publicUrl;
   };
   input.click();
