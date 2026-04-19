@@ -496,23 +496,40 @@ if (!userLimits.isTrusted) {
     }
 
     function attachProfileHandlers() {
+  console.log('attachProfileHandlers called');
+  
   const myOrdersBtn = document.getElementById('myOrdersBtn');
-  if (myOrdersBtn) myOrdersBtn.onclick = () => { currentSubScreen = 'myOrders'; renderCurrentScreen(); };
+  if (myOrdersBtn) {
+    console.log('myOrdersBtn found');
+    myOrdersBtn.onclick = () => { currentSubScreen = 'myOrders'; renderCurrentScreen(); };
+  } else {
+    console.error('myOrdersBtn NOT found');
+  }
 
   const wishlistBtn = document.getElementById('wishlistBtn');
-  if (wishlistBtn) wishlistBtn.onclick = () => switchTab('wishlist');
+  if (wishlistBtn) {
+    wishlistBtn.onclick = () => switchTab('wishlist');
+  }
 
   const dropshipperBtn = document.getElementById('dropshipperBtn');
-  if (dropshipperBtn) dropshipperBtn.onclick = () => switchTab('dropshipper');
+  if (dropshipperBtn) {
+    dropshipperBtn.onclick = () => switchTab('dropshipper');
+  }
 
   const academyBtn = document.getElementById('academyBtn');
-  if (academyBtn) academyBtn.onclick = () => switchTab('academy');
+  if (academyBtn) {
+    academyBtn.onclick = () => switchTab('academy');
+  }
 
   const adminBtn = document.getElementById('adminPanelBtn');
-  if (adminBtn) adminBtn.onclick = () => switchTab('admin');
+  if (adminBtn) {
+    adminBtn.onclick = () => switchTab('admin');
+  }
 
   const logoutBtn = document.getElementById('logoutBtn');
-  if (logoutBtn) logoutBtn.onclick = () => tg.close();
+  if (logoutBtn) {
+    logoutBtn.onclick = () => tg.close();
+  }
 
   const copyBtn = document.getElementById('copyReferralLinkBtn');
   if (copyBtn) {
