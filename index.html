@@ -533,7 +533,9 @@ function attachHomeHandlers() {
       weightInput.placeholder = '0';
       }
       const priceInp = document.getElementById('orderPrice');
+      if (priceInp) { priceInp.placeholder = '0'; priceInp.value = window.tempOrder?.price && window.tempOrder.price !== 520 ? window.tempOrder.price : ''; }
       const weightInp = document.getElementById('orderWeight');
+      if (weightInp) { weightInp.placeholder = '0'; weightInp.value = window.tempOrder?.weight && window.tempOrder.weight !== 1 ? window.tempOrder.weight : ''; }
       const totalSpan = document.getElementById('orderTotal');
       const prepaymentSpan = document.getElementById('prepaymentAmount');
       const urlInp = document.getElementById('orderUrl');
