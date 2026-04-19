@@ -726,8 +726,8 @@ if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
         }));
         
         return `
-        <button id="backFromAcademyBtn" class="global-back-btn">← Назад</button>
-          <div class="space-y-4">
+        <div class="space-y-4">
+            <button id="backFromAcademyBtn" class="global-back-btn">← Назад</button>
             ${isOwner ? '<button id="addCourseBtn" class="global-back-btn mb-2">➕ Добавить курс</button>' : ''}
             ${coursesWithLessons.map(course => `
               <div class="course-card" data-course-id="${course.id}">
@@ -842,11 +842,10 @@ if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
               renderCurrentScreen();
             }
           } catch (err) { alert('Ошибка загрузки урока'); }
-
-          const backBtn = document.getElementById('backFromAcademyBtn');
-if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
         };
       });
+      const backBtn = document.getElementById('backToProfileBtn');
+      if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
     }
 
 
@@ -860,7 +859,7 @@ if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
         
         return `
         <button id="backFromWishlistBtn" class="global-back-btn">← Назад</button>
-          <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-2 gap-4">
             ${wishlistItems.map(item => `
               <div class="product-card" data-product-id="${item.products.id}">
                 <div class="aspect-square bg-white/10 flex items-center justify-center relative"><img src="${item.products.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover"><span class="absolute top-2 right-2 wishlist-heart text-xl text-red-500 cursor-pointer" data-product-id="${item.products.id}">❤️</span></div>
@@ -892,10 +891,10 @@ if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
             window.tempOrder = { url: url, price: price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
             switchTab('neworder');
           }
-      const backBtn = document.getElementById('backFromWishlistBtn');
-if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
          };
       });
+      const backBtn = document.getElementById('backFromWishlistBtn');
+      if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
     }
 
     // ==================== РЕНДЕР ОТЧЁТОВ ====================
