@@ -505,6 +505,12 @@ function attachHomeHandlers() {
           <p class="mt-4 text-lg">Итого: <span id="orderTotal" class="font-bold text-cyan-400">${(d.total - (d.discountAmount || 0)).toFixed(2)}</span> ❄️</p>
           ${d.discountAmount > 0 ? `<p class="text-green-400 text-sm mt-1">Скидка: -${d.discountAmount} ❄️</p>` : ''}
           <p class="text-white/70 text-xs mt-1">*Предоплата 75%: <span id="prepaymentAmount" class="font-bold text-cyan-300">${((d.total - (d.discountAmount || 0)) * 0.75).toFixed(2)}</span> ❄️</p>
+          <div class="mt-4 flex items-start gap-2">
+          <input type="checkbox" id="agreeOffer" class="mt-1">
+          <label for="agreeOffer" class="text-white/70 text-sm">
+          Я принимаю условия <a href="https://example.com/offer.pdf" target="_blank" class="text-cyan-400 underline">публичной оферты</a> и даю согласие на обработку персональных данных
+          </label>
+          </div>
           <button id="createOrderFinal" class="mt-5 w-full bg-green-600 hover:bg-green-700 py-3 rounded-xl font-bold">Оформить заказ</button>
         </div>
         ${renderFooter()}
@@ -514,6 +520,10 @@ function attachHomeHandlers() {
     function attachNewOrderHandlers() {
       const priceInput = document.getElementById('orderPrice');
       const weightInput = document.getElementById('orderWeight');
+      if (!document.getElementById('agreeOffer').checked) {
+      alert('Необходимо согласиться с условиями публичной оферты');
+      return;
+      }
       if (priceInput) {
       priceInput.value = '';
       priceInput.placeholder = '0';
@@ -723,10 +733,10 @@ async function renderMyOrders() {
           <button id="dropshipperBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">📦 ${isDropshipper ? 'Кабинет дропшиппера' : 'Стать дропшиппером'}</button>
           <button id="academyBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">🎓 Академия</button>
           ${isOwner ? '<button id="adminPanelBtn" class="mt-3 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">⚙️ Админ-панель</button>' : ''}
-          <button id="logoutBtn" class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full transition">Выйти из аккаунта</button>
           <button id="passportDataBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">🛂 Паспортные данные</button>
-          <button id="signAgreementBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">📄 Подписать договор</button>
-          <button id="downloadAgreementBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">📥 Скачать договор</button>
+          <!-- Если нужна кнопка скачивания договора, оставьте её здесь -->
+          <button id="downloadAgreementBtn" class="mt-2 bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full transition">📄 Мой договор</button>
+          <button id="logoutBtn" class="mt-4 w-full bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full transition">Выйти из аккаунта</button>
         </div>
         ${renderFooter()}
       `;
@@ -781,10 +791,6 @@ async function renderMyOrders() {
   // Паспортные данные
 const passportBtn = document.getElementById('passportDataBtn');
 if (passportBtn) passportBtn.onclick = () => showPassportForm();
-
-// Подписать договор
-const signAgreementBtn = document.getElementById('signAgreementBtn');
-if (signAgreementBtn) signAgreementBtn.onclick = () => signAgreement();
 
 // Скачать договор
 const downloadAgreementBtn = document.getElementById('downloadAgreementBtn');
@@ -2610,10 +2616,30 @@ function showPassportForm() {
     <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
       <div class="p-5 border-b border-white/20">
         <h3 class="text-white font-bold text-lg">🛂 Паспортные данные</h3>
+        <p class="text-white/50 text-xs mt-1">Необходимы для таможенного оформления</p>
       </div>
-      <div class="p-5 overflow-y-auto flex-1">
-        <p class="text-white/70 text-sm mb-3">Данные будут зашифрованы и использованы только для таможенного оформления.</p>
-        <textarea id="passportInput" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 h-32" placeholder="Серия, номер, кем выдан, дата выдачи"></textarea>
+      <div class="p-5 overflow-y-auto flex-1 space-y-3">
+        <div>
+          <label class="text-white/70 text-sm">Серия и номер</label>
+          <input type="text" id="passportSeriesNumber" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Например: AB 1234567">
+          <p class="text-white/40 text-xs mt-1">Первые 4 цифры — серия, остальные — номер</p>
+        </div>
+        <div>
+          <label class="text-white/70 text-sm">Дата выдачи</label>
+          <input type="date" id="passportIssueDate" class="w-full p-3 rounded-xl bg-white/20 border border-white/30">
+        </div>
+        <div>
+          <label class="text-white/70 text-sm">Кем выдан</label>
+          <input type="text" id="passportIssuedBy" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Например: ОВД Центрального района г. Минска">
+        </div>
+        <div>
+          <label class="text-white/70 text-sm">Идентификационный номер (если есть)</label>
+          <input type="text" id="passportIdNumber" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="14 цифр">
+        </div>
+        <div>
+          <label class="text-white/70 text-sm">Адрес регистрации</label>
+          <input type="text" id="passportAddress" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Как в паспорте">
+        </div>
       </div>
       <div class="p-5 border-t border-white/20">
         <div class="flex gap-3">
@@ -2625,12 +2651,36 @@ function showPassportForm() {
   `;
   document.body.appendChild(modal);
   
+  // Загружаем текущие данные, если есть
+  (async () => {
+    const { data } = await supabaseClient.from('users').select('passport_data').eq('user_id', userId).single();
+    if (data?.passport_data) {
+      try {
+        const p = JSON.parse(data.passport_data);
+        document.getElementById('passportSeriesNumber').value = p.seriesNumber || '';
+        document.getElementById('passportIssueDate').value = p.issueDate || '';
+        document.getElementById('passportIssuedBy').value = p.issuedBy || '';
+        document.getElementById('passportIdNumber').value = p.idNumber || '';
+        document.getElementById('passportAddress').value = p.address || '';
+      } catch(e) {}
+    }
+  })();
+  
   modal.querySelector('#cancelPassportBtn').onclick = () => modal.remove();
   modal.querySelector('#savePassportBtn').onclick = async () => {
-    const data = modal.querySelector('#passportInput').value.trim();
-    if (!data) { alert('Введите данные'); return; }
-    // В реальности здесь должно быть шифрование (например, через Supabase Vault)
-    const { error } = await supabaseClient.from('users').update({ passport_data: data }).eq('user_id', userId);
+    const seriesNumber = document.getElementById('passportSeriesNumber').value.trim();
+    const issueDate = document.getElementById('passportIssueDate').value;
+    const issuedBy = document.getElementById('passportIssuedBy').value.trim();
+    const idNumber = document.getElementById('passportIdNumber').value.trim();
+    const address = document.getElementById('passportAddress').value.trim();
+    
+    if (!seriesNumber || !issueDate || !issuedBy) {
+      alert('Заполните обязательные поля: серия/номер, дата выдачи, кем выдан');
+      return;
+    }
+    
+    const passportData = JSON.stringify({ seriesNumber, issueDate, issuedBy, idNumber, address });
+    const { error } = await supabaseClient.from('users').update({ passport_data: passportData }).eq('user_id', userId);
     if (error) { alert('Ошибка: ' + error.message); } else { alert('Данные сохранены'); modal.remove(); }
   };
 }
