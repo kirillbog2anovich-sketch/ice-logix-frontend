@@ -3081,16 +3081,31 @@ async function showPhoneBinding() {
 async function renderCart() {
   if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
   try {
-    console.log('userId:', userId);
     const { data, error } = await supabaseClient
       .from('cart')
-      .select('*')
-      .eq('user_id', userId);
-    console.log('Cart data:', data, 'Error:', error);
-    if (error) throw error;
+      .select('*, products(*)')
+      .eq('user_id', userId)
+      .order('added_at', { ascending: false });
+    
+    if (error) {
+      // Показываем ошибку прямо на экране
+      return `
+        <div class="text-center py-10">
+          <p class="text-red-400 font-bold mb-2">❌ Ошибка загрузки корзины</p>
+          <p class="text-white/70 text-sm bg-white/5 p-3 rounded-xl">${error.message}</p>
+          <p class="text-white/50 text-xs mt-2">Код: ${error.code || 'нет'}</p>
+          <button id="retryCartBtn" class="mt-4 bg-cyan-500 px-6 py-2 rounded-full">Повторить</button>
+        </div>
+        ${renderFooter()}
+      `;
+    }
+    
     if (!data || data.length === 0) {
       return '<div class="text-center py-10"><p class="text-white/70 mb-4">🛒 Ваша корзина пуста</p><button id="goToCatalogBtn" class="bg-cyan-500 px-6 py-2 rounded-full">Перейти в каталог</button></div>' + renderFooter();
     }
+    
+    // ... остальная часть с отображением товаров ...
+    // (оставьте как было, но для отладки пока можно упростить)
     return `
       <button id="backFromCartBtn" class="global-back-btn">← Назад</button>
       <div class="space-y-3">
@@ -3100,8 +3115,14 @@ async function renderCart() {
       ${renderFooter()}
     `;
   } catch (err) {
-    console.error('Ошибка в renderCart:', err);
-    return '<p class="text-center mt-10 text-red-400">Ошибка загрузки корзины: ' + err.message + '</p>';
+    return `
+      <div class="text-center py-10">
+        <p class="text-red-400 font-bold mb-2">❌ Исключение в renderCart</p>
+        <p class="text-white/70 text-sm bg-white/5 p-3 rounded-xl">${err.message}</p>
+        <button id="retryCartBtn" class="mt-4 bg-cyan-500 px-6 py-2 rounded-full">Повторить</button>
+      </div>
+      ${renderFooter()}
+    `;
   }
 }
 
@@ -3157,6 +3178,10 @@ function attachCartHandlers() {
       alert('Корзина пуста');
       return;
     }
+
+    const retryBtn = document.getElementById('retryCartBtn');
+if (retryBtn) retryBtn.onclick = () => renderCurrentScreen();
+
     // Формируем заказ из первого товара (для примера), в будущем можно сделать множественный заказ
     const firstItem = cartItems[0];
     const product = firstItem.products;
