@@ -235,6 +235,34 @@ const MAX_REQUESTS_TRUSTED = 100;
       `;
     }
 
+    async function renderPromoBanners() {
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await supabaseClient
+      .from('promotions')
+      .select('*')
+      .eq('is_active', true)
+      .or(`starts_at.is.null,starts_at.lte.${now}`)
+      .or(`expires_at.is.null,expires_at.gte.${now}`)
+      .order('created_at', { ascending: false })
+      .limit(5);
+      
+    if (error) throw error;
+    if (!data || data.length === 0) return '';
+    
+    return data.map(p => `
+      <div class="banner-slide" data-promotion-id="${p.id}">
+        <div class="banner-title">${p.title}</div>
+        <div class="banner-desc">${p.description || ''}</div>
+        <div class="text-xs text-white/60 mt-1">Скидка: ${p.discount_type === 'percent' ? p.discount_value + '%' : p.discount_value + ' BYN'}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Ошибка загрузки баннеров:', err);
+    return '';
+  }
+}
+
         // ==================== РЕНДЕР ГЛАВНОЙ СТРАНИЦЫ ====================
         async function renderHome() {
       const marketplaces = [
@@ -258,9 +286,9 @@ const MAX_REQUESTS_TRUSTED = 100;
           <div class="story-card" data-story="drops"><div class="story-icon">📦</div><span class="story-label">Дропы</span></div>
           <div class="story-card" data-story="referral"><div class="story-icon">👥</div><span class="story-label">Рефералы</span></div>
         </div>
-        <div class="scroll-x mb-6">${banners.map(b => `<div class="banner-slide"><div class="banner-title">${b.title}</div><div class="banner-desc">${b.desc}</div></div>`).join('')}</div>
-        <div class="mb-6"><div class="flex justify-between items-center mb-3"><h3 class="text-white font-bold">🔥 Популярные площадки</h3><button id="moreMarketplacesBtn" class="text-cyan-400 text-sm">Больше →</button></div><div class="scroll-x">${marketplaces.map(mp => `<div class="story-card marketplace-story" data-url="${mp.url}" style="min-width: 70px;"><div class="story-icon text-2xl">🛍️</div><span class="story-label">${mp.name}</span></div>`).join('')}</div></div>
-        <div class="mb-6"><div class="flex justify-between items-center mb-3"><h3 class="text-white font-bold">✨ Рекомендуем</h3><button id="moreProductsBtn" class="text-cyan-400 text-sm">Больше →</button></div><div class="grid grid-cols-2 gap-3" id="homeProductsGrid"></div></div>
+          <div class="scroll-x mb-6" id="promoBannersContainer">
+          ${await renderPromoBanners()}
+        </div>
         ${renderFooter()}
       `;
     }
@@ -305,6 +333,11 @@ const MAX_REQUESTS_TRUSTED = 100;
       return `
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg">
           <h2 class="text-xl font-bold mb-4">🧮 Калькулятор стоимости</h2>
+          <div id="activePromoInfo" class="mb-3 p-3 bg-cyan-500/10 rounded-xl border border-cyan-500/30 hidden">
+          <p class="text-cyan-400 font-bold">🎁 Акция: <span id="promoTitle"></span></p>
+          <p class="text-white/70 text-sm" id="promoDesc"></p>
+          <p class="text-green-400 text-sm mt-1" id="promoDiscount"></p>
+          </div>
           <label class="text-white/70 text-sm">Ссылка на товар (необязательно)</label>
           <input type="text" id="calcUrl" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="https://poizon.com/...">
           <label class="text-white/70 text-sm block mt-2">Цена (¥)</label>
@@ -318,44 +351,86 @@ const MAX_REQUESTS_TRUSTED = 100;
       `;
     }
 
-    function attachCalculatorHandlers() {
-      const slider = document.getElementById('calcWeight');
-      const valSpan = document.getElementById('weightVal');
-      if (slider) slider.oninput = () => valSpan.innerText = parseFloat(slider.value).toFixed(1) + ' кг';
-      const calcBtn = document.getElementById('calcBtn');
-      if (calcBtn) calcBtn.onclick = async () => {
-  const limitCheck = await checkAndUpdateLimit();
-  if (!limitCheck.allowed) {
-    alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
-    return;
-  }
-  
-  // Увеличиваем счётчик
-  if (userId) {
-    const newCount = limitCheck.currentCount + 1;
-    await supabaseClient.from('users').update({ daily_requests_count: newCount, last_request_date: new Date().toISOString() }).eq('user_id', userId);
-    userLimits.dailyCount = newCount;
-  } else {
-    // Гость – сохраняем в localStorage
-    const guestKey = 'ice_guest_requests';
-    let guestData = JSON.parse(localStorage.getItem(guestKey) || '{"count":0,"date":""}');
-    const today = new Date().toDateString();
-    if (guestData.date !== today) guestData = { count: 0, date: today };
-    guestData.count++;
-    localStorage.setItem(guestKey, JSON.stringify(guestData));
-  }
-  
-  // Оригинальный код расчёта (не трогаем!)
-  let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
-  let weight = parseFloat(slider?.value || 1);
-  let total = (price * 0.45) + (weight * 12);
-  document.getElementById('totalPrice').innerText = total.toFixed(2);
-  document.getElementById('calcResult').classList.remove('hidden');
-  window.tempOrder = { url: document.getElementById('calcUrl')?.value || '', price: price, weight: weight, total: total, discountAmount: 0, appliedPromo: null };
-};
-      const toNewOrderBtn = document.getElementById('toNewOrderBtn');
-      if (toNewOrderBtn) toNewOrderBtn.onclick = () => { if (window.tempOrder) switchTab('neworder'); else alert('Сначала рассчитайте стоимость'); };
+    async function attachCalculatorHandlers() {
+  // Проверяем, есть ли активированная акция (через баннер или сохранённую)
+  if (window.activePromotionId) {
+    const { data: promo } = await supabaseClient.from('promotions').select('*').eq('id', window.activePromotionId).single();
+    if (promo) {
+      const activePromoInfo = document.getElementById('activePromoInfo');
+      if (activePromoInfo) {
+        activePromoInfo.classList.remove('hidden');
+        document.getElementById('promoTitle').innerText = promo.title;
+        document.getElementById('promoDesc').innerText = promo.description || '';
+        const discountText = promo.discount_type === 'percent' 
+          ? `Скидка ${promo.discount_value}%` 
+          : `Скидка ${promo.discount_value} BYN`;
+        document.getElementById('promoDiscount').innerText = discountText;
+        window.currentPromotion = promo;
+      }
     }
+  }
+
+  const slider = document.getElementById('calcWeight');
+  const valSpan = document.getElementById('weightVal');
+  if (slider) slider.oninput = () => valSpan.innerText = parseFloat(slider.value).toFixed(1) + ' кг';
+  
+  const calcBtn = document.getElementById('calcBtn');
+  if (calcBtn) calcBtn.onclick = async () => {
+    const limitCheck = await checkAndUpdateLimit();
+    if (!limitCheck.allowed) {
+      alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
+      return;
+    }
+    
+    // Увеличиваем счётчик
+    if (userId) {
+      const newCount = limitCheck.currentCount + 1;
+      await supabaseClient.from('users').update({ daily_requests_count: newCount, last_request_date: new Date().toISOString() }).eq('user_id', userId);
+      userLimits.dailyCount = newCount;
+    } else {
+      const guestKey = 'ice_guest_requests';
+      let guestData = JSON.parse(localStorage.getItem(guestKey) || '{"count":0,"date":""}');
+      const today = new Date().toDateString();
+      if (guestData.date !== today) guestData = { count: 0, date: today };
+      guestData.count++;
+      localStorage.setItem(guestKey, JSON.stringify(guestData));
+    }
+    
+    let price = parseFloat(document.getElementById('calcPrice')?.value || 520);
+    let weight = parseFloat(slider?.value || 1);
+    let total = (price * 0.45) + (weight * 12);
+    
+    // Применяем акцию, если есть
+    let discountAmount = 0;
+    let promotionId = null;
+    if (window.currentPromotion) {
+      const promo = window.currentPromotion;
+      if (total >= (promo.min_order_amount || 0)) {
+        if (promo.discount_type === 'percent') {
+          discountAmount = total * (promo.discount_value / 100);
+        } else {
+          discountAmount = Math.min(promo.discount_value, total);
+        }
+        promotionId = promo.id;
+      }
+    }
+    const finalTotal = total - discountAmount;
+    
+    document.getElementById('totalPrice').innerText = finalTotal.toFixed(2);
+    document.getElementById('calcResult').classList.remove('hidden');
+    window.tempOrder = { 
+      url: document.getElementById('calcUrl')?.value || '', 
+      price, weight, total, finalTotal, discountAmount, 
+      promotionId 
+    };
+  };
+  
+  const toNewOrderBtn = document.getElementById('toNewOrderBtn');
+  if (toNewOrderBtn) toNewOrderBtn.onclick = () => { 
+    if (window.tempOrder) switchTab('neworder'); 
+    else alert('Сначала рассчитайте стоимость'); 
+  };
+}
 
     // ==================== РЕНДЕР НОВОГО ЗАКАЗА (С ПРОМОКОДАМИ) ====================
     async function renderNewOrder() {
@@ -430,6 +505,8 @@ const MAX_REQUESTS_TRUSTED = 100;
           if (!window.tempOrder || !userId) { alert('Ошибка: заполните все поля'); return; }
           try {
             const { data, error } = await supabaseClient.from('orders').insert({
+              promotion_id: window.tempOrder.promotionId || null,
+              promotion_discount: window.tempOrder.discountAmount || 0,
               user_id: userId, source_url: window.tempOrder.url, weight_estimated: window.tempOrder.weight,
               price_original: window.tempOrder.price, price_byn: window.tempOrder.price * 0.45,
               delivery_cost_estimated: window.tempOrder.weight * 12, prepayment_amount: (window.tempOrder.total - window.tempOrder.discountAmount) * 0.75,
@@ -437,6 +514,9 @@ const MAX_REQUESTS_TRUSTED = 100;
             }).select();
             if (error) throw error;
             alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${((window.tempOrder.total - window.tempOrder.discountAmount) * 0.75).toFixed(2)} ❄️`);
+            if (window.tempOrder.promotionId) {
+            await supabaseClient.rpc('increment_promotion_usage', { promo_id: window.tempOrder.promotionId });
+            }
             await sendNotification(userId, `✅ Ваш заказ #${data[0].id.slice(0,8)} оформлен! Ожидайте подтверждения оплаты.`);
             // Снятие лимита после первого заказа
 if (!userLimits.isTrusted) {
@@ -1203,6 +1283,30 @@ async function renderMarketplacesAdminList() {
     return '<p class="text-red-400">Ошибка загрузки</p>';
   }
 }
+
+async function renderPromotionsAdminList() {
+  try {
+    const { data, error } = await supabaseClient.from('promotions').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    if (!data || data.length === 0) return '<p class="text-white/70 text-center py-2">Нет акций</p>';
+    
+    return data.map(p => `
+      <div class="flex items-center justify-between p-2 bg-white/5 rounded-lg">
+        <div>
+          <span class="text-white">${p.title}</span>
+          <span class="text-cyan-400 text-xs ml-2">${p.discount_type === 'percent' ? p.discount_value + '%' : p.discount_value + ' BYN'}</span>
+          <span class="text-white/50 text-xs block">${p.is_active ? '✅ Активна' : '❌ Неактивна'}</span>
+        </div>
+        <div>
+          <button class="editPromotionBtn text-cyan-400 mr-2" data-id="${p.id}">✏️</button>
+          <button class="deletePromotionBtn text-red-400" data-id="${p.id}">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    return '<p class="text-red-400">Ошибка загрузки</p>';
+  }
+}
     
 async function renderAdmin() {
   if (!isOwner) return '<p class="text-center mt-10 text-red-400">Доступ запрещён</p>';
@@ -1219,6 +1323,15 @@ async function renderAdmin() {
     
     return `
       <div class="space-y-4">
+        <!-- 🎁 Акции -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <h3 class="text-white font-bold mb-3">🎁 Управление акциями</h3>
+          <button id="addPromotionBtn" class="w-full bg-cyan-500 py-2 rounded-lg mb-3">➕ Создать акцию</button>
+          <div class="space-y-2 max-h-60 overflow-y-auto" id="promotionsList">
+            ${await renderPromotionsAdminList()}
+          </div>
+        </div>
+
         <!-- Промокоды -->
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
           <h3 class="text-white font-bold mb-3">➕ Создать промокод</h3>
@@ -1678,6 +1791,91 @@ if (archiveBtn) archiveBtn.addEventListener('click', () => {
     };
     document.addEventListener('click', window._globalRestoreHandler);
   }
+  // ================== УПРАВЛЕНИЕ АКЦИЯМИ ==================
+const addPromotionBtn = document.getElementById('addPromotionBtn');
+if (addPromotionBtn) addPromotionBtn.onclick = () => openPromotionForm();
+
+async function openPromotionForm(promotion = null) {
+  const isEdit = !!promotion;
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto';
+  modal.innerHTML = `
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full p-5 border border-white/20">
+      <h3 class="text-white font-bold text-lg mb-4">${isEdit ? '✏️ Редактировать' : '➕ Новая акция'}</h3>
+      <div class="space-y-3">
+        <input type="text" id="promoTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Название *" value="${promotion?.title || ''}">
+        <textarea id="promoDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Описание">${promotion?.description || ''}</textarea>
+        <input type="url" id="promoBanner" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="URL баннера" value="${promotion?.banner_url || ''}">
+        <select id="promoDiscountType" class="w-full p-3 rounded-xl bg-white/20 border border-white/30">
+          <option value="percent" ${promotion?.discount_type === 'percent' ? 'selected' : ''}>Процент (%)</option>
+          <option value="fixed" ${promotion?.discount_type === 'fixed' ? 'selected' : ''}>Фикс (BYN)</option>
+        </select>
+        <input type="number" id="promoDiscountValue" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Значение скидки *" value="${promotion?.discount_value || ''}">
+        <input type="number" id="promoMinAmount" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Мин. сумма заказа (0 - без ограничений)" value="${promotion?.min_order_amount || 0}">
+        <label class="text-white/70 text-sm">Дата начала</label>
+        <input type="datetime-local" id="promoStartsAt" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" value="${promotion?.starts_at ? new Date(promotion.starts_at).toISOString().slice(0,16) : ''}">
+        <label class="text-white/70 text-sm">Дата окончания</label>
+        <input type="datetime-local" id="promoExpiresAt" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" value="${promotion?.expires_at ? new Date(promotion.expires_at).toISOString().slice(0,16) : ''}">
+        <input type="number" id="promoUsageLimit" class="w-full p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Лимит использований (пусто - безлимит)" value="${promotion?.usage_limit || ''}">
+        <label class="flex items-center gap-2 text-white/80"><input type="checkbox" id="promoActive" ${promotion?.is_active !== false ? 'checked' : ''}> Активна</label>
+      </div>
+      <div class="flex gap-3 mt-5">
+        <button id="savePromotionBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">${isEdit ? 'Сохранить' : 'Создать'}</button>
+        <button id="cancelPromotionBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('#cancelPromotionBtn').onclick = () => modal.remove();
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  
+  const saveBtn = modal.querySelector('#savePromotionBtn');
+  saveBtn.onclick = async () => {
+    const title = modal.querySelector('#promoTitle').value.trim();
+    const discount_value = parseFloat(modal.querySelector('#promoDiscountValue').value);
+    if (!title || isNaN(discount_value)) { alert('Заполните название и значение скидки'); return; }
+    
+    const payload = {
+      title,
+      description: modal.querySelector('#promoDesc').value.trim(),
+      banner_url: modal.querySelector('#promoBanner').value.trim(),
+      discount_type: modal.querySelector('#promoDiscountType').value,
+      discount_value,
+      min_order_amount: parseFloat(modal.querySelector('#promoMinAmount').value) || 0,
+      starts_at: modal.querySelector('#promoStartsAt').value || null,
+      expires_at: modal.querySelector('#promoExpiresAt').value || null,
+      usage_limit: parseInt(modal.querySelector('#promoUsageLimit').value) || null,
+      is_active: modal.querySelector('#promoActive').checked
+    };
+    
+    try {
+      if (isEdit) {
+        await supabaseClient.from('promotions').update(payload).eq('id', promotion.id);
+      } else {
+        await supabaseClient.from('promotions').insert(payload);
+      }
+      alert(isEdit ? 'Акция обновлена' : 'Акция создана');
+      modal.remove();
+      renderCurrentScreen();
+    } catch (err) { alert('Ошибка: ' + err.message); }
+  };
+}
+
+// Обработчики редактирования/удаления (делегирование)
+document.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('editPromotionBtn')) {
+    const id = e.target.dataset.id;
+    const { data } = await supabaseClient.from('promotions').select('*').eq('id', id).single();
+    if (data) openPromotionForm(data);
+  }
+  if (e.target.classList.contains('deletePromotionBtn')) {
+    const id = e.target.dataset.id;
+    if (!confirm('Удалить акцию?')) return;
+    await supabaseClient.from('promotions').delete().eq('id', id);
+    alert('Удалено');
+    renderCurrentScreen();
+  }
+});
 }
 
     // Функция для обновления статуса заказа с отправкой уведомления
@@ -1772,6 +1970,16 @@ async function sendNotification(userId, message, orderId = null) {
         el.addEventListener('click', () => alert(el.innerText + ' будет доступно позже'));
       });
       loadHomeProducts();
+      document.querySelectorAll('.banner-slide').forEach(el => {
+  el.addEventListener('click', () => {
+    const promoId = el.dataset.promotionId;
+    if (promoId) {
+      // При клике на баннер активируем акцию в калькуляторе
+      window.activePromotionId = promoId;
+      alert('Акция применена! Перейдите в калькулятор.');
+    }
+  });
+});
     }
 
     // ==================== КНОПКА НАЗАД ====================
@@ -1927,6 +2135,11 @@ function ensureBackButtonForSubscreen() {
     return;
   } 
   
+  if (currentTab !== 'calculator') {
+  window.activePromotionId = null;
+  window.currentPromotion = null;
+}
+
   if (currentTab === 'home') {
         contentDiv.innerHTML = await renderHome();
         attachHomeHandlers();
