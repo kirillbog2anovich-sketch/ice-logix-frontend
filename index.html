@@ -676,6 +676,8 @@ async function renderMyOrders() {
             alert('Настройки сохранены');
             renderCurrentScreen();
           } catch (err) { alert('Ошибка: ' + err.message); }
+          const backBtn = document.getElementById('backToProfileBtn');
+if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
         };
       }
       const payoutBtn = document.getElementById('requestPayoutBtn');
@@ -724,6 +726,7 @@ async function renderMyOrders() {
         }));
         
         return `
+        <button id="backFromAcademyBtn" class="global-back-btn">← Назад</button>
           <div class="space-y-4">
             ${isOwner ? '<button id="addCourseBtn" class="global-back-btn mb-2">➕ Добавить курс</button>' : ''}
             ${coursesWithLessons.map(course => `
@@ -839,6 +842,9 @@ async function renderMyOrders() {
               renderCurrentScreen();
             }
           } catch (err) { alert('Ошибка загрузки урока'); }
+
+          const backBtn = document.getElementById('backFromAcademyBtn');
+if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
         };
       });
     }
@@ -853,7 +859,7 @@ async function renderMyOrders() {
         if (!wishlistItems || wishlistItems.length === 0) return '<p class="text-center mt-10 text-white/70">У вас пока нет избранных товаров</p>';
         
         return `
-          <button id="backToProfileBtn" class="global-back-btn">← Назад</button>
+        <button id="backFromWishlistBtn" class="global-back-btn">← Назад</button>
           <div class="grid grid-cols-2 gap-4">
             ${wishlistItems.map(item => `
               <div class="product-card" data-product-id="${item.products.id}">
@@ -886,7 +892,9 @@ async function renderMyOrders() {
             window.tempOrder = { url: url, price: price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
             switchTab('neworder');
           }
-        };
+      const backBtn = document.getElementById('backFromWishlistBtn');
+if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
+         };
       });
     }
 
