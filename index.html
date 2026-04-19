@@ -508,6 +508,14 @@ if (!userLimits.isTrusted) {
         copyBtn.onclick = () => {
           const link = userReferralCode ? `https://t.me/ice_logix_bot?start=ref_${userReferralCode}` : '';
           if (link) { navigator.clipboard.writeText(link); alert('Ссылка скопирована!'); }
+      const myOrdersBtn = document.getElementById('myOrdersBtn');
+  if (myOrdersBtn) myOrdersBtn.onclick = () => { currentSubScreen = 'myOrders'; renderCurrentScreen(); };
+  
+  const dropshipperBtn = document.getElementById('dropshipperBtn');
+  if (dropshipperBtn) dropshipperBtn.onclick = () => switchTab('dropshipper');
+  
+  const academyBtn = document.getElementById('academyBtn');
+  if (academyBtn) academyBtn.onclick = () => switchTab('academy');
         };
       }
     }
@@ -1074,7 +1082,7 @@ async function renderAdminOrdersList() {
               <p class="text-white/50 text-xs">${new Date(new Date(order.created_at).getTime() + 3*60*60*1000).toLocaleString('ru-RU')}</p>
               <p class="text-white/70 text-xs mt-1">👤 ${displayName} ${displayUsername}</p>
               <p class="text-white/50 text-xs">ID: ${order.user_id}</p>
-              <p class="text-cyan-400 text-sm mt-1">${order.prepayment_amount || 0} ❄️</p>
+              <p class="text-cyan-400 text-sm mt-1">${Number(order.prepayment_amount || 0).toFixed(2)} ❄️</p>
             </div>
             <div class="text-right">
               <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
@@ -1433,21 +1441,31 @@ function attachAdminHandlers() {
       } catch (err) { alert('Ошибка: ' + err.message); }
     };
   }
-    // ================== РЕДАКТИРОВАНИЕ / УДАЛЕНИЕ ПЛОЩАДОК ==================
+      // ================== РЕДАКТИРОВАНИЕ / УДАЛЕНИЕ ПЛОЩАДОК (ДЕЛЕГИРОВАНИЕ) ==================
+  if (!window._marketplaceHandlers) {
+    window._marketplaceHandlers = true;
     document.addEventListener('click', async (e) => {
-    if (e.target.classList.contains('editMarketplaceBtn')) {
-      const id = e.target.dataset.id;
-      const { data } = await supabaseClient.from('marketplaces').select('*').eq('id', id).single();
-      if (data) openMarketplaceForm(data);
-    }
-    if (e.target.classList.contains('deleteMarketplaceBtn')) {
-      const id = e.target.dataset.id;
-      if (!confirm('Удалить площадку?')) return;
-      await supabaseClient.from('marketplaces').delete().eq('id', id);
-      alert('Удалено');
-      renderCurrentScreen();
-    }
-  });
+      // Редактирование
+      const editBtn = e.target.closest('.editMarketplaceBtn');
+      if (editBtn) {
+        const id = editBtn.dataset.id;
+        const { data } = await supabaseClient.from('marketplaces').select('*').eq('id', id).single();
+        if (data) openMarketplaceForm(data);
+        return;
+      }
+      
+      // Удаление
+      const deleteBtn = e.target.closest('.deleteMarketplaceBtn');
+      if (deleteBtn) {
+        const id = deleteBtn.dataset.id;
+        if (!confirm('Удалить площадку?')) return;
+        await supabaseClient.from('marketplaces').delete().eq('id', id);
+        alert('Удалено');
+        renderCurrentScreen();
+        return;
+      }
+    });
+  }
 
     // ================== АРХИВАЦИЯ ЗАКАЗА (ДЕЛЕГИРОВАНИЕ) ==================
   // Используем один глобальный обработчик, который не нужно пересоздавать
