@@ -518,12 +518,12 @@ function attachHomeHandlers() {
     }
 
     function attachNewOrderHandlers() {
-      const priceInput = document.getElementById('orderPrice');
-      const weightInput = document.getElementById('orderWeight');
       if (!document.getElementById('agreeOffer').checked) {
       alert('Необходимо согласиться с условиями публичной оферты');
       return;
       }
+      const priceInput = document.getElementById('orderPrice');
+      const weightInput = document.getElementById('orderWeight');
       if (priceInput) {
       priceInput.value = '';
       priceInput.placeholder = '0';
