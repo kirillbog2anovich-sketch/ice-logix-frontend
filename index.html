@@ -394,14 +394,15 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 
     async function loadHomeProducts() {
   try {
-    const { data } = await supabaseClient.from('products').select('*').eq('is_active', true).limit(6);
+    const { data } = await supabaseClient.from('products').select('*').eq('is_active', true).limit(10);
     const grid = document.getElementById('homeProductsGrid');
     if (grid && data) {
       grid.innerHTML = data.map(p => `
         <div class="product-card" data-product-id="${p.id}">
-          <div class="aspect-square bg-white/10 flex items-center justify-center">
-            <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
-          </div>
+          <div class="aspect-square bg-white/10 flex items-center justify-center relative">
+  <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
+  <span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span>
+</div>
           <div class="p-2">
             <p class="text-white font-bold text-sm truncate">${p.title}</p>
             <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
@@ -412,6 +413,24 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           </div>
         </div>
       `).join('');
+
+      grid.querySelectorAll('.wishlist-heart').forEach(heart => {
+  heart.onclick = async (e) => {
+    e.stopPropagation();
+    const productId = heart.dataset.productId;
+    if (wishlist.has(productId)) {
+      await supabaseClient.from('wishlist').delete().eq('user_id', userId).eq('product_id', productId);
+      wishlist.delete(productId);
+      heart.innerText = '🤍';
+      heart.classList.remove('text-red-500');
+    } else {
+      await supabaseClient.from('wishlist').insert({ user_id: userId, product_id: productId });
+      wishlist.add(productId);
+      heart.innerText = '❤️';
+      heart.classList.add('text-red-500');
+    }
+  };
+});
 
       // Обработчики для кнопок внутри карточек
       grid.querySelectorAll('.addToCartBtn').forEach(btn => {
@@ -2355,22 +2374,22 @@ async function sendNotification(userId, message, orderId = null) {
       </div>
       <div class="grid grid-cols-2 gap-4" id="productsGrid">
         ${data.map(p => `
-          <div class="product-card" data-product-id="${p.id}">
-            <div class="aspect-square bg-white/10 flex items-center justify-center relative">
-              <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
-              <span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span>
-            </div>
-            <div class="p-2">
-              <p class="text-white font-bold text-sm truncate">${p.title}</p>
-              <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
-              <p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p>
-              <div class="flex gap-1 mt-2">
-                <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
-                <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
-              </div>
-            </div>
-          </div>
-        `).join('')}
+  <div class="product-card" data-product-id="${p.id}">
+    <div class="aspect-square bg-white/10 flex items-center justify-center relative">
+      <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
+      <span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span>
+    </div>
+    <div class="p-2">
+      <p class="text-white font-bold text-sm truncate">${p.title}</p>
+      <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
+      <p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p>
+      <div class="flex gap-1 mt-2">
+        <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
+        <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
+      </div>
+    </div>
+  </div>
+`).join('')}
       </div>
       <div class="flex justify-center gap-2 mt-4">
         <button id="prevPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage <= 1 ? 'disabled' : ''}>← Назад</button>
@@ -2572,6 +2591,7 @@ function ensureBackButtonForSubscreen() {
     // ==================== РЕНДЕР КАТАЛОГОВ (ВЫБОР) ====================
 async function renderCatalogs() {
   return `
+  <button id="backFromCatalogsBtn" class="global-back-btn">← Назад</button>
     <div class="space-y-4">
       <h2 class="text-white text-xl font-bold mb-4">📚 Каталоги</h2>
       <div class="grid grid-cols-1 gap-4">
@@ -2604,6 +2624,9 @@ function attachCatalogsHandlers() {
   const productsBtn = document.getElementById('openProductsCatalogBtn');
   if (marketplacesBtn) marketplacesBtn.onclick = () => { currentSubScreen = 'marketplaces'; renderCurrentScreen(); };
   if (productsBtn) productsBtn.onclick = () => { currentSubScreen = 'productsCatalog'; renderCurrentScreen(); };
+
+  const backBtn = document.getElementById('backFromCatalogsBtn');
+  if (backBtn) backBtn.onclick = () => switchTab('home');
 }
 
 // ==================== РЕНДЕР ПОДКАТАЛОГА ПЛОЩАДОК ====================
