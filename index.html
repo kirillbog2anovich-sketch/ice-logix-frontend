@@ -3236,39 +3236,42 @@ async function renderCart() {
     
     let totalPrice = 0;
     const itemsHtml = data.map(item => {
-  const product = item.products;
-  if (!product) return '';
-  const itemTotal = product.price * item.quantity;
-  totalPrice += itemTotal;
-  return `
-    <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
-      <input type="checkbox" class="cart-item-checkbox" data-cart-id="${item.id}" data-product-id="${product.id}" data-price="${product.price}" data-url="${product.url}" data-title="${product.title.replace(/"/g, '&quot;')}" checked>
-      <img src="${product.image_url || 'https://via.placeholder.com/150'}" class="w-16 h-16 object-cover rounded-lg">
-      <div class="flex-1">
-        <p class="text-white font-bold">${product.title}</p>
-        <p class="text-cyan-400 text-sm">${product.price} ${product.currency} × <span class="cart-qty-display">${item.quantity}</span></p>
-        <p class="text-white/70 text-xs">${itemTotal.toFixed(2)} BYN (примерно)</p>
-      </div>
-      <div class="flex items-center gap-2">
-        <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="decrease" data-id="${item.id}">−</button>
-        <span class="cart-qty-display text-white">${item.quantity}</span>
-        <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="increase" data-id="${item.id}">+</button>
-        <button class="cart-remove-btn text-red-400 ml-2" data-id="${item.id}">🗑️</button>
-      </div>
-    </div>
-  `;
-}).join('');
+      const product = item.products;
+      if (!product) return '';
+      const itemTotal = product.price * item.quantity;
+      totalPrice += itemTotal;
+      return `
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
+          <input type="checkbox" class="cart-item-checkbox" data-cart-id="${item.id}" data-product-id="${product.id}" data-price="${product.price}" data-url="${product.url}" data-title="${product.title.replace(/"/g, '&quot;')}" checked>
+          <img src="${product.image_url || 'https://via.placeholder.com/150'}" class="w-16 h-16 object-cover rounded-lg">
+          <div class="flex-1">
+            <p class="text-white font-bold">${product.title}</p>
+            <p class="text-cyan-400 text-sm">${product.price} ${product.currency} × <span class="cart-qty-display">${item.quantity}</span></p>
+            <p class="text-white/70 text-xs">${itemTotal.toFixed(2)} BYN (примерно)</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="decrease" data-id="${item.id}">−</button>
+            <span class="cart-qty-display text-white">${item.quantity}</span>
+            <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="increase" data-id="${item.id}">+</button>
+            <button class="cart-remove-btn text-red-400 ml-2" data-id="${item.id}">🗑️</button>
+          </div>
+        </div>
+      `;
+    }).join('');
     
     return `
-      <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 mt-4">
-  <div class="flex justify-between items-center">
-    <span class="text-white font-bold text-lg">Итого:</span>
-    <span class="text-cyan-400 font-bold text-xl" id="cartTotalAmount">${totalPrice.toFixed(2)} BYN</span>
-  </div>
-  <p class="text-white/50 text-xs mt-1">*Примерная стоимость, точный расчёт в калькуляторе</p>
-  <button id="clearCartBtn" class="w-full mt-3 bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full text-sm">🗑️ Очистить корзину</button>
-  <button id="checkoutCartBtn" class="w-full mt-2 bg-green-500 hover:bg-green-600 py-3 rounded-full font-bold">✨ Оформить заказ</button>
-</div>
+      <button id="backFromCartBtn" class="global-back-btn">← Назад</button>
+      <div class="space-y-3">
+        ${itemsHtml}
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 mt-4">
+          <div class="flex justify-between items-center">
+            <span class="text-white font-bold text-lg">Итого:</span>
+            <span class="text-cyan-400 font-bold text-xl" id="cartTotalAmount">${totalPrice.toFixed(2)} BYN</span>
+          </div>
+          <p class="text-white/50 text-xs mt-1">*Примерная стоимость, точный расчёт в калькуляторе</p>
+          <button id="clearCartBtn" class="w-full mt-3 bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full text-sm">🗑️ Очистить корзину</button>
+          <button id="checkoutCartBtn" class="w-full mt-2 bg-green-500 hover:bg-green-600 py-3 rounded-full font-bold">✨ Оформить заказ</button>
+        </div>
       </div>
       ${renderFooter()}
     `;
