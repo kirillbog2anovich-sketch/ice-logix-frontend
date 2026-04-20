@@ -3236,27 +3236,28 @@ async function renderCart() {
     
     let totalPrice = 0;
     const itemsHtml = data.map(item => {
-      const product = item.products;
-      if (!product) return '';
-      const itemTotal = product.price * item.quantity;
-      totalPrice += itemTotal;
-      return `
-      <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
-          <input type="checkbox" class="cart-item-checkbox" data-cart-id="${item.id}" data-product-id="${product.id}" data-price="${product.price}" data-url="${product.url}" data-title="${product.title}" checked>
-          <div class="flex-1">
-            <p class="text-white font-bold">${product.title}</p>
-            <p class="text-cyan-400 text-sm">${product.price} ${product.currency} × ${item.quantity}</p>
-            <p class="text-white/70 text-xs">${itemTotal.toFixed(2)} BYN (примерно)</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="decrease" data-id="${item.id}">−</button>
-            <span class="text-white">${item.quantity}</span>
-            <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="increase" data-id="${item.id}">+</button>
-            <button class="cart-remove-btn text-red-400 ml-2" data-id="${item.id}">🗑️</button>
-          </div>
-        </div>
-      `;
-    }).join('');
+  const product = item.products;
+  if (!product) return '';
+  const itemTotal = product.price * item.quantity;
+  totalPrice += itemTotal;
+  return `
+    <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
+      <input type="checkbox" class="cart-item-checkbox" data-cart-id="${item.id}" data-product-id="${product.id}" data-price="${product.price}" data-url="${product.url}" data-title="${product.title.replace(/"/g, '&quot;')}" checked>
+      <img src="${product.image_url || 'https://via.placeholder.com/150'}" class="w-16 h-16 object-cover rounded-lg">
+      <div class="flex-1">
+        <p class="text-white font-bold">${product.title}</p>
+        <p class="text-cyan-400 text-sm">${product.price} ${product.currency} × <span class="cart-qty-display">${item.quantity}</span></p>
+        <p class="text-white/70 text-xs">${itemTotal.toFixed(2)} BYN (примерно)</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="decrease" data-id="${item.id}">−</button>
+        <span class="cart-qty-display text-white">${item.quantity}</span>
+        <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="increase" data-id="${item.id}">+</button>
+        <button class="cart-remove-btn text-red-400 ml-2" data-id="${item.id}">🗑️</button>
+      </div>
+    </div>
+  `;
+}).join('');
     
     return `
       <div class="space-y-3">
@@ -3269,6 +3270,7 @@ async function renderCart() {
           <p class="text-white/50 text-xs mt-1">*Примерная стоимость, точный расчёт в калькуляторе</p>
           <button id="clearCartBtn" class="w-full mt-3 bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full text-sm">🗑️ Очистить корзину</button>
           <button id="checkoutCartBtn" class="w-full mt-2 bg-green-500 hover:bg-green-600 py-3 rounded-full font-bold">✨ Оформить заказ</button>
+          <span class="text-cyan-400 font-bold text-xl" id="cartTotalAmount">${totalPrice.toFixed(2)} BYN</span>
         </div>
       </div>
       ${renderFooter()}
@@ -3286,18 +3288,38 @@ async function renderCart() {
 }
 
 function attachCartHandlers() {
+  const backBtn = document.getElementById('backFromCartBtn');
+  if (backBtn) backBtn.onclick = () => switchTab('home');
   
   const goToCatalogBtn = document.getElementById('goToCatalogBtn');
   if (goToCatalogBtn) goToCatalogBtn.onclick = () => switchTab('catalogs');
   
-  // Обработчики изменения количества и удаления
+  // Функция пересчёта итога
+  function updateCartTotal() {
+    let total = 0;
+    document.querySelectorAll('.cart-item-checkbox:checked').forEach(cb => {
+      const price = parseFloat(cb.dataset.price) || 0;
+      const qtySpan = cb.closest('[data-cart-id]')?.querySelector('.cart-qty-display');
+      const quantity = parseInt(qtySpan?.innerText || '1');
+      total += price * 0.45 + 12 * quantity; // примерная формула
+    });
+    const totalSpan = document.getElementById('cartTotalAmount');
+    if (totalSpan) totalSpan.innerText = total.toFixed(2) + ' BYN';
+  }
+  
+  // Обработчики чекбоксов
+  document.querySelectorAll('.cart-item-checkbox').forEach(cb => {
+    cb.addEventListener('change', updateCartTotal);
+  });
+  
+  // Обработчики изменения количества
   document.querySelectorAll('.cart-qty-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const action = btn.dataset.action;
       const cartId = btn.dataset.id;
       const row = btn.closest('[data-cart-id]');
-      const qtySpan = row.querySelector('span');
+      const qtySpan = row.querySelector('.cart-qty-display');
       let newQty = parseInt(qtySpan.innerText);
       
       if (action === 'increase') newQty++;
@@ -3306,72 +3328,77 @@ function attachCartHandlers() {
       const { error } = await supabaseClient.from('cart').update({ quantity: newQty, updated_at: new Date() }).eq('id', cartId);
       if (!error) {
         qtySpan.innerText = newQty;
-        renderCurrentScreen(); // Перерисовываем для обновления итого
+        updateCartTotal();
       }
     });
   });
   
+  // Удаление товара
   document.querySelectorAll('.cart-remove-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const cartId = btn.dataset.id;
       await supabaseClient.from('cart').delete().eq('id', cartId);
+      updateCartBadge();
       renderCurrentScreen();
     });
   });
   
+  // Очистка корзины
   const clearCartBtn = document.getElementById('clearCartBtn');
   if (clearCartBtn) clearCartBtn.onclick = async () => {
     if (!confirm('Удалить все товары из корзины?')) return;
     await supabaseClient.from('cart').delete().eq('user_id', userId);
+    updateCartBadge();
     renderCurrentScreen();
   };
   
-  const checkoutSelectedBtn = document.getElementById('checkoutSelectedBtn');
-if (checkoutSelectedBtn) {
-  checkoutSelectedBtn.onclick = async () => {
-    alert('Клик по кнопке Оформить выбранное');
-    const checkboxes = document.querySelectorAll('.cart-item-checkbox:checked');
-    alert('Выбрано чекбоксов: ' + checkboxes.length);
-    if (checkboxes.length === 0) {
-      alert('Выберите хотя бы один товар');
-      return;
-    }
-    
-    const selectedItems = [];
-    checkboxes.forEach(cb => {
-      selectedItems.push({
-        cartId: cb.dataset.cartId,
-        productId: cb.dataset.productId,
-        title: cb.dataset.title,
-        price: parseFloat(cb.dataset.price),
-        url: cb.dataset.url,
-        quantity: 1
+  // Оформление заказа
+  const checkoutBtn = document.getElementById('checkoutCartBtn');
+  if (checkoutBtn) {
+    checkoutBtn.onclick = () => {
+      const checkboxes = document.querySelectorAll('.cart-item-checkbox:checked');
+      if (checkboxes.length === 0) {
+        alert('Выберите хотя бы один товар');
+        return;
+      }
+      
+      const selectedItems = [];
+      checkboxes.forEach(cb => {
+        const cartRow = cb.closest('[data-cart-id]');
+        const quantity = parseInt(cartRow.querySelector('.cart-qty-display')?.innerText || '1');
+        selectedItems.push({
+          cartId: cartRow.dataset.cartId,
+          productId: cb.dataset.productId,
+          title: cb.dataset.title,
+          price: parseFloat(cb.dataset.price),
+          url: cb.dataset.url,
+          quantity: quantity
+        });
       });
-    });
-    
-    const total = selectedItems.reduce((sum, item) => sum + item.price * 0.45 + 12, 0);
-    window.tempOrder = {
-      items: selectedItems,
-      total: total,
-      discountAmount: 0,
-      appliedPromo: null
+      
+      const total = selectedItems.reduce((sum, item) => sum + item.price * 0.45 + 12 * item.quantity, 0);
+      window.tempOrder = {
+        items: selectedItems,
+        total: total,
+        discountAmount: 0,
+        appliedPromo: null
+      };
+      
+      currentTab = 'neworder';
+      currentSubScreen = null;
+      appliedPromo = null;
+      if (typeof renderCurrentScreen === 'function') {
+        renderCurrentScreen();
+      } else {
+        alert('Ошибка рендеринга');
+      }
     };
-    
-    alert('tempOrder установлен. Сумма: ' + total.toFixed(2));
-    
-    currentTab = 'neworder';
-    currentSubScreen = null;
-    appliedPromo = null;
-    
-    alert('Сейчас вызов renderCurrentScreen');
-    if (typeof renderCurrentScreen === 'function') {
-      renderCurrentScreen();
-    } else {
-      alert('Ошибка: renderCurrentScreen не функция!');
-    }
-  };
-}
+  }
+  
+  // Повторная попытка (если есть кнопка)
+  const retryBtn = document.getElementById('retryCartBtn');
+  if (retryBtn) retryBtn.onclick = () => renderCurrentScreen();
 }
 
 async function updateCartBadge() {
