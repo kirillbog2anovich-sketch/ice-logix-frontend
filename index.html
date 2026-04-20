@@ -2451,44 +2451,40 @@ function attachProductsCatalogHandlers() {
     };
   });
 
-  // Кнопки "Купить"
-document.querySelectorAll('.buyNowBtn').forEach(btn => {
-  // Удаляем старые обработчики, если были
-  btn.removeEventListener('click', btn._buyHandler);
-  const handler = (e) => {
-    e.stopPropagation();
-    const url = btn.dataset.url;
-    const price = parseFloat(btn.dataset.price);
-    if (!url || isNaN(price)) {
-      console.error('Не хватает data-url или data-price у кнопки Купить', btn);
-      return;
-    }
-    window.tempOrder = {
-      url: url,
-      price: price,
-      weight: 1,
-      total: price * 0.45 + 12,
-      discountAmount: 0,
-      appliedPromo: null
-    };
-    switchTab('neworder');
+ // Делегирование для кнопок "Купить" (работает всегда)
+document.addEventListener('click', function buyNowHandler(e) {
+  const buyBtn = e.target.closest('.buyNowBtn');
+  if (!buyBtn) return;
+  
+  // Проверяем, что клик был в пределах каталога (опционально)
+  const grid = document.getElementById('productsGrid');
+  if (!grid || !grid.contains(buyBtn)) return;
+  
+  e.stopPropagation();
+  e.preventDefault();
+  
+  const url = buyBtn.dataset.url;
+  const price = parseFloat(buyBtn.dataset.price);
+  if (!url || isNaN(price)) {
+    alert('Ошибка: не удалось получить данные товара');
+    return;
+  }
+  
+  window.tempOrder = {
+    url: url,
+    price: price,
+    weight: 1,
+    total: price * 0.45 + 12,
+    discountAmount: 0,
+    appliedPromo: null
   };
-  btn._buyHandler = handler;
-  btn.addEventListener('click', handler);
+  
+  if (typeof switchTab === 'function') {
+    switchTab('neworder');
+  } else {
+    console.error('switchTab не найдена');
+  }
 });
-
-  // Клик по карточке
-  document.querySelectorAll('.product-card').forEach(card => {
-    card.onclick = (e) => {
-      if (e.target.closest('button') || e.target.closest('.wishlist-heart')) return;
-      const url = card.querySelector('.buyNowBtn')?.dataset.url;
-      const price = parseFloat(card.querySelector('.buyNowBtn')?.dataset.price);
-      if (url && !isNaN(price)) {
-        window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
-        switchTab('neworder');
-      }
-    };
-  });
 
   // Назад
   const backBtn = document.getElementById('backFromProductsCatalogBtn');
