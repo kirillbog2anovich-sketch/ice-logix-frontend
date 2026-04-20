@@ -2353,17 +2353,17 @@ async function sendNotification(userId, message, orderId = null) {
     if (productsFilter.sort === 'price_asc') query = query.order('price', { ascending: true });
     else if (productsFilter.sort === 'price_desc') query = query.order('price', { ascending: false });
     else query = query.order('created_at', { ascending: false });
-    
+
     const from = (productsPage - 1) * 20;
     const to = from + 19;
     const { data, count, error } = await query.range(from, to);
     if (error) throw error;
-    
+
     productsTotalPages = Math.ceil((count || 0) / 20);
-    
+
     const categories = [...new Set(data.map(p => p.category).filter(Boolean))];
     const brands = [...new Set(data.map(p => p.brand).filter(Boolean))];
-    
+
     return `
       <button id="backFromProductsCatalogBtn" class="global-back-btn">← Назад</button>
       <div class="mb-4 flex flex-wrap gap-2">
@@ -2374,22 +2374,22 @@ async function sendNotification(userId, message, orderId = null) {
       </div>
       <div class="grid grid-cols-2 gap-4" id="productsGrid">
         ${data.map(p => `
-  <div class="product-card" data-product-id="${p.id}">
-    <div class="aspect-square bg-white/10 flex items-center justify-center relative">
-      <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
-      <span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span>
-    </div>
-    <div class="p-2">
-      <p class="text-white font-bold text-sm truncate">${p.title}</p>
-      <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
-      <p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p>
-      <div class="flex gap-1 mt-2">
-        <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
-        <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
-      </div>
-    </div>
-  </div>
-`).join('')}
+          <div class="product-card" data-product-id="${p.id}">
+            <div class="aspect-square bg-white/10 flex items-center justify-center relative">
+              <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
+              <span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span>
+            </div>
+            <div class="p-2">
+              <p class="text-white font-bold text-sm truncate">${p.title}</p>
+              <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
+              <p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p>
+              <div class="flex gap-1 mt-2">
+                <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
+                <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
+              </div>
+            </div>
+          </div>
+        `).join('')}
       </div>
       <div class="flex justify-center gap-2 mt-4">
         <button id="prevPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage <= 1 ? 'disabled' : ''}>← Назад</button>
@@ -2398,7 +2398,9 @@ async function sendNotification(userId, message, orderId = null) {
       </div>
       ${renderFooter()}
     `;
-  } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки товаров</p>'; }
+  } catch (err) {
+    return '<p class="text-center mt-10 text-red-400">Ошибка загрузки товаров</p>';
+  }
 }
 
 function attachProductsCatalogHandlers() {
