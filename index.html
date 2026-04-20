@@ -1074,43 +1074,89 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
       
       const totalEarned = referralOrders.reduce((sum, order) => sum + (order.drop_margin || 0), 0);
       const availableForPayout = totalEarned - payoutRequests.filter(r => r.status === 'approved' || r.status === 'completed').reduce((sum, r) => sum + r.amount, 0);
-      
+
+      const referralLink = userReferralCode ? `https://t.me/ice_logix_bot?start=ref_${userReferralCode}` : null;
+
+      const contentHubItems = [
+        { title: 'Баннер 1200x628', image: 'https://via.placeholder.com/300x200?text=Banner', text: 'Лучшие кроссовки из Китая! Скидка 10% по коду DROP10' },
+        { title: 'Текст для поста', image: null, text: 'Приведи друга и получи 50 BYN на баланс!' }
+      ];
+      const contentHubHtml = contentHubItems.map(item => {
+        const imgBlock = item.image
+          ? `<img src="${item.image}" class="w-full h-32 object-cover rounded-lg mb-2">`
+          : '<div class="w-full h-20 bg-white/10 rounded-lg mb-2 flex items-center justify-center text-4xl">🖼️</div>';
+        const dlBtn = item.image
+          ? `<button class="content-download-btn flex-1 bg-cyan-500/30 hover:bg-cyan-500/50 py-2 rounded-lg text-xs" data-url="${item.image}">⬇️ Скачать</button>`
+          : '';
+        const preview = item.text.slice(0, 100) + (item.text.length > 100 ? '...' : '');
+        const safeText = item.text.replace(/"/g, '&quot;');
+        return `<div class="bg-white/5 rounded-xl p-3 mb-3">${imgBlock}<p class="text-white font-bold text-sm mb-1">${item.title}</p><p class="text-white/70 text-xs mb-3">${preview}</p><div class="flex gap-2"><button class="content-copy-btn flex-1 bg-white/20 hover:bg-white/30 py-2 rounded-lg text-xs" data-text="${safeText}">📋 Копировать текст</button>${dlBtn}</div></div>`;
+      }).join('');
+
+      const payoutHistoryHtml = payoutRequests.length === 0
+        ? '<p class="text-white/70 text-sm">Нет заявок на вывод</p>'
+        : payoutRequests.map(req => {
+            const sc = req.status === 'pending' ? 'text-yellow-400' : req.status === 'approved' ? 'text-green-400' : req.status === 'completed' ? 'text-blue-400' : 'text-red-400';
+            const st = req.status === 'pending' ? 'В обработке' : req.status === 'approved' ? 'Одобрен' : req.status === 'completed' ? 'Выплачен' : 'Отклонён';
+            return `<div class="p-2 border-b border-white/10 last:border-0"><div class="flex justify-between items-center"><span class="text-white/80 text-sm font-bold">${req.amount} ❄️</span><span class="text-xs ${sc}">${st}</span></div><p class="text-white/50 text-xs mt-0.5">${new Date(req.created_at).toLocaleDateString('ru-RU')}</p></div>`;
+          }).join('');
+
       return `
         <button id="backToProfileBtn" class="global-back-btn">← Назад</button>
         <div class="space-y-4">
           <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-            <h3 class="text-white font-bold text-lg mb-3">📊 Статистика</h3>
-            <div class="grid grid-cols-2 gap-3">
-              <div class="bg-white/5 rounded-xl p-3 text-center"><p class="text-white/70 text-xs">Приведено клиентов</p><p class="text-white text-xl font-bold">${referrals.length}</p></div>
-              <div class="bg-white/5 rounded-xl p-3 text-center"><p class="text-white/70 text-xs">Заработано</p><p class="text-green-400 text-xl font-bold">${totalEarned} ❄️</p></div>
-              <div class="bg-white/5 rounded-xl p-3 text-center"><p class="text-white/70 text-xs">Доступно к выводу</p><p class="text-cyan-400 text-xl font-bold">${availableForPayout} ❄️</p></div>
-              <div class="bg-white/5 rounded-xl p-3 text-center"><p class="text-white/70 text-xs">Порог вывода</p><p class="text-white text-xl font-bold">${settings.payout_threshold} ❄️</p></div>
+            <h3 class="text-white font-bold text-lg mb-2">🔗 Ваша реферальная ссылка</h3>
+            ${referralLink
+              ? `<div class="flex items-center gap-2"><p class="text-cyan-400 text-sm truncate flex-1">${referralLink}</p><button id="copyReferralLinkBtn" data-link="${referralLink}" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-sm flex-shrink-0 text-white">📋 Скопировать</button></div>`
+              : '<p class="text-white/50 text-sm">Код не сгенерирован</p>'}
+          </div>
+          <div class="flex gap-2">
+            <button id="showStatsTab" class="filter-chip active flex-1 text-center">📊 Статистика</button>
+            <button id="showContentHubTab" class="filter-chip flex-1 text-center">🎨 Контент-хаб</button>
+          </div>
+          <div id="statsContainer">
+            <div class="space-y-4">
+              <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+                <h3 class="text-white font-bold text-lg mb-3">📊 Статистика</h3>
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="bg-white/5 rounded-xl p-3 text-center"><p class="text-white/70 text-xs">Приведено клиентов</p><p class="text-white text-xl font-bold">${referrals.length}</p></div>
+                  <div class="bg-white/5 rounded-xl p-3 text-center"><p class="text-white/70 text-xs">Заработано</p><p class="text-green-400 text-xl font-bold">${totalEarned} ❄️</p></div>
+                  <div class="bg-white/5 rounded-xl p-3 text-center"><p class="text-white/70 text-xs">Доступно к выводу</p><p class="text-cyan-400 text-xl font-bold">${availableForPayout} ❄️</p></div>
+                  <div class="bg-white/5 rounded-xl p-3 text-center"><p class="text-white/70 text-xs">Порог вывода</p><p class="text-white text-xl font-bold">${settings.payout_threshold} ❄️</p></div>
+                </div>
+              </div>
+              <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+                <h3 class="text-white font-bold text-lg mb-3">⚙️ Настройки наценки</h3>
+                <div class="flex gap-3 mb-3">
+                  <select id="marginType" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30">
+                    <option value="fixed" ${settings.margin_type === 'fixed' ? 'selected' : ''}>Фикс (BYN)</option>
+                    <option value="percent" ${settings.margin_type === 'percent' ? 'selected' : ''}>Процент (%)</option>
+                  </select>
+                  <input type="number" id="marginValue" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30" value="${settings.margin_value}" step="1" placeholder="Значение">
+                </div>
+                <input type="number" id="payoutThreshold" class="w-full p-2 rounded-lg bg-white/20 border border-white/30 mb-3" value="${settings.payout_threshold}" placeholder="Порог вывода (BYN)">
+                <button id="saveDropshipperSettings" class="w-full bg-cyan-500 py-2 rounded-lg">Сохранить настройки</button>
+              </div>
+              ${availableForPayout >= settings.payout_threshold ? `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-4"><button id="requestPayoutBtn" class="w-full bg-green-600 py-2 rounded-lg">💸 Запросить выплату (${availableForPayout} ❄️)</button></div>` : ''}
+              <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+                <h3 class="text-white font-bold text-lg mb-3">📋 История выплат</h3>
+                ${payoutHistoryHtml}
+              </div>
+              <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+                <h3 class="text-white font-bold text-lg mb-3">👥 Приведённые клиенты</h3>
+                ${referrals.length === 0 ? '<p class="text-white/70 text-sm">Пока нет приведённых клиентов</p>' : referrals.map(ref => `<div class="flex justify-between items-center p-2 border-b border-white/10"><span class="text-white/80 text-sm">ID: ${ref.referred_id}</span><span class="text-white/50 text-xs">${new Date(ref.created_at).toLocaleDateString()}</span></div>`).join('')}
+              </div>
+              <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+                <h3 class="text-white font-bold text-lg mb-3">📦 Заказы клиентов</h3>
+                ${referralOrders.length === 0 ? '<p class="text-white/70 text-sm">Нет заказов от приведённых клиентов</p>' : referralOrders.map(order => `<div class="flex justify-between items-center p-2 border-b border-white/10"><span class="text-white/80 text-sm">Заказ #${order.id.slice(0,8)}</span><span class="text-green-400 text-sm">+${order.drop_margin || 0} ❄️</span><span class="text-white/50 text-xs">${new Date(order.created_at).toLocaleDateString()}</span></div>`).join('')}
+              </div>
             </div>
           </div>
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-            <h3 class="text-white font-bold text-lg mb-3">⚙️ Настройки наценки</h3>
-            <div class="flex gap-3 mb-3">
-              <select id="marginType" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30">
-                <option value="fixed" ${settings.margin_type === 'fixed' ? 'selected' : ''}>Фикс (BYN)</option>
-                <option value="percent" ${settings.margin_type === 'percent' ? 'selected' : ''}>Процент (%)</option>
-              </select>
-              <input type="number" id="marginValue" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30" value="${settings.margin_value}" step="1" placeholder="Значение">
+          <div id="contentHubContainer" class="hidden">
+            <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+              <h3 class="text-white font-bold text-lg mb-3">🎨 Контент-хаб</h3>
+              ${contentHubHtml}
             </div>
-            <input type="number" id="payoutThreshold" class="w-full p-2 rounded-lg bg-white/20 border border-white/30 mb-3" value="${settings.payout_threshold}" placeholder="Порог вывода (BYN)">
-            <button id="saveDropshipperSettings" class="w-full bg-cyan-500 py-2 rounded-lg">Сохранить настройки</button>
-          </div>
-          ${availableForPayout >= settings.payout_threshold ? `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-4"><button id="requestPayoutBtn" class="w-full bg-green-600 py-2 rounded-lg">💸 Запросить выплату (${availableForPayout} ❄️)</button></div>` : ''}
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-            <h3 class="text-white font-bold text-lg mb-3">📋 История выплат</h3>
-            ${payoutRequests.length === 0 ? '<p class="text-white/70 text-sm">Нет заявок</p>' : payoutRequests.map(req => `<div class="flex justify-between items-center p-2 border-b border-white/10"><span class="text-white/80 text-sm">${req.amount} ❄️</span><span class="text-xs ${req.status === 'pending' ? 'text-yellow-400' : req.status === 'approved' ? 'text-green-400' : 'text-red-400'}">${req.status === 'pending' ? 'В обработке' : req.status === 'approved' ? 'Одобрен' : 'Отклонён'}</span><span class="text-white/50 text-xs">${new Date(req.created_at).toLocaleDateString()}</span></div>`).join('')}
-          </div>
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-            <h3 class="text-white font-bold text-lg mb-3">👥 Приведённые клиенты</h3>
-            ${referrals.length === 0 ? '<p class="text-white/70 text-sm">Пока нет приведённых клиентов</p>' : referrals.map(ref => `<div class="flex justify-between items-center p-2 border-b border-white/10"><span class="text-white/80 text-sm">ID: ${ref.referred_id}</span><span class="text-white/50 text-xs">${new Date(ref.created_at).toLocaleDateString()}</span></div>`).join('')}
-          </div>
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
-            <h3 class="text-white font-bold text-lg mb-3">📦 Заказы клиентов</h3>
-            ${referralOrders.length === 0 ? '<p class="text-white/70 text-sm">Нет заказов от приведённых клиентов</p>' : referralOrders.map(order => `<div class="flex justify-between items-center p-2 border-b border-white/10"><span class="text-white/80 text-sm">Заказ #${order.id.slice(0,8)}</span><span class="text-green-400 text-sm">+${order.drop_margin || 0} ❄️</span><span class="text-white/50 text-xs">${new Date(order.created_at).toLocaleDateString()}</span></div>`).join('')}
           </div>
         </div>
         ${renderFooter()}
@@ -1150,6 +1196,41 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
           } catch (err) { alert('Ошибка: ' + err.message); }
         };
       }
+
+      const copyRefBtn = document.getElementById('copyReferralLinkBtn');
+      if (copyRefBtn) {
+        copyRefBtn.onclick = () => {
+          navigator.clipboard.writeText(copyRefBtn.dataset.link).then(() => alert('Ссылка скопирована'));
+        };
+      }
+
+      const showStatsTab = document.getElementById('showStatsTab');
+      const showContentHubTab = document.getElementById('showContentHubTab');
+      const statsContainer = document.getElementById('statsContainer');
+      const contentHubContainer = document.getElementById('contentHubContainer');
+      if (showStatsTab && showContentHubTab) {
+        showStatsTab.onclick = () => {
+          statsContainer.classList.remove('hidden');
+          contentHubContainer.classList.add('hidden');
+          showStatsTab.classList.add('active');
+          showContentHubTab.classList.remove('active');
+        };
+        showContentHubTab.onclick = () => {
+          contentHubContainer.classList.remove('hidden');
+          statsContainer.classList.add('hidden');
+          showContentHubTab.classList.add('active');
+          showStatsTab.classList.remove('active');
+        };
+      }
+
+      document.querySelectorAll('.content-copy-btn').forEach(btn => {
+        btn.onclick = () => {
+          navigator.clipboard.writeText(btn.dataset.text).then(() => alert('Текст скопирован'));
+        };
+      });
+      document.querySelectorAll('.content-download-btn').forEach(btn => {
+        btn.onclick = () => { window.open(btn.dataset.url, '_blank'); };
+      });
     }
 
     // ==================== РЕНДЕР АКАДЕМИИ ====================
