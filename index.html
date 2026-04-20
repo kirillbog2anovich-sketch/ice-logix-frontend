@@ -3319,6 +3319,7 @@ function attachCartHandlers() {
       const action = btn.dataset.action;
       const cartId = btn.dataset.id;
       const row = btn.closest('[data-cart-id]');
+      if (!row || !cartId) return;
       const qtySpans = row.querySelectorAll('.cart-qty-display');
       let newQty = parseInt(qtySpans[0]?.innerText || '1');
       const pricePerUnit = parseFloat(row.querySelector('.cart-item-checkbox')?.dataset.price || '0');
