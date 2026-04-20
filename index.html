@@ -3320,7 +3320,8 @@ function attachCartHandlers() {
   // Обработчики изменения количества
   document.querySelectorAll('.cart-qty-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
+  e.stopPropagation();
+  console.log('Клик по кнопке +/-', btn.dataset);
       const action = btn.dataset.action;
       const cartId = btn.dataset.id;
       const row = btn.closest('[data-cart-id]');
@@ -3331,8 +3332,9 @@ function attachCartHandlers() {
 
       if (action === 'increase') newQty++;
       else if (action === 'decrease') newQty = Math.max(1, newQty - 1);
-
+      
       const { error } = await supabaseClient.from('cart').update({ quantity: newQty, updated_at: new Date() }).eq('id', cartId);
+      console.log('Ответ Supabase:', { error, newQty });
       if (!error) {
         // Обновляем количество во всех span
         qtySpans.forEach(span => span.innerText = newQty);
@@ -3341,11 +3343,12 @@ function attachCartHandlers() {
         if (examplePriceSpan) {
           const newItemTotal = (pricePerUnit * 0.45 + 12) * newQty;
           examplePriceSpan.innerText = newItemTotal.toFixed(2) + ' BYN (примерно)';
-        }
+        } else {
+          console.error('Ошибка обновления:', error); }
         // Пересчитываем общий итог
         updateCartTotal();
       }
-    });
+});
   });
 
   // Удаление товара
