@@ -323,13 +323,6 @@ function attachHomeHandlers() {
       document.querySelector('[data-story="referral"]')?.addEventListener('click', () => switchTab('profile'));
       document.getElementById('moreMarketplacesBtn')?.addEventListener('click', () => switchTab('catalogs'));
       document.getElementById('moreProductsBtn')?.addEventListener('click', () => switchTab('products'));
-      document.querySelectorAll('.addToCartBtn').forEach(btn => {
-        btn.onclick = (e) => {
-         e.stopPropagation();
-         const productId = btn.dataset.productId;
-        addToCart(productId);
-        };
-      });
       document.querySelectorAll('.marketplace-story').forEach(el => {
         el.addEventListener('click', () => {
           const url = el.getAttribute('data-url');
@@ -358,7 +351,6 @@ function attachHomeHandlers() {
   });
 });
 
-// Кнопки "В корзину" на главной
 document.querySelectorAll('.addToCartBtn').forEach(btn => {
   btn.onclick = (e) => {
     e.stopPropagation();
@@ -367,13 +359,12 @@ document.querySelectorAll('.addToCartBtn').forEach(btn => {
   };
 });
 
-// Кнопки "Купить" на главной
 document.querySelectorAll('.buyNowBtn').forEach(btn => {
   btn.onclick = (e) => {
     e.stopPropagation();
     const url = btn.dataset.url;
     const price = parseFloat(btn.dataset.price);
-    if (url && price) {
+    if (url && !isNaN(price)) {
       window.tempOrder = {
         url: url,
         price: price,
@@ -386,32 +377,80 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     }
   };
 });
-
     }
 
     async function loadHomeProducts() {
-      try {
-        const { data } = await supabaseClient.from('products').select('*').eq('is_active', true).limit(6);
-        const grid = document.getElementById('homeProductsGrid');
-        if (grid && data) {
-          grid.innerHTML = data.map(p => `
-            <div class="product-card" data-product-id="${p.id}">
-              <div class="aspect-square bg-white/10 flex items-center justify-center"><img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover"></div>
-              <div class="p-2"><p class="text-white font-bold text-sm truncate">${p.title}</p><p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p><div class="flex gap-1 mt-2">
-  <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
-  <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
-</div>
+  try {
+    const { data } = await supabaseClient.from('products').select('*').eq('is_active', true).limit(6);
+    const grid = document.getElementById('homeProductsGrid');
+    if (grid && data) {
+      grid.innerHTML = data.map(p => `
+        <div class="product-card" data-product-id="${p.id}">
+          <div class="aspect-square bg-white/10 flex items-center justify-center">
+            <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
+          </div>
+          <div class="p-2">
+            <p class="text-white font-bold text-sm truncate">${p.title}</p>
+            <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
+            <div class="flex gap-1 mt-2">
+              <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
+              <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡</button>
             </div>
-          `).join('');
-          document.querySelectorAll('.addToCartBtn').forEach(btn => {
-            btn.onclick = (e) => { e.stopPropagation(); alert('Товар добавлен в корзину (в разработке)'); };
-          });
-          document.querySelectorAll('.product-card').forEach(card => {
-            card.onclick = () => { const url = card.getAttribute('data-url'); if (url) { window.tempOrder = { url, price: 520, weight: 1, total: 0, discountAmount: 0 }; switchTab('neworder'); } };
-          });
-        }
-      } catch(e) {}
+          </div>
+        </div>
+      `).join('');
+
+      // Обработчики для кнопок внутри карточек
+      grid.querySelectorAll('.addToCartBtn').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const productId = btn.dataset.productId;
+          if (productId) addToCart(productId);
+        };
+      });
+
+      grid.querySelectorAll('.buyNowBtn').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const url = btn.dataset.url;
+          const price = parseFloat(btn.dataset.price);
+          if (url && !isNaN(price)) {
+            window.tempOrder = {
+              url: url,
+              price: price,
+              weight: 1,
+              total: price * 0.45 + 12,
+              discountAmount: 0,
+              appliedPromo: null
+            };
+            switchTab('neworder');
+          }
+        };
+      });
+
+      // Клик по карточке – тоже переход к заказу
+      grid.querySelectorAll('.product-card').forEach(card => {
+        card.onclick = () => {
+          const url = card.querySelector('.buyNowBtn')?.dataset.url;
+          const price = parseFloat(card.querySelector('.buyNowBtn')?.dataset.price);
+          if (url && !isNaN(price)) {
+            window.tempOrder = {
+              url: url,
+              price: price,
+              weight: 1,
+              total: price * 0.45 + 12,
+              discountAmount: 0,
+              appliedPromo: null
+            };
+            switchTab('neworder');
+          }
+        };
+      });
     }
+  } catch(e) {
+    console.error('Ошибка загрузки товаров на главной:', e);
+  }
+}
 
     // ==================== РЕНДЕР КАЛЬКУЛЯТОРА ====================
     async function renderCalculator() {
@@ -1190,7 +1229,10 @@ async function renderWishlist() {
         ${wishlistItems.map(item => `
           <div class="product-card" data-product-id="${item.products.id}">
             <div class="aspect-square bg-white/10 flex items-center justify-center relative"><img src="${item.products.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover"><span class="absolute top-2 right-2 wishlist-heart text-xl text-red-500 cursor-pointer" data-product-id="${item.products.id}">❤️</span></div>
-            <div class="p-2"><p class="text-white font-bold text-sm truncate">${item.products.title}</p><p class="text-cyan-400 text-xs">${item.products.price} ${item.products.currency}</p><button class="buyNowBtn mt-2 w-full bg-cyan-500/50 py-1 rounded text-xs" data-url="${item.products.url}" data-price="${item.products.price}">Купить сейчас</button></div>
+            <div class="p-2"><p class="text-white font-bold text-sm truncate">${item.products.title}</p><p class="text-cyan-400 text-xs">${item.products.price} ${item.products.currency}</p><div class="flex gap-1 mt-2">
+  <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${item.products.id}">🛒</button>
+  <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${item.products.url}" data-price="${item.products.price}">⚡</button>
+</div>
           </div>
         `).join('')}
       </div>
@@ -1213,17 +1255,33 @@ function attachWishlistHandlers() {
     });
   });
 
-  document.querySelectorAll('.buyNowBtn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const url = btn.dataset.url;
-      const price = parseFloat(btn.dataset.price);
-      if (url) {
-        window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
-        switchTab('neworder');
-      }
-    });
-  });
+  // Внутри loadHomeProducts, после grid.innerHTML = ...
+document.querySelectorAll('.addToCartBtn').forEach(btn => {
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const productId = btn.dataset.productId;
+    if (productId) addToCart(productId);
+  };
+});
+
+document.querySelectorAll('.buyNowBtn').forEach(btn => {
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const url = btn.dataset.url;
+    const price = parseFloat(btn.dataset.price);
+    if (url && !isNaN(price)) {
+      window.tempOrder = {
+        url: url,
+        price: price,
+        weight: 1,
+        total: price * 0.45 + 12,
+        discountAmount: 0,
+        appliedPromo: null
+      };
+      switchTab('neworder');
+    }
+  };
+});
 
   async function addToCart(productId, quantity = 1) {
   if (!userId) { alert('Авторизуйтесь'); return; }
@@ -2278,9 +2336,10 @@ async function renderProductsCatalog() {
           <div class="product-card" data-product-id="${p.id}">
             <div class="aspect-square bg-white/10 flex items-center justify-center relative"><img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover"><span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span></div>
             <div class="p-2"><p class="text-white font-bold text-sm truncate">${p.title}</p><p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p><p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p><div class="flex gap-1 mt-2">
-            <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒 В корзину</button>
-           <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
-          </div>
+            <div class="flex gap-1 mt-2">
+  <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
+  <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡</button>
+</div>
           </div>
         `).join('')}
       </div>
@@ -2324,24 +2383,32 @@ function attachProductsCatalogHandlers() {
     };
   });
   
-  document.querySelectorAll('.buyNowBtn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const url = btn.getAttribute('data-url');
-      const price = parseFloat(btn.getAttribute('data-price'));
-      if (url) {
-        window.tempOrder = { url: url, price: price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
-        switchTab('neworder');
-      }
-    };
-  });
-
-  document.querySelectorAll('.addToCartBtn').forEach(btn => {
-  btn.addEventListener('click', (e) => {
+  // Внутри loadHomeProducts, после grid.innerHTML = ...
+document.querySelectorAll('.addToCartBtn').forEach(btn => {
+  btn.onclick = (e) => {
     e.stopPropagation();
     const productId = btn.dataset.productId;
-    addToCart(productId);
-  });
+    if (productId) addToCart(productId);
+  };
+});
+
+document.querySelectorAll('.buyNowBtn').forEach(btn => {
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const url = btn.dataset.url;
+    const price = parseFloat(btn.dataset.price);
+    if (url && !isNaN(price)) {
+      window.tempOrder = {
+        url: url,
+        price: price,
+        weight: 1,
+        total: price * 0.45 + 12,
+        discountAmount: 0,
+        appliedPromo: null
+      };
+      switchTab('neworder');
+    }
+  };
 });
   
   document.querySelectorAll('.product-card').forEach(card => {
@@ -2361,14 +2428,29 @@ function attachProductsCatalogHandlers() {
 
 async function addToCart(productId, quantity = 1) {
   if (!userId) { alert('Авторизуйтесь'); return; }
-  const { data: existing } = await supabaseClient.from('cart').select('id, quantity').eq('user_id', userId).eq('product_id', productId).maybeSingle();
-  if (existing) {
-    await supabaseClient.from('cart').update({ quantity: existing.quantity + quantity, updated_at: new Date() }).eq('id', existing.id);
-  } else {
-    await supabaseClient.from('cart').insert({ user_id: userId, product_id: productId, quantity });
+  try {
+    const { data: existing } = await supabaseClient
+      .from('cart')
+      .select('id, quantity')
+      .eq('user_id', userId)
+      .eq('product_id', productId)
+      .maybeSingle();
+
+    if (existing) {
+      await supabaseClient
+        .from('cart')
+        .update({ quantity: existing.quantity + quantity, updated_at: new Date() })
+        .eq('id', existing.id);
+    } else {
+      await supabaseClient
+        .from('cart')
+        .insert({ user_id: userId, product_id: productId, quantity });
+    }
+    await updateCartBadge();
+    alert('✅ Товар добавлен в корзину');
+  } catch (err) {
+    alert('❌ Ошибка: ' + err.message);
   }
-  updateCartBadge();
-  alert('Товар добавлен в корзину');
 }
 
 // Вспомогательная функция для кнопки Назад в подэкранах
