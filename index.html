@@ -135,6 +135,7 @@ const MAX_REQUESTS_TRUSTED = 100;
     let productsPage = 1;
     let productsFilter = { category: 'all', brand: 'all', sort: 'new' };
     let productsTotalPages = 1;
+    let isLoadingMoreProducts = false;
     let reviewsPage = 1;
     let reviewsTotalPages = 1;
 
@@ -150,6 +151,7 @@ const MAX_REQUESTS_TRUSTED = 100;
       const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
       supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       await loadUserData();
+      await migrateGuestCart();
       await initReferralCode();
       await loadWishlist();
       attachEventListeners();
@@ -320,6 +322,10 @@ const MAX_REQUESTS_TRUSTED = 100;
         <h3 class="text-white font-bold">✨ Рекомендуем</h3>
         <button id="moreProductsBtn" class="text-cyan-400 text-sm">Больше →</button>
       </div>
+      <div class="flex gap-2 mb-3">
+        <button id="tabPopular" class="filter-chip active">🔥 Популярные</button>
+        <button id="tabForYou" class="filter-chip">👤 Для вас</button>
+      </div>
       <div class="grid grid-cols-2 gap-3" id="homeProductsGrid"></div>
     </div>
     
@@ -353,7 +359,17 @@ function attachHomeHandlers() {
       document.querySelectorAll('.footer-link').forEach(el => {
         el.addEventListener('click', () => alert(el.innerText + ' будет доступно позже'));
       });
-      loadHomeProducts();
+      loadHomeProducts('popular');
+      document.getElementById('tabPopular')?.addEventListener('click', () => {
+        document.getElementById('tabPopular').classList.add('active');
+        document.getElementById('tabForYou').classList.remove('active');
+        loadHomeProducts('popular');
+      });
+      document.getElementById('tabForYou')?.addEventListener('click', () => {
+        document.getElementById('tabForYou').classList.add('active');
+        document.getElementById('tabPopular').classList.remove('active');
+        loadHomeProducts('for_you');
+      });
       document.querySelectorAll('.banner-slide').forEach(el => {
   el.addEventListener('click', () => {
     const promoId = el.dataset.promotionId;
@@ -393,93 +409,100 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 });
     }
 
-    async function loadHomeProducts() {
+    async function loadHomeProducts(tab = 'popular') {
+  const grid = document.getElementById('homeProductsGrid');
+  if (!grid) return;
   try {
-    const { data } = await supabaseClient.from('products').select('*').eq('is_active', true).limit(10);
-    const grid = document.getElementById('homeProductsGrid');
-    if (grid && data) {
-      grid.innerHTML = data.map(p => `
-        <div class="product-card" data-product-id="${p.id}">
-          <div class="aspect-square bg-white/10 flex items-center justify-center relative">
-  <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
-  <span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span>
-</div>
-          <div class="p-2">
-            <p class="text-white font-bold text-sm truncate">${p.title}</p>
-            <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
-            <div class="flex gap-1 mt-2">
-              <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
-              <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡</button>
-            </div>
+    let data = [];
+    if (tab === 'for_you') {
+      if (!userId) {
+        grid.innerHTML = '<p class="text-white/50 text-sm col-span-2 text-center py-4">Войдите, чтобы получить персональные рекомендации</p>';
+        return;
+      }
+      const { data: views } = await supabaseClient.from('user_views').select('product_id').eq('user_id', userId).order('viewed_at', { ascending: false }).limit(20);
+      if (views && views.length > 0) {
+        const ids = views.map(v => v.product_id);
+        const { data: viewed } = await supabaseClient.from('products').select('*').in('id', ids).eq('is_active', true);
+        if (viewed) data = viewed;
+      }
+      if (data.length === 0) {
+        grid.innerHTML = '<p class="text-white/50 text-sm col-span-2 text-center py-4">Просматривайте товары, чтобы получить рекомендации</p>';
+        return;
+      }
+    } else {
+      const { data: popular } = await supabaseClient.from('products').select('*').eq('is_active', true).limit(10);
+      if (popular) data = popular;
+    }
+
+    grid.innerHTML = data.map(p => `
+      <div class="product-card" data-product-id="${p.id}">
+        <div class="aspect-square bg-white/10 flex items-center justify-center relative">
+          <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
+          <span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span>
+        </div>
+        <div class="p-2">
+          <p class="text-white font-bold text-sm truncate">${p.title}</p>
+          <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
+          <div class="flex gap-1 mt-2">
+            <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
+            <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡</button>
           </div>
         </div>
-      `).join('');
+      </div>
+    `).join('');
 
-      grid.querySelectorAll('.wishlist-heart').forEach(heart => {
-  heart.onclick = async (e) => {
-    e.stopPropagation();
-    const productId = heart.dataset.productId;
-    if (wishlist.has(productId)) {
-      await supabaseClient.from('wishlist').delete().eq('user_id', userId).eq('product_id', productId);
-      wishlist.delete(productId);
-      heart.innerText = '🤍';
-      heart.classList.remove('text-red-500');
-    } else {
-      await supabaseClient.from('wishlist').insert({ user_id: userId, product_id: productId });
-      wishlist.add(productId);
-      heart.innerText = '❤️';
-      heart.classList.add('text-red-500');
-    }
-  };
-});
+    grid.querySelectorAll('.wishlist-heart').forEach(heart => {
+      heart.onclick = async (e) => {
+        e.stopPropagation();
+        const productId = heart.dataset.productId;
+        if (wishlist.has(productId)) {
+          await supabaseClient.from('wishlist').delete().eq('user_id', userId).eq('product_id', productId);
+          wishlist.delete(productId);
+          heart.innerText = '🤍';
+          heart.classList.remove('text-red-500');
+        } else {
+          await supabaseClient.from('wishlist').insert({ user_id: userId, product_id: productId });
+          wishlist.add(productId);
+          heart.innerText = '❤️';
+          heart.classList.add('text-red-500');
+        }
+      };
+    });
 
-      // Обработчики для кнопок внутри карточек
-      grid.querySelectorAll('.addToCartBtn').forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          const productId = btn.dataset.productId;
-          if (productId) addToCart(productId);
-        };
-      });
+    grid.querySelectorAll('.addToCartBtn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const productId = btn.dataset.productId;
+        if (productId) addToCart(productId);
+      };
+    });
 
-      grid.querySelectorAll('.buyNowBtn').forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          const url = btn.dataset.url;
-          const price = parseFloat(btn.dataset.price);
-          if (url && !isNaN(price)) {
-            window.tempOrder = {
-              url: url,
-              price: price,
-              weight: 1,
-              total: price * 0.45 + 12,
-              discountAmount: 0,
-              appliedPromo: null
-            };
-            switchTab('neworder');
-          }
-        };
-      });
+    grid.querySelectorAll('.buyNowBtn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const url = btn.dataset.url;
+        const price = parseFloat(btn.dataset.price);
+        if (url && !isNaN(price)) {
+          window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
+          switchTab('neworder');
+        }
+      };
+    });
 
-      // Клик по карточке – тоже переход к заказу
-      grid.querySelectorAll('.product-card').forEach(card => {
-        card.onclick = () => {
-          const url = card.querySelector('.buyNowBtn')?.dataset.url;
-          const price = parseFloat(card.querySelector('.buyNowBtn')?.dataset.price);
-          if (url && !isNaN(price)) {
-            window.tempOrder = {
-              url: url,
-              price: price,
-              weight: 1,
-              total: price * 0.45 + 12,
-              discountAmount: 0,
-              appliedPromo: null
-            };
-            switchTab('neworder');
-          }
-        };
-      });
-    }
+    grid.querySelectorAll('.product-card').forEach(card => {
+      card.onclick = () => {
+        const productId = card.dataset.productId;
+        const url = card.querySelector('.buyNowBtn')?.dataset.url;
+        const price = parseFloat(card.querySelector('.buyNowBtn')?.dataset.price);
+        if (userId && productId) {
+          supabaseClient.from('user_views').upsert({ user_id: userId, product_id: productId }, { onConflict: 'user_id,product_id' }).then(() => {});
+        }
+        if (url && !isNaN(price)) {
+          window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
+          switchTab('neworder');
+        }
+      };
+    });
   } catch(e) {
     console.error('Ошибка загрузки товаров на главной:', e);
   }
@@ -510,11 +533,25 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           <p class="text-green-400 text-sm mt-1" id="promoDiscount"></p>
           </div>
           <label class="text-white/70 text-sm">Ссылка на товар (необязательно)</label>
-          <input type="text" id="calcUrl" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="https://poizon.com/...">
+          <input type="text" id="calcUrl" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-1" placeholder="https://poizon.com/...">
+          <div id="parsedProductTitle" class="text-cyan-400 text-xs mb-3 hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Цена (¥)</label>
           <input type="number" id="calcPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="0">
-          <label class="text-white/70 text-sm block mt-2">Вес (кг)</label>
-          <div class="flex items-center gap-3 mt-1"><input type="range" id="calcWeight" min="0.1" max="30" step="0.1" value="1" class="flex-1"><span id="weightVal" class="text-white/80 bg-white/10 px-3 py-1 rounded-full">1.0 кг</span></div>
+          <label class="text-white/70 text-sm block mt-2">Категория</label>
+          <select id="calcCategory" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
+            <option value="">— выберите для автоподбора веса —</option>
+            <option value="Обувь">Обувь</option>
+            <option value="Одежда">Одежда</option>
+            <option value="Аксессуары">Аксессуары</option>
+          </select>
+          <label class="text-white/70 text-sm block">Размер</label>
+          <input type="text" id="calcSize" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Размер (напр. 42, M, L)">
+          <div class="flex items-center gap-2 mb-3">
+            <input type="checkbox" id="keepBox">
+            <label for="keepBox" class="text-white/70 text-sm">Сохранить оригинальную коробку</label>
+          </div>
+          <label class="text-white/70 text-sm block">Вес (кг)</label>
+          <div class="flex items-center gap-3 mt-1"><input type="range" id="calcWeight" min="0.1" max="30" step="0.1" value="1" class="flex-1" data-packaging="0.3"><span id="weightVal" class="text-white/80 bg-white/10 px-3 py-1 rounded-full">1.0 кг</span></div>
           <button id="calcBtn" class="mt-5 w-full bg-cyan-500 hover:bg-cyan-600 py-3 rounded-xl font-bold transition">Рассчитать</button>
           <div id="calcResult" class="mt-5 hidden bg-white/5 p-4 rounded-xl"><p class="text-white">Примерная стоимость: <span id="totalPrice" class="font-bold text-cyan-400">0</span> ❄️</p><p class="text-white/70 text-xs mt-1">*Окончательная цена после взвешивания на складе</p><button id="toNewOrderBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-xl">Перенести в заказ</button></div>
         </div>
@@ -544,7 +581,42 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   const slider = document.getElementById('calcWeight');
   const valSpan = document.getElementById('weightVal');
   if (slider) slider.oninput = () => valSpan.innerText = parseFloat(slider.value).toFixed(1) + ' кг';
-  
+
+  async function fetchWeightFromStandard(category, size) {
+    if (!category || !size) return;
+    try {
+      const { data } = await supabaseClient
+        .from('weight_standards')
+        .select('weight_kg, packaging_weight_kg')
+        .eq('category', category)
+        .eq('size_label', size)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (data && slider) {
+        slider.value = data.weight_kg;
+        slider.dataset.packaging = data.packaging_weight_kg || 0.3;
+        if (valSpan) valSpan.innerText = parseFloat(data.weight_kg).toFixed(1) + ' кг';
+      }
+    } catch(e) { console.log('weight_standards:', e.message); }
+  }
+
+  const calcCategory = document.getElementById('calcCategory');
+  const calcSizeInput = document.getElementById('calcSize');
+  const keepBox = document.getElementById('keepBox');
+  if (calcCategory) calcCategory.onchange = () => fetchWeightFromStandard(calcCategory.value, calcSizeInput?.value);
+  if (calcSizeInput) calcSizeInput.onchange = () => fetchWeightFromStandard(calcCategory?.value, calcSizeInput.value);
+  if (keepBox && slider) {
+    keepBox.onchange = () => {
+      const base = parseFloat(slider.value) || 0;
+      const pkg = parseFloat(slider.dataset.packaging || 0.3);
+      const newW = keepBox.checked
+        ? Math.min(30, +(base + pkg).toFixed(1))
+        : Math.max(0.1, +(base - pkg).toFixed(1));
+      slider.value = newW;
+      if (valSpan) valSpan.innerText = newW.toFixed(1) + ' кг';
+    };
+  }
+
   const calcBtn = document.getElementById('calcBtn');
   if (calcBtn) calcBtn.onclick = async () => {
     const limitCheck = await checkAndUpdateLimit();
@@ -567,6 +639,33 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       localStorage.setItem(guestKey, JSON.stringify(guestData));
     }
     
+    // Проверка кэша parsed_products
+    const urlValue = document.getElementById('calcUrl')?.value.trim();
+    if (urlValue) {
+      try {
+        const { data: cached } = await supabaseClient
+          .from('parsed_products')
+          .select('*')
+          .eq('url', urlValue)
+          .gte('expires_at', new Date().toISOString())
+          .maybeSingle();
+        if (cached) {
+          if (cached.price) document.getElementById('calcPrice').value = cached.price;
+          if (cached.weight_kg && slider) {
+            slider.value = cached.weight_kg;
+            if (valSpan) valSpan.innerText = parseFloat(cached.weight_kg).toFixed(1) + ' кг';
+          }
+          const titleDiv = document.getElementById('parsedProductTitle');
+          if (titleDiv && cached.title) {
+            titleDiv.innerText = '📦 ' + cached.title;
+            titleDiv.classList.remove('hidden');
+          }
+        } else if (urlValue.startsWith('http')) {
+          alert('Автоматический парсинг пока недоступен. Введите данные вручную.');
+        }
+      } catch(e) { console.log('parsed_products cache:', e.message); }
+    }
+
     let price = parseFloat(document.getElementById('calcPrice')?.value) || 0
     let weight = parseFloat(slider?.value || 1);
     let total = (price * 0.45) + (weight * 12);
@@ -2510,13 +2609,17 @@ async function sendNotification(userId, message, orderId = null) {
     const categories = [...new Set(data.map(p => p.category).filter(Boolean))];
     const brands = [...new Set(data.map(p => p.brand).filter(Boolean))];
 
+    const activeFilters = [
+      productsFilter.category !== 'all' ? productsFilter.category : '',
+      productsFilter.brand !== 'all' ? productsFilter.brand : '',
+      productsFilter.sort !== 'new' ? (productsFilter.sort === 'price_asc' ? 'Цена ↑' : 'Цена ↓') : ''
+    ].filter(Boolean).join(', ');
+
     return `
       <button id="backFromProductsCatalogBtn" class="global-back-btn">← Назад</button>
-      <div class="mb-4 flex flex-wrap gap-2">
-        <div class="flex-1"><select id="filterCategory" class="w-full p-2 rounded-lg bg-white/20 border border-white/30"><option value="all">Все категории</option>${categories.map(c => `<option value="${c}" ${productsFilter.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
-        <div class="flex-1"><select id="filterBrand" class="w-full p-2 rounded-lg bg-white/20 border border-white/30"><option value="all">Все бренды</option>${brands.map(b => `<option value="${b}" ${productsFilter.brand === b ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
-        <div><select id="filterSort" class="w-full p-2 rounded-lg bg-white/20 border border-white/30"><option value="new" ${productsFilter.sort === 'new' ? 'selected' : ''}>Новинки</option><option value="price_asc" ${productsFilter.sort === 'price_asc' ? 'selected' : ''}>Цена ↑</option><option value="price_desc" ${productsFilter.sort === 'price_desc' ? 'selected' : ''}>Цена ↓</option></select></div>
-        <button id="applyProductsFilter" class="bg-cyan-500 px-4 py-2 rounded-lg">Применить</button>
+      <div class="flex items-center gap-3 mb-4">
+        <button id="openFilterModalBtn" class="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-sm">🔧 Фильтры</button>
+        ${activeFilters ? `<p class="text-white/50 text-xs truncate flex-1">Активно: ${activeFilters}</p><button id="resetFiltersBtn" class="text-cyan-400 text-xs flex-shrink-0">Сбросить</button>` : '<p class="text-white/50 text-xs">Все товары</p>'}
       </div>
       <div class="grid grid-cols-2 gap-4" id="productsGrid">
         ${data.map(p => `
@@ -2530,17 +2633,15 @@ async function sendNotification(userId, message, orderId = null) {
               <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
               <p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p>
               <div class="flex gap-1 mt-2">
-  <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
-  <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
-</div>
+                <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
+                <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
+              </div>
             </div>
           </div>
         `).join('')}
       </div>
-      <div class="flex justify-center gap-2 mt-4">
-        <button id="prevPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage <= 1 ? 'disabled' : ''}>← Назад</button>
-        <span class="text-white/70 py-2">Страница ${productsPage} из ${productsTotalPages}</span>
-        <button id="nextPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage >= productsTotalPages ? 'disabled' : ''}>Вперёд →</button>
+      <div id="catalogSentinel" class="py-6 flex justify-center">
+        ${productsPage < productsTotalPages ? '<p class="text-white/30 text-sm">Загрузка...</p>' : '<p class="text-white/30 text-sm">Все товары загружены</p>'}
       </div>
       ${renderFooter()}
     `;
@@ -2550,23 +2651,77 @@ async function sendNotification(userId, message, orderId = null) {
 }
 
 function attachProductsCatalogHandlers() {
-  // Фильтры
-  const applyBtn = document.getElementById('applyProductsFilter');
-  if (applyBtn) {
-    applyBtn.onclick = () => {
-      productsFilter.category = document.getElementById('filterCategory').value;
-      productsFilter.brand = document.getElementById('filterBrand').value;
-      productsFilter.sort = document.getElementById('filterSort').value;
+  // Кнопка сброса фильтров в шапке
+  const resetFiltersBtn = document.getElementById('resetFiltersBtn');
+  if (resetFiltersBtn) {
+    resetFiltersBtn.onclick = () => {
+      productsFilter = { category: 'all', brand: 'all', sort: 'new' };
       productsPage = 1;
       renderCurrentScreen();
     };
   }
 
-  // Пагинация
-  const prevBtn = document.getElementById('prevPage');
-  const nextBtn = document.getElementById('nextPage');
-  if (prevBtn) prevBtn.onclick = () => { if (productsPage > 1) { productsPage--; renderCurrentScreen(); } };
-  if (nextBtn) nextBtn.onclick = () => { if (productsPage < productsTotalPages) { productsPage++; renderCurrentScreen(); } };
+  // Модальное окно фильтров
+  const openFilterBtn = document.getElementById('openFilterModalBtn');
+  if (openFilterBtn) {
+    openFilterBtn.onclick = async () => {
+      const { data: allP } = await supabaseClient.from('products').select('category, brand').eq('is_active', true);
+      const allCats = [...new Set(allP?.map(p => p.category).filter(Boolean) || [])];
+      const allBrands = [...new Set(allP?.map(p => p.brand).filter(Boolean) || [])];
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/80 flex items-end justify-center z-50';
+      modal.innerHTML = `
+        <div class="bg-slate-900 rounded-t-3xl w-full overflow-y-auto p-6" style="max-height:80vh">
+          <h3 class="text-white font-bold text-lg mb-4">🔧 Фильтры</h3>
+          <label class="text-white/70 text-sm mb-1 block">Категория</label>
+          <select id="mfCategory" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
+            <option value="all">Все категории</option>
+            ${allCats.map(c => `<option value="${c}" ${productsFilter.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+          <label class="text-white/70 text-sm mb-1 block">Бренд</label>
+          <select id="mfBrand" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
+            <option value="all">Все бренды</option>
+            ${allBrands.map(b => `<option value="${b}" ${productsFilter.brand === b ? 'selected' : ''}>${b}</option>`).join('')}
+          </select>
+          <label class="text-white/70 text-sm mb-1 block">Сортировка</label>
+          <select id="mfSort" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-5">
+            <option value="new" ${productsFilter.sort === 'new' ? 'selected' : ''}>Новинки</option>
+            <option value="price_asc" ${productsFilter.sort === 'price_asc' ? 'selected' : ''}>Цена ↑</option>
+            <option value="price_desc" ${productsFilter.sort === 'price_desc' ? 'selected' : ''}>Цена ↓</option>
+          </select>
+          <div class="flex gap-3 mb-3">
+            <button id="mfApply" class="flex-1 bg-cyan-500 py-3 rounded-xl font-bold">Применить</button>
+            <button id="mfReset" class="flex-1 bg-white/20 py-3 rounded-xl">Сбросить</button>
+          </div>
+          <button id="mfClose" class="w-full py-2 text-white/40 text-sm">Закрыть</button>
+        </div>`;
+      document.body.appendChild(modal);
+      document.getElementById('mfApply').onclick = () => {
+        productsFilter.category = document.getElementById('mfCategory').value;
+        productsFilter.brand = document.getElementById('mfBrand').value;
+        productsFilter.sort = document.getElementById('mfSort').value;
+        productsPage = 1; modal.remove(); renderCurrentScreen();
+      };
+      document.getElementById('mfReset').onclick = () => {
+        productsFilter = { category: 'all', brand: 'all', sort: 'new' };
+        productsPage = 1; modal.remove(); renderCurrentScreen();
+      };
+      document.getElementById('mfClose').onclick = () => modal.remove();
+      modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    };
+  }
+
+  // Бесконечная прокрутка
+  const sentinel = document.getElementById('catalogSentinel');
+  if (sentinel && productsPage < productsTotalPages) {
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        observer.unobserve(sentinel);
+        loadMoreProducts();
+      }
+    }, { rootMargin: '150px' });
+    observer.observe(sentinel);
+  }
 
   // Сердечки (избранное)
   document.querySelectorAll('.wishlist-heart').forEach(heart => {
@@ -2603,26 +2758,22 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     e.stopPropagation();
     const url = btn.dataset.url;
     const price = parseFloat(btn.dataset.price);
-    if (!url || isNaN(price)) {
-      alert('Ошибка: не удалось получить данные товара');
-      return;
-    }
-    window.tempOrder = {
-      url: url,
-      price: price,
-      weight: 1,
-      total: price * 0.45 + 12,
-      discountAmount: 0,
-      appliedPromo: null
-    };
-    // Прямой переход без switchTab
-    currentTab = 'neworder';
-    currentSubScreen = null;
-    appliedPromo = null;
-    renderCurrentScreen();
+    if (!url || isNaN(price)) { alert('Ошибка: не удалось получить данные товара'); return; }
+    window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
+    currentTab = 'neworder'; currentSubScreen = null; appliedPromo = null; renderCurrentScreen();
   };
   btn._buyHandler = handler;
   btn.addEventListener('click', handler);
+});
+
+// Клик по карточке — трекинг просмотров
+document.querySelectorAll('#productsGrid .product-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const productId = card.dataset.productId;
+    if (userId && productId) {
+      supabaseClient.from('user_views').upsert({ user_id: userId, product_id: productId }, { onConflict: 'user_id,product_id' }).then(() => {});
+    }
+  });
 });
 
   // Назад
@@ -2630,8 +2781,107 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
 }
 
-async function addToCart(productId, quantity = 1) {
-  if (!userId) { alert('Авторизуйтесь'); return; }
+async function loadMoreProducts() {
+  if (isLoadingMoreProducts || productsPage >= productsTotalPages) return;
+  isLoadingMoreProducts = true;
+  productsPage++;
+  try {
+    let query = supabaseClient.from('products').select('*').eq('is_active', true);
+    if (productsFilter.category !== 'all') query = query.eq('category', productsFilter.category);
+    if (productsFilter.brand !== 'all') query = query.eq('brand', productsFilter.brand);
+    if (productsFilter.sort === 'price_asc') query = query.order('price', { ascending: true });
+    else if (productsFilter.sort === 'price_desc') query = query.order('price', { ascending: false });
+    else query = query.order('created_at', { ascending: false });
+    const from = (productsPage - 1) * 20;
+    const { data } = await query.range(from, from + 19);
+    const grid = document.getElementById('productsGrid');
+    if (grid && data && data.length > 0) {
+      data.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'product-card';
+        div.dataset.productId = p.id;
+        div.innerHTML = `
+          <div class="aspect-square bg-white/10 flex items-center justify-center relative">
+            <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
+            <span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span>
+          </div>
+          <div class="p-2">
+            <p class="text-white font-bold text-sm truncate">${p.title}</p>
+            <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
+            <p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p>
+            <div class="flex gap-1 mt-2">
+              <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
+              <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
+            </div>
+          </div>`;
+        div.querySelector('.addToCartBtn').onclick = (e) => { e.stopPropagation(); addToCart(p.id); };
+        div.querySelector('.buyNowBtn').onclick = (e) => {
+          e.stopPropagation();
+          if (p.url) { window.tempOrder = { url: p.url, price: p.price, weight: 1, total: p.price * 0.45 + 12, discountAmount: 0, appliedPromo: null }; currentTab = 'neworder'; currentSubScreen = null; appliedPromo = null; renderCurrentScreen(); }
+        };
+        div.querySelector('.wishlist-heart').onclick = async (e) => {
+          e.stopPropagation();
+          const heart = e.currentTarget;
+          if (wishlist.has(p.id)) {
+            await supabaseClient.from('wishlist').delete().eq('user_id', userId).eq('product_id', p.id);
+            wishlist.delete(p.id); heart.innerText = '🤍'; heart.classList.remove('text-red-500');
+          } else {
+            await supabaseClient.from('wishlist').insert({ user_id: userId, product_id: p.id });
+            wishlist.add(p.id); heart.innerText = '❤️'; heart.classList.add('text-red-500');
+          }
+        };
+        div.onclick = () => {
+          if (userId) supabaseClient.from('user_views').upsert({ user_id: userId, product_id: p.id }, { onConflict: 'user_id,product_id' }).then(() => {});
+          if (p.url) { window.tempOrder = { url: p.url, price: p.price, weight: 1, total: p.price * 0.45 + 12, discountAmount: 0, appliedPromo: null }; currentTab = 'neworder'; currentSubScreen = null; appliedPromo = null; renderCurrentScreen(); }
+        };
+        grid.appendChild(div);
+      });
+    }
+    // Обновляем sentinel
+    const sentinel = document.getElementById('catalogSentinel');
+    if (sentinel) {
+      if (productsPage < productsTotalPages) {
+        const observer = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting) { observer.unobserve(sentinel); loadMoreProducts(); }
+        }, { rootMargin: '150px' });
+        observer.observe(sentinel);
+        sentinel.innerHTML = '<p class="text-white/30 text-sm">Загрузка...</p>';
+      } else {
+        sentinel.innerHTML = '<p class="text-white/30 text-sm">Все товары загружены</p>';
+      }
+    }
+  } catch(e) {
+    console.error('Ошибка подгрузки товаров:', e);
+    productsPage--;
+  } finally {
+    isLoadingMoreProducts = false;
+  }
+}
+
+async function migrateGuestCart() {
+  if (!userId) return;
+  let guestCart;
+  try { guestCart = JSON.parse(localStorage.getItem('guest_cart') || '[]'); } catch { return; }
+  if (!Array.isArray(guestCart) || guestCart.length === 0) return;
+  for (const item of guestCart) {
+    if (item.productId) await addToCart(item.productId, item.quantity || 1, true);
+  }
+  localStorage.removeItem('guest_cart');
+}
+
+async function addToCart(productId, quantity = 1, skipAlert = false) {
+  if (!userId) {
+    const guestCart = JSON.parse(localStorage.getItem('guest_cart') || '[]');
+    const existing = guestCart.find(item => item.productId === productId);
+    if (existing) {
+      existing.quantity += quantity;
+    } else {
+      guestCart.push({ productId, quantity });
+    }
+    localStorage.setItem('guest_cart', JSON.stringify(guestCart));
+    if (!skipAlert) alert('✅ Товар добавлен (войдите, чтобы сохранить корзину)');
+    return;
+  }
   try {
     const { data: existing } = await supabaseClient
       .from('cart')
@@ -2651,7 +2901,7 @@ async function addToCart(productId, quantity = 1) {
         .insert({ user_id: userId, product_id: productId, quantity });
     }
     await updateCartBadge();
-    alert('✅ Товар добавлен в корзину');
+    if (!skipAlert) alert('✅ Товар добавлен в корзину');
   } catch (err) {
     alert('❌ Ошибка: ' + err.message);
   }
