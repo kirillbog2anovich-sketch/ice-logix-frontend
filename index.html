@@ -2385,11 +2385,9 @@ async function sendNotification(userId, message, orderId = null) {
               <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
               <p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p>
               <div class="flex gap-1 mt-2">
-                <div class="flex gap-1 mt-2">
   <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
   <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
 </div>
-              </div>
             </div>
           </div>
         `).join('')}
@@ -2454,17 +2452,30 @@ function attachProductsCatalogHandlers() {
   });
 
   // Кнопки "Купить"
-  document.querySelectorAll('.buyNowBtn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const url = btn.dataset.url;
-      const price = parseFloat(btn.dataset.price);
-      if (url && !isNaN(price)) {
-        window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
-        switchTab('neworder');
-      }
+document.querySelectorAll('.buyNowBtn').forEach(btn => {
+  // Удаляем старые обработчики, если были
+  btn.removeEventListener('click', btn._buyHandler);
+  const handler = (e) => {
+    e.stopPropagation();
+    const url = btn.dataset.url;
+    const price = parseFloat(btn.dataset.price);
+    if (!url || isNaN(price)) {
+      console.error('Не хватает data-url или data-price у кнопки Купить', btn);
+      return;
+    }
+    window.tempOrder = {
+      url: url,
+      price: price,
+      weight: 1,
+      total: price * 0.45 + 12,
+      discountAmount: 0,
+      appliedPromo: null
     };
-  });
+    switchTab('neworder');
+  };
+  btn._buyHandler = handler;
+  btn.addEventListener('click', handler);
+});
 
   // Клик по карточке
   document.querySelectorAll('.product-card').forEach(card => {
