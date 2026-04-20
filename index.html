@@ -3405,16 +3405,15 @@ function attachCartHandlers() {
   const checkoutBtn = document.getElementById('checkoutCartBtn');
   if (checkoutBtn) {
     checkoutBtn.onclick = () => {
-      const checkboxes = document.querySelectorAll('.cart-item-checkbox:checked');
-      if (checkboxes.length === 0) {
-        alert('Выберите хотя бы один товар');
-        return;
-      }
-      
+      // Собираем выбранные товары, считывая актуальное количество из data-атрибута карточки
       const selectedItems = [];
-      checkboxes.forEach(cb => {
+      document.querySelectorAll('.cart-item-checkbox:checked').forEach(cb => {
         const cartRow = cb.closest('[data-cart-id]');
-        const quantity = getCartRowQuantity(cartRow);
+        // Ищем span с текущим количеством (тот, что рядом с кнопками +/-)
+        const qtySpan = cartRow.querySelector('.cart-qty-display');
+        let quantity = parseInt(qtySpan?.innerText || '1');
+        if (isNaN(quantity) || quantity < 1) quantity = 1;
+
         selectedItems.push({
           cartId: cartRow.dataset.cartId,
           productId: cb.dataset.productId,
@@ -3424,8 +3423,22 @@ function attachCartHandlers() {
           quantity: quantity
         });
       });
-      
-      const total = selectedItems.reduce((sum, item) => sum + (item.price * 0.45 + 12) * item.quantity, 0);
+
+      if (selectedItems.length === 0) {
+        alert('Выберите хотя бы один товар');
+        return;
+      }
+
+      // Вычисляем общую сумму (цена в CNY * 0.45 + 12 за кг * количество)
+      const total = selectedItems.reduce((sum, item) => {
+        return sum + (item.price * 0.45 + 12) * item.quantity;
+      }, 0);
+
+      // Отладочный алерт
+      const itemsList = selectedItems.map(item => `${item.title}: ${item.price} × ${item.quantity} = ${((item.price * 0.45 + 12) * item.quantity).toFixed(2)} BYN`).join('\n');
+      alert(`Выбрано товаров: ${selectedItems.length}\n${itemsList}\nОбщая сумма: ${total.toFixed(2)} BYN`);
+
+      // Сохраняем в tempOrder для нового заказа
       window.tempOrder = {
         items: selectedItems,
         total: total,
@@ -3433,18 +3446,7 @@ function attachCartHandlers() {
         appliedPromo: null
       };
 
-      const debugLines = [
-        `Выбрано товаров: ${selectedItems.length}`,
-        '',
-        ...selectedItems.map((item) => {
-          const lineSum = (item.price * 0.45 + 12) * item.quantity;
-          return `${item.title}\n  цена за ед.: ${item.price} CNY\n  количество: ${item.quantity}\n  сумма строки: ${lineSum.toFixed(2)} BYN`;
-        }),
-        '',
-        `Общая сумма: ${total.toFixed(2)} BYN`
-      ];
-      alert(debugLines.join('\n'));
-      
+      // Переходим в новый заказ
       currentTab = 'neworder';
       currentSubScreen = null;
       appliedPromo = null;
