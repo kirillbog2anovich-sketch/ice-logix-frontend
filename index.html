@@ -3214,7 +3214,12 @@ async function showPhoneBinding() {
 }
 
 async function renderCart() {
-  if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
+  // if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
+if (!userId) {
+  // ВРЕМЕННО для отладки в браузере
+  userId = 6107097715; // подставьте ваш реальный Telegram ID
+  console.warn('⚠️ Режим отладки: userId подставлен вручную!');
+}
   try {
     const { data, error } = await supabaseClient
       .from('cart')
