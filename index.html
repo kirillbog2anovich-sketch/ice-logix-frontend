@@ -2451,16 +2451,15 @@ function attachProductsCatalogHandlers() {
     };
   });
 
- // Кнопки "Купить"
+ // Кнопки "Купить" (прямой переход)
 document.querySelectorAll('.buyNowBtn').forEach(btn => {
-  // Удаляем старые обработчики, если были
   btn.removeEventListener('click', btn._buyHandler);
   const handler = (e) => {
     e.stopPropagation();
     const url = btn.dataset.url;
     const price = parseFloat(btn.dataset.price);
     if (!url || isNaN(price)) {
-      console.error('Не хватает data-url или data-price у кнопки Купить', btn);
+      alert('Ошибка: не удалось получить данные товара');
       return;
     }
     window.tempOrder = {
@@ -2471,7 +2470,11 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       discountAmount: 0,
       appliedPromo: null
     };
-    switchTab('neworder');
+    // Прямой переход без switchTab
+    currentTab = 'neworder';
+    currentSubScreen = null;
+    appliedPromo = null;
+    renderCurrentScreen();
   };
   btn._buyHandler = handler;
   btn.addEventListener('click', handler);
