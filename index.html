@@ -3330,13 +3330,14 @@ function attachCartHandlers() {
   const checkoutSelectedBtn = document.getElementById('checkoutSelectedBtn');
 if (checkoutSelectedBtn) {
   checkoutSelectedBtn.onclick = async () => {
+    console.log('Клик по Оформить выбранное');
     const checkboxes = document.querySelectorAll('.cart-item-checkbox:checked');
+    console.log('Выбрано товаров:', checkboxes.length);
     if (checkboxes.length === 0) {
       alert('Выберите хотя бы один товар');
       return;
     }
     
-    // Собираем выбранные товары
     const selectedItems = [];
     checkboxes.forEach(cb => {
       selectedItems.push({
@@ -3345,14 +3346,11 @@ if (checkoutSelectedBtn) {
         title: cb.dataset.title,
         price: parseFloat(cb.dataset.price),
         url: cb.dataset.url,
-        quantity: 1 // по умолчанию, можно будет изменить в калькуляторе
+        quantity: 1
       });
     });
     
-    // Вычисляем общую примерную стоимость (для предпросмотра)
     const total = selectedItems.reduce((sum, item) => sum + item.price * 0.45 + 12, 0);
-    
-    // Сохраняем в tempOrder для нового заказа
     window.tempOrder = {
       items: selectedItems,
       total: total,
@@ -3360,9 +3358,20 @@ if (checkoutSelectedBtn) {
       appliedPromo: null
     };
     
-    // Переходим в новый заказ
+    console.log('tempOrder установлен:', window.tempOrder);
+    
+    // Прямой переход, минуя switchTab
     currentTab = 'neworder';
-    renderCurrentScreen();
+    currentSubScreen = null;
+    appliedPromo = null;
+    
+    // Проверяем, что renderCurrentScreen существует
+    if (typeof renderCurrentScreen === 'function') {
+      renderCurrentScreen();
+    } else {
+      console.error('renderCurrentScreen не определена!');
+      alert('Ошибка: функция рендеринга не найдена.');
+    }
   };
 }
 }
