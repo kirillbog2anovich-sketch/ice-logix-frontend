@@ -817,6 +817,17 @@ if (createBtn) {
     }
 
     // ==================== РЕНДЕР МОИХ ЗАКАЗОВ (ДЛЯ ПРОФИЛЯ) ====================
+function getTimelineProgress(status) {
+  const progressMap = {
+    'pending': 0, 'paid': 0,
+    'bought': 25,
+    'on_sklad_cn': 50, 'in_transit': 50,
+    'in_belarus': 75,
+    'delivered': 100, 'cancelled': 0
+  };
+  return progressMap[status] || 0;
+}
+
 async function renderMyOrders() {
   if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
   try {
@@ -846,6 +857,28 @@ async function renderMyOrders() {
               </div>
               <span class="status-badge ${getStatusClass(order.status)}">${getStatusText(order.status)}</span>
             </div>
+            ${order.photo_reports && order.photo_reports.length > 0 ? `
+              <div class="mt-3">
+                <p class="text-white/70 text-xs mb-1">📸 Фото со склада:</p>
+                <div class="flex gap-2 overflow-x-auto pb-2">
+                  ${order.photo_reports.map(url => `
+                    <img src="${url}" class="w-16 h-16 object-cover rounded-lg cursor-pointer flex-shrink-0" onclick="window.open('${url}', '_blank')">
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+            <div class="mt-3">
+              <div class="flex items-center justify-between text-xs text-white/50 mb-1">
+                <span>🛒 Выкуплен</span>
+                <span>✈️ В пути</span>
+                <span>🇧🇾 В РБ</span>
+                <span>✅ Доставлен</span>
+              </div>
+              <div class="h-2 w-full bg-white/20 rounded-full overflow-hidden">
+                <div class="h-full bg-cyan-500 rounded-full transition-all" style="width: ${getTimelineProgress(order.status)}%;"></div>
+              </div>
+            </div>
+            <button class="mt-3 w-full bg-white/20 hover:bg-white/30 py-2 rounded-lg text-sm text-white" onclick="window.open('https://t.me/ice_logix_bot?text=Вопрос по заказу ${order.id.slice(0,8)}', '_blank')">💬 Написать в поддержку</button>
           </div>
         `).join('')}
       </div>
