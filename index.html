@@ -3214,12 +3214,7 @@ async function showPhoneBinding() {
 }
 
 async function renderCart() {
-  // if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
-if (!userId) {
-  // ВРЕМЕННО для отладки в браузере
-  userId = 6107097715; // подставьте ваш реальный Telegram ID
-  console.warn('⚠️ Режим отладки: userId подставлен вручную!');
-}
+  if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
   try {
     const { data, error } = await supabaseClient
       .from('cart')
@@ -3246,7 +3241,7 @@ if (!userId) {
     const itemsHtml = data.map(item => {
       const product = item.products;
       if (!product) return '';
-      const itemTotal = (product.price * 0.45 * item.quantity) + (12 * item.quantity);
+      const itemTotal = (product.price * 0.45 + 12) * item.quantity;
       totalPrice += itemTotal;
       return `
         <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
@@ -3424,6 +3419,8 @@ function attachCartHandlers() {
         discountAmount: 0,
         appliedPromo: null
       };
+
+      alert(`Выбрано товаров: ${selectedItems.length}\nОбщая сумма: ${total.toFixed(2)} BYN\nПервый товар: ${selectedItems[0]?.title}, кол-во: ${selectedItems[0]?.quantity}`);
       
       currentTab = 'neworder';
       currentSubScreen = null;
