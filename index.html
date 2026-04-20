@@ -2303,8 +2303,7 @@ async function sendNotification(userId, message, orderId = null) {
     }
 
 
-// Рендер каталога товаров (почти как старый renderProducts, но с кнопкой Назад)
-async function renderProductsCatalog() {
+    async function renderProductsCatalog() {
   try {
     let query = supabaseClient.from('products').select('*', { count: 'exact' }).eq('is_active', true);
     if (productsFilter.category !== 'all') query = query.eq('category', productsFilter.category);
@@ -2334,16 +2333,27 @@ async function renderProductsCatalog() {
       <div class="grid grid-cols-2 gap-4" id="productsGrid">
         ${data.map(p => `
           <div class="product-card" data-product-id="${p.id}">
-            <div class="aspect-square bg-white/10 flex items-center justify-center relative"><img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover"><span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span></div>
-            <div class="p-2"><p class="text-white font-bold text-sm truncate">${p.title}</p><p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p><p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p><div class="flex gap-1 mt-2">
-            <div class="flex gap-1 mt-2">
-  <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
-  <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡</button>
-</div>
+            <div class="aspect-square bg-white/10 flex items-center justify-center relative">
+              <img src="${p.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
+              <span class="absolute top-2 right-2 wishlist-heart text-xl ${wishlist.has(p.id) ? 'text-red-500' : 'text-white/50'}" data-product-id="${p.id}">${wishlist.has(p.id) ? '❤️' : '🤍'}</span>
+            </div>
+            <div class="p-2">
+              <p class="text-white font-bold text-sm truncate">${p.title}</p>
+              <p class="text-cyan-400 text-xs">${p.price} ${p.currency}</p>
+              <p class="text-white/50 text-xs">${p.brand || ''} ${p.category || ''}</p>
+              <div class="flex gap-1 mt-2">
+                <button class="addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs" data-product-id="${p.id}">🛒</button>
+                <button class="buyNowBtn flex-1 bg-green-500/70 hover:bg-green-500 py-1 rounded text-xs" data-url="${p.url}" data-price="${p.price}">⚡ Купить</button>
+              </div>
+            </div>
           </div>
         `).join('')}
       </div>
-      <div class="flex justify-center gap-2 mt-4"><button id="prevPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage <= 1 ? 'disabled' : ''}>← Назад</button><span class="text-white/70 py-2">Страница ${productsPage} из ${productsTotalPages}</span><button id="nextPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage >= productsTotalPages ? 'disabled' : ''}>Вперёд →</button></div>
+      <div class="flex justify-center gap-2 mt-4">
+        <button id="prevPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage <= 1 ? 'disabled' : ''}>← Назад</button>
+        <span class="text-white/70 py-2">Страница ${productsPage} из ${productsTotalPages}</span>
+        <button id="nextPage" class="bg-white/20 px-4 py-2 rounded-lg" ${productsPage >= productsTotalPages ? 'disabled' : ''}>Вперёд →</button>
+      </div>
       ${renderFooter()}
     `;
   } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки товаров</p>'; }
@@ -2383,13 +2393,12 @@ function attachProductsCatalogHandlers() {
     };
   });
   
-  // Внутри loadHomeProducts, после grid.innerHTML = ...
-document.querySelectorAll('.addToCartBtn').forEach(btn => {
-  btn.onclick = (e) => {
+  document.querySelectorAll('.addToCartBtn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
     e.stopPropagation();
     const productId = btn.dataset.productId;
-    if (productId) addToCart(productId);
-  };
+    addToCart(productId);
+  });
 });
 
 document.querySelectorAll('.buyNowBtn').forEach(btn => {
@@ -3219,12 +3228,10 @@ async function renderCart() {
       .order('added_at', { ascending: false });
     
     if (error) {
-      // Показываем ошибку прямо на экране
       return `
         <div class="text-center py-10">
           <p class="text-red-400 font-bold mb-2">❌ Ошибка загрузки корзины</p>
           <p class="text-white/70 text-sm bg-white/5 p-3 rounded-xl">${error.message}</p>
-          <p class="text-white/50 text-xs mt-2">Код: ${error.code || 'нет'}</p>
           <button id="retryCartBtn" class="mt-4 bg-cyan-500 px-6 py-2 rounded-full">Повторить</button>
         </div>
         ${renderFooter()}
@@ -3235,13 +3242,43 @@ async function renderCart() {
       return '<div class="text-center py-10"><p class="text-white/70 mb-4">🛒 Ваша корзина пуста</p><button id="goToCatalogBtn" class="bg-cyan-500 px-6 py-2 rounded-full">Перейти в каталог</button></div>' + renderFooter();
     }
     
-    // ... остальная часть с отображением товаров ...
-    // (оставьте как было, но для отладки пока можно упростить)
+    let totalPrice = 0;
+    const itemsHtml = data.map(item => {
+      const product = item.products;
+      if (!product) return '';
+      const itemTotal = product.price * item.quantity;
+      totalPrice += itemTotal;
+      return `
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
+          <img src="${product.image_url || 'https://via.placeholder.com/150'}" class="w-16 h-16 object-cover rounded-lg">
+          <div class="flex-1">
+            <p class="text-white font-bold">${product.title}</p>
+            <p class="text-cyan-400 text-sm">${product.price} ${product.currency} × ${item.quantity}</p>
+            <p class="text-white/70 text-xs">${itemTotal.toFixed(2)} BYN (примерно)</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="decrease" data-id="${item.id}">−</button>
+            <span class="text-white">${item.quantity}</span>
+            <button class="cart-qty-btn bg-white/20 rounded-full w-8 h-8 flex items-center justify-center" data-action="increase" data-id="${item.id}">+</button>
+            <button class="cart-remove-btn text-red-400 ml-2" data-id="${item.id}">🗑️</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
     return `
       <button id="backFromCartBtn" class="global-back-btn">← Назад</button>
       <div class="space-y-3">
-        <p class="text-white">Товаров в корзине: ${data.length}</p>
-        ${data.map(item => `<p>Product ID: ${item.product_id}, Qty: ${item.quantity}</p>`).join('')}
+        ${itemsHtml}
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 mt-4">
+          <div class="flex justify-between items-center">
+            <span class="text-white font-bold text-lg">Итого:</span>
+            <span class="text-cyan-400 font-bold text-xl">${totalPrice.toFixed(2)} BYN</span>
+          </div>
+          <p class="text-white/50 text-xs mt-1">*Примерная стоимость, точный расчёт в калькуляторе</p>
+          <button id="clearCartBtn" class="w-full mt-3 bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full text-sm">🗑️ Очистить корзину</button>
+          <button id="checkoutCartBtn" class="w-full mt-2 bg-green-500 hover:bg-green-600 py-3 rounded-full font-bold">✨ Оформить заказ</button>
+        </div>
       </div>
       ${renderFooter()}
     `;
