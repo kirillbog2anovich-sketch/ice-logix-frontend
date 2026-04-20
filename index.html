@@ -3298,91 +3298,102 @@ function attachCartHandlers() {
   const goToCatalogBtn = document.getElementById('goToCatalogBtn');
   if (goToCatalogBtn) goToCatalogBtn.onclick = () => switchTab('catalogs');
 
+  // Функция пересчёта общего итога (вызывается при любых изменениях)
   function updateCartTotal() {
-  let total = 0;
-  document.querySelectorAll('.cart-item-checkbox:checked').forEach(cb => {
-    const row = cb.closest('[data-cart-id]');
-    const price = parseFloat(cb.dataset.price) || 0;
-    const qtySpan = row.querySelector('.cart-qty-display');
-    const quantity = parseInt(qtySpan?.innerText || '1');
-    total += (price * 0.45 + 12) * quantity;
-  });
-  const totalSpan = document.getElementById('cartTotalAmount');
-  if (totalSpan) totalSpan.innerText = total.toFixed(2) + ' BYN';
-}
+    let total = 0;
+    document.querySelectorAll('.cart-item-checkbox:checked').forEach(cb => {
+      const row = cb.closest('[data-cart-id]');
+      if (!row) return;
+      const price = parseFloat(cb.dataset.price) || 0;
+      const qtySpan = row.querySelector('.cart-qty-display');
+      const quantity = parseInt(qtySpan?.innerText || '1');
+      total += (price * 0.45 + 12) * quantity;
+    });
+    const totalSpan = document.getElementById('cartTotalAmount');
+    if (totalSpan) totalSpan.innerText = total.toFixed(2) + ' BYN';
+  }
 
-  // Обработчики чекбоксов
-  document.querySelectorAll('.cart-item-checkbox').forEach(cb => {
-    cb.addEventListener('change', updateCartTotal);
-  });
-
-  // Обработчики изменения количества
-  document.querySelectorAll('.cart-qty-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-  e.stopPropagation();
-  console.log('Клик по кнопке +/-', btn.dataset);
-      const action = btn.dataset.action;
-      const cartId = btn.dataset.id;
-      const row = btn.closest('[data-cart-id]');
-      const pricePerUnit = parseFloat(row.querySelector('.cart-item-checkbox')?.dataset.price || '0');
-      if (!row || !cartId) return;
+  // === ДЕЛЕГИРОВАНИЕ СОБЫТИЙ (главное исправление) ===
+  // Удаляем старый обработчик, если он был, чтобы избежать дублирования
+  if (window._cartDelegate) {
+    document.removeEventListener('click', window._cartDelegate);
+  }
+  
+  window._cartDelegate = async (e) => {
+    // Обработка клика по кнопке + / -
+    const qtyBtn = e.target.closest('.cart-qty-btn');
+    if (qtyBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const action = qtyBtn.dataset.action;
+      const cartId = qtyBtn.dataset.id;
+      const row = qtyBtn.closest('[data-cart-id]');
+      if (!row) return;
+      
       const qtySpans = row.querySelectorAll('.cart-qty-display');
+      const priceCheckbox = row.querySelector('.cart-item-checkbox');
+      const pricePerUnit = parseFloat(priceCheckbox?.dataset.price || '0');
       let newQty = parseInt(qtySpans[0]?.innerText || '1');
-
+      
       if (action === 'increase') newQty++;
       else if (action === 'decrease') newQty = Math.max(1, newQty - 1);
       
-      const { error } = await supabaseClient.from('cart').update({ quantity: newQty, updated_at: new Date() }).eq('id', cartId);
-      console.log('Ответ Supabase:', { error, newQty });
+      // Обновляем в Supabase
+      const { error } = await supabaseClient
+        .from('cart')
+        .update({ quantity: newQty, updated_at: new Date() })
+        .eq('id', cartId);
+        
       if (!error) {
-        // 1. Обновляем все элементы с количеством в карточке
-        const qtySpans = row.querySelectorAll('.cart-qty-display');
-        console.log('Найдено элементов для количества:', qtySpans.length);
-        qtySpans.forEach(span => {
-          span.innerText = newQty;
-          console.log('Обновлён span количества:', span, 'новое значение:', newQty);
-        });
-
-        // 2. Обновляем примерную стоимость для этого товара
+        // Обновляем все отображения количества в карточке
+        qtySpans.forEach(span => span.innerText = newQty);
+        // Обновляем примерную стоимость
         const examplePriceSpan = row.querySelector('.item-example-price');
         if (examplePriceSpan) {
           const newItemTotal = (pricePerUnit * 0.45 + 12) * newQty;
           examplePriceSpan.innerText = newItemTotal.toFixed(2) + ' BYN (примерно)';
-          console.log('Обновлена примерная стоимость:', newItemTotal.toFixed(2));
-        } else {
-          console.error('Не найден элемент .item-example-price в карточке!');
         }
-
-        // 3. Пересчитываем общий итог корзины
+        // Пересчитываем итог
         updateCartTotal();
-        console.log('Вызвана функция updateCartTotal');
-      } else {
-        console.error('Ошибка обновления в Supabase:', error);
+        // Обновляем бейдж корзины (на всякий случай)
+        if (typeof updateCartBadge === 'function') updateCartBadge();
       }
-});
-  });
-
-  // Удаление товара
-  document.querySelectorAll('.cart-remove-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const cartId = btn.dataset.id;
+      return;
+    }
+    
+    // Обработка клика по чекбоксу (для пересчёта итога)
+    const checkbox = e.target.closest('.cart-item-checkbox');
+    if (checkbox) {
+      updateCartTotal();
+      return;
+    }
+    
+    // Обработка клика по кнопке удаления
+    const removeBtn = e.target.closest('.cart-remove-btn');
+    if (removeBtn) {
+      const cartId = removeBtn.dataset.id;
       await supabaseClient.from('cart').delete().eq('id', cartId);
-      updateCartBadge();
-      renderCurrentScreen();
-    });
-  });
-
-  // Очистка корзины
-  const clearCartBtn = document.getElementById('clearCartBtn');
-  if (clearCartBtn) clearCartBtn.onclick = async () => {
-    if (!confirm('Удалить все товары из корзины?')) return;
-    await supabaseClient.from('cart').delete().eq('user_id', userId);
-    updateCartBadge();
-    renderCurrentScreen();
+      if (typeof updateCartBadge === 'function') updateCartBadge();
+      renderCurrentScreen(); // Перерисовываем корзину
+      return;
+    }
   };
-
-  // Оформление заказа
+  
+  document.addEventListener('click', window._cartDelegate);
+  
+  // Кнопка очистки корзины
+  const clearCartBtn = document.getElementById('clearCartBtn');
+  if (clearCartBtn) {
+    clearCartBtn.onclick = async () => {
+      if (!confirm('Удалить все товары из корзины?')) return;
+      await supabaseClient.from('cart').delete().eq('user_id', userId);
+      if (typeof updateCartBadge === 'function') updateCartBadge();
+      renderCurrentScreen();
+    };
+  }
+  
+  // Кнопка оформления заказа
   const checkoutBtn = document.getElementById('checkoutCartBtn');
   if (checkoutBtn) {
     checkoutBtn.onclick = () => {
@@ -3391,7 +3402,7 @@ function attachCartHandlers() {
         alert('Выберите хотя бы один товар');
         return;
       }
-
+      
       const selectedItems = [];
       checkboxes.forEach(cb => {
         const cartRow = cb.closest('[data-cart-id]');
@@ -3405,7 +3416,7 @@ function attachCartHandlers() {
           quantity: quantity
         });
       });
-
+      
       const total = selectedItems.reduce((sum, item) => sum + (item.price * 0.45 + 12) * item.quantity, 0);
       window.tempOrder = {
         items: selectedItems,
@@ -3413,14 +3424,14 @@ function attachCartHandlers() {
         discountAmount: 0,
         appliedPromo: null
       };
-
+      
       currentTab = 'neworder';
       currentSubScreen = null;
       appliedPromo = null;
       renderCurrentScreen();
     };
   }
-
+  
   const retryBtn = document.getElementById('retryCartBtn');
   if (retryBtn) retryBtn.onclick = () => renderCurrentScreen();
 }
