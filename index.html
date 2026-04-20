@@ -2404,6 +2404,7 @@ async function sendNotification(userId, message, orderId = null) {
 }
 
 function attachProductsCatalogHandlers() {
+  // Фильтры
   const applyBtn = document.getElementById('applyProductsFilter');
   if (applyBtn) {
     applyBtn.onclick = () => {
@@ -2415,12 +2416,13 @@ function attachProductsCatalogHandlers() {
     };
   }
 
+  // Пагинация
   const prevBtn = document.getElementById('prevPage');
   const nextBtn = document.getElementById('nextPage');
   if (prevBtn) prevBtn.onclick = () => { if (productsPage > 1) { productsPage--; renderCurrentScreen(); } };
   if (nextBtn) nextBtn.onclick = () => { if (productsPage < productsTotalPages) { productsPage++; renderCurrentScreen(); } };
 
-  // Обработчики сердечек
+  // Сердечки (избранное)
   document.querySelectorAll('.wishlist-heart').forEach(heart => {
     heart.onclick = async (e) => {
       e.stopPropagation();
@@ -2439,82 +2441,31 @@ function attachProductsCatalogHandlers() {
     };
   });
 
-  // Динамическое добавление кнопки "В корзину", если её нет (запасной вариант)
-  document.querySelectorAll('.product-card').forEach(card => {
-    const existingAddBtn = card.querySelector('.addToCartBtn');
-    if (!existingAddBtn) {
-      const p2Div = card.querySelector('.p-2');
-      if (!p2Div) return;
-
-      // Проверяем, есть ли уже контейнер с кнопками
-      let btnContainer = p2Div.querySelector('.flex.gap-1.mt-2');
-      if (!btnContainer) {
-        btnContainer = document.createElement('div');
-        btnContainer.className = 'flex gap-1 mt-2';
-        p2Div.appendChild(btnContainer);
-      }
-
-      // Создаём кнопку "В корзину"
-      const addBtn = document.createElement('button');
-      addBtn.className = 'addToCartBtn flex-1 bg-cyan-500/70 hover:bg-cyan-500 py-1 rounded text-xs';
-      addBtn.textContent = '🛒';
-      addBtn.dataset.productId = card.dataset.productId;
-
-      // Если есть кнопка "Купить", делаем её flex-1 и переносим в контейнер
-      const buyBtn = card.querySelector('.buyNowBtn');
-      if (buyBtn) {
-        buyBtn.classList.add('flex-1');
-        // Убедимся, что кнопки идут в правильном порядке: сначала 🛒, потом ⚡
-        btnContainer.appendChild(addBtn);
-        if (!btnContainer.contains(buyBtn)) {
-          btnContainer.appendChild(buyBtn);
-        }
-      } else {
-        btnContainer.appendChild(addBtn);
-      }
-    }
-  });
-
-  // Обработчики для кнопок "В корзину"
+  // Кнопки "В корзину"
   document.querySelectorAll('.addToCartBtn').forEach(btn => {
-    // Удаляем старые обработчики, чтобы не дублировались
-    btn.removeEventListener('click', btn._clickHandler);
-    const handler = (e) => {
+    btn.onclick = (e) => {
       e.stopPropagation();
       const productId = btn.dataset.productId;
       if (productId) addToCart(productId);
     };
-    btn._clickHandler = handler;
-    btn.addEventListener('click', handler);
   });
 
-  // Обработчики для кнопок "Купить"
+  // Кнопки "Купить"
   document.querySelectorAll('.buyNowBtn').forEach(btn => {
-    btn.removeEventListener('click', btn._buyHandler);
-    const handler = (e) => {
+    btn.onclick = (e) => {
       e.stopPropagation();
       const url = btn.dataset.url;
       const price = parseFloat(btn.dataset.price);
       if (url && !isNaN(price)) {
-        window.tempOrder = {
-          url: url,
-          price: price,
-          weight: 1,
-          total: price * 0.45 + 12,
-          discountAmount: 0,
-          appliedPromo: null
-        };
+        window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
         switchTab('neworder');
       }
     };
-    btn._buyHandler = handler;
-    btn.addEventListener('click', handler);
   });
 
-  // Клик по карточке (переход к заказу)
+  // Клик по карточке
   document.querySelectorAll('.product-card').forEach(card => {
     card.onclick = (e) => {
-      // Игнорируем клики по кнопкам и сердечку
       if (e.target.closest('button') || e.target.closest('.wishlist-heart')) return;
       const url = card.querySelector('.buyNowBtn')?.dataset.url;
       const price = parseFloat(card.querySelector('.buyNowBtn')?.dataset.price);
@@ -2525,6 +2476,7 @@ function attachProductsCatalogHandlers() {
     };
   });
 
+  // Назад
   const backBtn = document.getElementById('backFromProductsCatalogBtn');
   if (backBtn) backBtn.onclick = () => { currentSubScreen = null; renderCurrentScreen(); };
 }
