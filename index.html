@@ -608,6 +608,18 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       const d = window.tempOrder || { url: '', price: placeholder="0", weight: placeholder="0", total: 0, discountAmount: 0, appliedPromo: null };
       const finalTotal = d.total - (d.discountAmount || 0);
       return `
+      ${window.tempOrder?.items ? `
+  <div class="bg-white/5 rounded-xl p-3 mb-3">
+    <p class="text-white font-bold mb-2">🛒 Выбранные товары:</p>
+    ${window.tempOrder.items.map(item => `
+      <div class="flex justify-between text-sm">
+        <span class="text-white/70">${item.title}</span>
+        <span class="text-cyan-400">${item.price} ${item.quantity ? '× '+item.quantity : ''}</span>
+      </div>
+    `).join('')}
+    <p class="text-right text-white mt-2">Примерная сумма: <span class="text-cyan-400">${window.tempOrder.total.toFixed(2)} ❄️</span></p>
+  </div>
+` : ''}
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg">
           <h2 class="text-xl font-bold mb-4">✨ Новый заказ</h2>
           <label class="text-white/70 text-sm">Ссылка на товар</label>
@@ -754,35 +766,51 @@ try {
       }
       
       const createBtn = document.getElementById('createOrderFinal');
-      if (createBtn) {
-        createBtn.onclick = async () => {
-          if (!window.tempOrder || !userId) { alert('Ошибка: заполните все поля'); return; }
-          try {
-            const { data, error } = await supabaseClient.from('orders').insert({
-              promotion_id: window.tempOrder.promotionId || null,
-              promotion_discount: window.tempOrder.discountAmount || 0,
-              user_id: userId, source_url: window.tempOrder.url, weight_estimated: window.tempOrder.weight,
-              price_original: window.tempOrder.price, price_byn: window.tempOrder.price * 0.45,
-              delivery_cost_estimated: window.tempOrder.weight * 12, prepayment_amount: (window.tempOrder.total - window.tempOrder.discountAmount) * 0.75,
-              status: 'pending', discount_applied: window.tempOrder.discountAmount || 0, promo_code: window.tempOrder.appliedPromo?.code || null
-            }).select();
-            if (error) throw error;
-            alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${((window.tempOrder.total - window.tempOrder.discountAmount) * 0.75).toFixed(2)} ❄️`);
-            if (window.tempOrder.promotionId) {
-            await supabaseClient.rpc('increment_promotion_usage', { promo_id: window.tempOrder.promotionId });
-            }
-            await sendNotification(userId, `✅ Ваш заказ #${data[0].id.slice(0,8)} оформлен! Ожидайте подтверждения оплаты.`);
-            // Снятие лимита после первого заказа
-if (!userLimits.isTrusted) {
-  await supabaseClient.from('users').update({ is_trusted: true }).eq('user_id', userId);
-  userLimits.isTrusted = true;
-  alert('🎉 Поздравляем с первым заказом! Лимит на расчёты увеличен до 100 в день.');
-}
-            window.tempOrder = null;
-            switchTab('home');
-          } catch (err) { alert('Ошибка: ' + err.message); }
-        };
+if (createBtn) {
+  createBtn.onclick = async () => {
+    if (!window.tempOrder || !userId) { alert('Ошибка: заполните все поля'); return; }
+    try {
+      const { data, error } = await supabaseClient.from('orders').insert({
+        user_id: userId,
+        source_url: window.tempOrder.items?.[0]?.url || window.tempOrder.url,
+        items: window.tempOrder.items || null,
+        cart_items: window.tempOrder.items || null,
+        weight_estimated: window.tempOrder.weight || 1,
+        price_original: window.tempOrder.price || 0,
+        price_byn: (window.tempOrder.price || 0) * 0.45,
+        delivery_cost_estimated: (window.tempOrder.weight || 1) * 12,
+        prepayment_amount: (window.tempOrder.total - window.tempOrder.discountAmount) * 0.75,
+        status: 'pending',
+        discount_applied: window.tempOrder.discountAmount || 0,
+        promo_code: window.tempOrder.appliedPromo?.code || null
+      }).select();
+      if (error) throw error;
+
+      alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${((window.tempOrder.total - window.tempOrder.discountAmount) * 0.75).toFixed(2)} ❄️`);
+
+      // ===== ВСТАВЬТЕ СЮДА =====
+      // Удаляем выбранные товары из корзины (если заказ создан из корзины)
+      if (window.tempOrder.items && window.tempOrder.items.length > 0) {
+        const cartIds = window.tempOrder.items.map(item => item.cartId).filter(Boolean);
+        if (cartIds.length > 0) {
+          await supabaseClient.from('cart').delete().in('id', cartIds);
+        }
+        await updateCartBadge();
       }
+      // ========================
+
+      // Снятие лимита после первого заказа
+      if (!userLimits.isTrusted) {
+        await supabaseClient.from('users').update({ is_trusted: true }).eq('user_id', userId);
+        userLimits.isTrusted = true;
+        alert('🎉 Поздравляем с первым заказом! Лимит на расчёты увеличен до 100 в день.');
+      }
+
+      window.tempOrder = null;
+      switchTab('home');
+    } catch (err) { alert('Ошибка: ' + err.message); }
+  };
+}
     }
 
     // ==================== РЕНДЕР МОИХ ЗАКАЗОВ (ДЛЯ ПРОФИЛЯ) ====================
@@ -3213,8 +3241,8 @@ async function renderCart() {
       const itemTotal = product.price * item.quantity;
       totalPrice += itemTotal;
       return `
-        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
-          <img src="${product.image_url || 'https://via.placeholder.com/150'}" class="w-16 h-16 object-cover rounded-lg">
+      <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
+          <input type="checkbox" class="cart-item-checkbox" data-cart-id="${item.id}" data-product-id="${product.id}" data-price="${product.price}" data-url="${product.url}" data-title="${product.title}" checked>
           <div class="flex-1">
             <p class="text-white font-bold">${product.title}</p>
             <p class="text-cyan-400 text-sm">${product.price} ${product.currency} × ${item.quantity}</p>
@@ -3299,31 +3327,44 @@ function attachCartHandlers() {
     renderCurrentScreen();
   };
   
-  const checkoutCartBtn = document.getElementById('checkoutCartBtn');
-  if (checkoutCartBtn) checkoutCartBtn.onclick = async () => {
-    // Получаем товары из корзины
-    const { data: cartItems } = await supabaseClient.from('cart').select('*, products(*)').eq('user_id', userId);
-    if (!cartItems || cartItems.length === 0) {
-      alert('Корзина пуста');
+  const checkoutSelectedBtn = document.getElementById('checkoutSelectedBtn');
+if (checkoutSelectedBtn) {
+  checkoutSelectedBtn.onclick = async () => {
+    const checkboxes = document.querySelectorAll('.cart-item-checkbox:checked');
+    if (checkboxes.length === 0) {
+      alert('Выберите хотя бы один товар');
       return;
     }
-
-    const retryBtn = document.getElementById('retryCartBtn');
-if (retryBtn) retryBtn.onclick = () => renderCurrentScreen();
-
-    // Формируем заказ из первого товара (для примера), в будущем можно сделать множественный заказ
-    const firstItem = cartItems[0];
-    const product = firstItem.products;
+    
+    // Собираем выбранные товары
+    const selectedItems = [];
+    checkboxes.forEach(cb => {
+      selectedItems.push({
+        cartId: cb.dataset.cartId,
+        productId: cb.dataset.productId,
+        title: cb.dataset.title,
+        price: parseFloat(cb.dataset.price),
+        url: cb.dataset.url,
+        quantity: 1 // по умолчанию, можно будет изменить в калькуляторе
+      });
+    });
+    
+    // Вычисляем общую примерную стоимость (для предпросмотра)
+    const total = selectedItems.reduce((sum, item) => sum + item.price * 0.45 + 12, 0);
+    
+    // Сохраняем в tempOrder для нового заказа
     window.tempOrder = {
-      url: product.url,
-      price: product.price,
-      weight: 1, // временно
-      total: product.price * 0.45 + 12,
+      items: selectedItems,
+      total: total,
       discountAmount: 0,
       appliedPromo: null
     };
-    switchTab('neworder');
+    
+    // Переходим в новый заказ
+    currentTab = 'neworder';
+    renderCurrentScreen();
   };
+}
 }
 
 async function updateCartBadge() {
