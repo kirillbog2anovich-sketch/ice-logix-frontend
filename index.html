@@ -3330,9 +3330,9 @@ function attachCartHandlers() {
   const checkoutSelectedBtn = document.getElementById('checkoutSelectedBtn');
 if (checkoutSelectedBtn) {
   checkoutSelectedBtn.onclick = async () => {
-    console.log('Клик по Оформить выбранное');
+    alert('Клик по кнопке Оформить выбранное');
     const checkboxes = document.querySelectorAll('.cart-item-checkbox:checked');
-    console.log('Выбрано товаров:', checkboxes.length);
+    alert('Выбрано чекбоксов: ' + checkboxes.length);
     if (checkboxes.length === 0) {
       alert('Выберите хотя бы один товар');
       return;
@@ -3358,19 +3358,17 @@ if (checkoutSelectedBtn) {
       appliedPromo: null
     };
     
-    console.log('tempOrder установлен:', window.tempOrder);
+    alert('tempOrder установлен. Сумма: ' + total.toFixed(2));
     
-    // Прямой переход, минуя switchTab
     currentTab = 'neworder';
     currentSubScreen = null;
     appliedPromo = null;
     
-    // Проверяем, что renderCurrentScreen существует
+    alert('Сейчас вызов renderCurrentScreen');
     if (typeof renderCurrentScreen === 'function') {
       renderCurrentScreen();
     } else {
-      console.error('renderCurrentScreen не определена!');
-      alert('Ошибка: функция рендеринга не найдена.');
+      alert('Ошибка: renderCurrentScreen не функция!');
     }
   };
 }
