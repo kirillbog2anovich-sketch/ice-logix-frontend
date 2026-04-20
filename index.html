@@ -3238,7 +3238,7 @@ async function renderCart() {
     const itemsHtml = data.map(item => {
       const product = item.products;
       if (!product) return '';
-      const itemTotal = product.price * item.quantity;
+      const itemTotal = (product.price * 0.45 * item.quantity) + (12 * item.quantity);
       totalPrice += itemTotal;
       return `
         <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
@@ -3260,7 +3260,6 @@ async function renderCart() {
     }).join('');
     
     return `
-      <button id="backFromCartBtn" class="global-back-btn">← Назад</button>
       <div class="space-y-3">
         ${itemsHtml}
         <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 mt-4">
@@ -3288,8 +3287,6 @@ async function renderCart() {
 }
 
 function attachCartHandlers() {
-  const backBtn = document.getElementById('backFromCartBtn');
-  if (backBtn) backBtn.onclick = () => switchTab('home');
   
   const goToCatalogBtn = document.getElementById('goToCatalogBtn');
   if (goToCatalogBtn) goToCatalogBtn.onclick = () => switchTab('catalogs');
@@ -3303,8 +3300,7 @@ function attachCartHandlers() {
       const qtySpan = row.querySelector('.cart-qty-display');
       const quantity = parseInt(qtySpan?.innerText || '1');
       // Упрощённый расчёт: цена в BYN (цена * 0.45) + доставка (12 * вес) – вес условно 1 кг
-      const itemTotal = price * 0.45 + 12;
-      total += itemTotal * quantity;
+      total += (price * 0.45 * quantity) + (12 * quantity);
     });
     const totalSpan = document.getElementById('cartTotalAmount');
     if (totalSpan) totalSpan.innerText = total.toFixed(2) + ' BYN';
