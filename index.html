@@ -3260,18 +3260,15 @@ async function renderCart() {
 }).join('');
     
     return `
-      <div class="space-y-3">
-        ${itemsHtml}
-        <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 mt-4">
-          <div class="flex justify-between items-center">
-            <span class="text-white font-bold text-lg">Итого:</span>
-            <span class="text-cyan-400 font-bold text-xl">${totalPrice.toFixed(2)} BYN</span>
-          </div>
-          <p class="text-white/50 text-xs mt-1">*Примерная стоимость, точный расчёт в калькуляторе</p>
-          <button id="clearCartBtn" class="w-full mt-3 bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full text-sm">🗑️ Очистить корзину</button>
-          <button id="checkoutCartBtn" class="w-full mt-2 bg-green-500 hover:bg-green-600 py-3 rounded-full font-bold">✨ Оформить заказ</button>
-          <span class="text-cyan-400 font-bold text-xl" id="cartTotalAmount">${totalPrice.toFixed(2)} BYN</span>
-        </div>
+      <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 mt-4">
+  <div class="flex justify-between items-center">
+    <span class="text-white font-bold text-lg">Итого:</span>
+    <span class="text-cyan-400 font-bold text-xl" id="cartTotalAmount">${totalPrice.toFixed(2)} BYN</span>
+  </div>
+  <p class="text-white/50 text-xs mt-1">*Примерная стоимость, точный расчёт в калькуляторе</p>
+  <button id="clearCartBtn" class="w-full mt-3 bg-red-500/20 hover:bg-red-500/30 py-2 rounded-full text-sm">🗑️ Очистить корзину</button>
+  <button id="checkoutCartBtn" class="w-full mt-2 bg-green-500 hover:bg-green-600 py-3 rounded-full font-bold">✨ Оформить заказ</button>
+</div>
       </div>
       ${renderFooter()}
     `;
@@ -3298,10 +3295,13 @@ function attachCartHandlers() {
   function updateCartTotal() {
     let total = 0;
     document.querySelectorAll('.cart-item-checkbox:checked').forEach(cb => {
+      const row = cb.closest('[data-cart-id]');
       const price = parseFloat(cb.dataset.price) || 0;
-      const qtySpan = cb.closest('[data-cart-id]')?.querySelector('.cart-qty-display');
+      const qtySpan = row.querySelector('.cart-qty-display');
       const quantity = parseInt(qtySpan?.innerText || '1');
-      total += price * 0.45 + 12 * quantity; // примерная формула
+      // Упрощённый расчёт: цена в BYN (цена * 0.45) + доставка (12 * вес) – вес условно 1 кг
+      const itemTotal = price * 0.45 + 12;
+      total += itemTotal * quantity;
     });
     const totalSpan = document.getElementById('cartTotalAmount');
     if (totalSpan) totalSpan.innerText = total.toFixed(2) + ' BYN';
@@ -3319,15 +3319,15 @@ function attachCartHandlers() {
       const action = btn.dataset.action;
       const cartId = btn.dataset.id;
       const row = btn.closest('[data-cart-id]');
-      const qtySpan = row.querySelector('.cart-qty-display');
-      let newQty = parseInt(qtySpan.innerText);
+      const qtySpans = row.querySelectorAll('.cart-qty-display');
+      let newQty = parseInt(qtySpans[0]?.innerText || '1');
       
       if (action === 'increase') newQty++;
       else if (action === 'decrease') newQty = Math.max(1, newQty - 1);
       
       const { error } = await supabaseClient.from('cart').update({ quantity: newQty, updated_at: new Date() }).eq('id', cartId);
       if (!error) {
-        qtySpan.innerText = newQty;
+        qtySpans.forEach(span => span.innerText = newQty);
         updateCartTotal();
       }
     });
@@ -3377,7 +3377,7 @@ function attachCartHandlers() {
         });
       });
       
-      const total = selectedItems.reduce((sum, item) => sum + item.price * 0.45 + 12 * item.quantity, 0);
+      const total = selectedItems.reduce((sum, item) => sum + (item.price * 0.45 + 12) * item.quantity, 0);
       window.tempOrder = {
         items: selectedItems,
         total: total,
@@ -3388,15 +3388,10 @@ function attachCartHandlers() {
       currentTab = 'neworder';
       currentSubScreen = null;
       appliedPromo = null;
-      if (typeof renderCurrentScreen === 'function') {
-        renderCurrentScreen();
-      } else {
-        alert('Ошибка рендеринга');
-      }
+      renderCurrentScreen();
     };
   }
   
-  // Повторная попытка (если есть кнопка)
   const retryBtn = document.getElementById('retryCartBtn');
   if (retryBtn) retryBtn.onclick = () => renderCurrentScreen();
 }
