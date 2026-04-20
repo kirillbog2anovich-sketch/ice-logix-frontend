@@ -3214,12 +3214,7 @@ async function showPhoneBinding() {
 }
 
 async function renderCart() {
-  // if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
-if (!userId) {
-  // ВРЕМЕННО для отладки в браузере
-  userId = 6107097715; // подставьте ваш реальный Telegram ID
-  console.warn('⚠️ Режим отладки: userId подставлен вручную!');
-}
+  if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
   try {
     const { data, error } = await supabaseClient
       .from('cart')
@@ -3298,19 +3293,18 @@ function attachCartHandlers() {
   const goToCatalogBtn = document.getElementById('goToCatalogBtn');
   if (goToCatalogBtn) goToCatalogBtn.onclick = () => switchTab('catalogs');
 
-  // Функция пересчёта итога
   function updateCartTotal() {
-    let total = 0;
-    document.querySelectorAll('.cart-item-checkbox:checked').forEach(cb => {
-      const row = cb.closest('[data-cart-id]');
-      const price = parseFloat(cb.dataset.price) || 0;
-      const qtySpan = row.querySelector('.cart-qty-display');
-      const quantity = parseInt(qtySpan?.innerText || '1');
-      total += (price * 0.45 + 12) * quantity;
-    });
-    const totalSpan = document.getElementById('cartTotalAmount');
-    if (totalSpan) totalSpan.innerText = total.toFixed(2) + ' BYN';
-  }
+  let total = 0;
+  document.querySelectorAll('.cart-item-checkbox:checked').forEach(cb => {
+    const row = cb.closest('[data-cart-id]');
+    const price = parseFloat(cb.dataset.price) || 0;
+    const qtySpan = row.querySelector('.cart-qty-display');
+    const quantity = parseInt(qtySpan?.innerText || '1');
+    total += (price * 0.45 + 12) * quantity;
+  });
+  const totalSpan = document.getElementById('cartTotalAmount');
+  if (totalSpan) totalSpan.innerText = total.toFixed(2) + ' BYN';
+}
 
   // Обработчики чекбоксов
   document.querySelectorAll('.cart-item-checkbox').forEach(cb => {
@@ -3325,10 +3319,10 @@ function attachCartHandlers() {
       const action = btn.dataset.action;
       const cartId = btn.dataset.id;
       const row = btn.closest('[data-cart-id]');
+      const pricePerUnit = parseFloat(row.querySelector('.cart-item-checkbox')?.dataset.price || '0');
       if (!row || !cartId) return;
       const qtySpans = row.querySelectorAll('.cart-qty-display');
       let newQty = parseInt(qtySpans[0]?.innerText || '1');
-      const pricePerUnit = parseFloat(row.querySelector('.cart-item-checkbox')?.dataset.price || '0');
 
       if (action === 'increase') newQty++;
       else if (action === 'decrease') newQty = Math.max(1, newQty - 1);
@@ -3336,17 +3330,29 @@ function attachCartHandlers() {
       const { error } = await supabaseClient.from('cart').update({ quantity: newQty, updated_at: new Date() }).eq('id', cartId);
       console.log('Ответ Supabase:', { error, newQty });
       if (!error) {
-        // Обновляем количество во всех span
-        qtySpans.forEach(span => span.innerText = newQty);
-        // Обновляем примерную стоимость для этого товара
+        // 1. Обновляем все элементы с количеством в карточке
+        const qtySpans = row.querySelectorAll('.cart-qty-display');
+        console.log('Найдено элементов для количества:', qtySpans.length);
+        qtySpans.forEach(span => {
+          span.innerText = newQty;
+          console.log('Обновлён span количества:', span, 'новое значение:', newQty);
+        });
+
+        // 2. Обновляем примерную стоимость для этого товара
         const examplePriceSpan = row.querySelector('.item-example-price');
         if (examplePriceSpan) {
           const newItemTotal = (pricePerUnit * 0.45 + 12) * newQty;
           examplePriceSpan.innerText = newItemTotal.toFixed(2) + ' BYN (примерно)';
+          console.log('Обновлена примерная стоимость:', newItemTotal.toFixed(2));
         } else {
-          console.error('Ошибка обновления:', error); }
-        // Пересчитываем общий итог
+          console.error('Не найден элемент .item-example-price в карточке!');
+        }
+
+        // 3. Пересчитываем общий итог корзины
         updateCartTotal();
+        console.log('Вызвана функция updateCartTotal');
+      } else {
+        console.error('Ошибка обновления в Supabase:', error);
       }
 });
   });
