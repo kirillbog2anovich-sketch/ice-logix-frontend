@@ -3244,7 +3244,7 @@ async function renderCart() {
       const itemTotal = (product.price * 0.45 + 12) * item.quantity;
       totalPrice += itemTotal;
       return `
-        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}">
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}" data-current-qty="${item.quantity}">
           <input type="checkbox" class="cart-item-checkbox" data-cart-id="${item.id}" data-product-id="${product.id}" data-price="${product.price}" data-url="${product.url}" data-title="${product.title.replace(/"/g, '&quot;')}" checked>
           <img src="${product.image_url || 'https://via.placeholder.com/150'}" class="w-16 h-16 object-cover rounded-lg">
           <div class="flex-1">
@@ -3293,6 +3293,19 @@ function attachCartHandlers() {
   const goToCatalogBtn = document.getElementById('goToCatalogBtn');
   if (goToCatalogBtn) goToCatalogBtn.onclick = () => switchTab('catalogs');
 
+  /** Актуальное количество: сначала data-current-qty на карточке (обновляется при +/-), иначе из DOM */
+  function getCartRowQuantity(row) {
+    if (!row) return 1;
+    const raw = row.dataset.currentQty;
+    if (raw !== undefined && raw !== '') {
+      const n = parseInt(String(raw).trim(), 10);
+      if (!Number.isNaN(n) && n >= 1) return n;
+    }
+    const qtyEl = row.querySelector('.cart-qty-display');
+    const fromDom = parseInt(String(qtyEl?.innerText ?? '').trim(), 10);
+    return !Number.isNaN(fromDom) && fromDom >= 1 ? fromDom : 1;
+  }
+
   // Функция пересчёта общего итога (вызывается при любых изменениях)
   function updateCartTotal() {
     let total = 0;
@@ -3300,8 +3313,7 @@ function attachCartHandlers() {
       const row = cb.closest('[data-cart-id]');
       if (!row) return;
       const price = parseFloat(cb.dataset.price) || 0;
-      const qtySpan = row.querySelector('.cart-qty-display');
-      const quantity = parseInt(qtySpan?.innerText || '1');
+      const quantity = getCartRowQuantity(row);
       total += (price * 0.45 + 12) * quantity;
     });
     const totalSpan = document.getElementById('cartTotalAmount');
@@ -3341,6 +3353,7 @@ function attachCartHandlers() {
         .eq('id', cartId);
         
       if (!error) {
+        row.dataset.currentQty = String(newQty);
         // Обновляем все отображения количества в карточке
         qtySpans.forEach(span => span.innerText = newQty);
         // Обновляем примерную стоимость
@@ -3401,7 +3414,7 @@ function attachCartHandlers() {
       const selectedItems = [];
       checkboxes.forEach(cb => {
         const cartRow = cb.closest('[data-cart-id]');
-        const quantity = parseInt(cartRow.querySelector('.cart-qty-display')?.innerText || '1');
+        const quantity = getCartRowQuantity(cartRow);
         selectedItems.push({
           cartId: cartRow.dataset.cartId,
           productId: cb.dataset.productId,
@@ -3420,7 +3433,17 @@ function attachCartHandlers() {
         appliedPromo: null
       };
 
-      alert(`Выбрано товаров: ${selectedItems.length}\nОбщая сумма: ${total.toFixed(2)} BYN\nПервый товар: ${selectedItems[0]?.title}, кол-во: ${selectedItems[0]?.quantity}`);
+      const debugLines = [
+        `Выбрано товаров: ${selectedItems.length}`,
+        '',
+        ...selectedItems.map((item) => {
+          const lineSum = (item.price * 0.45 + 12) * item.quantity;
+          return `${item.title}\n  цена за ед.: ${item.price} CNY\n  количество: ${item.quantity}\n  сумма строки: ${lineSum.toFixed(2)} BYN`;
+        }),
+        '',
+        `Общая сумма: ${total.toFixed(2)} BYN`
+      ];
+      alert(debugLines.join('\n'));
       
       currentTab = 'neworder';
       currentSubScreen = null;
