@@ -341,8 +341,14 @@ function attachHomeHandlers() {
       document.querySelector('[data-story="academy"]')?.addEventListener('click', () => switchTab('academy'));
       document.querySelector('[data-story="drops"]')?.addEventListener('click', () => alert('Дропы будут позже'));
       document.querySelector('[data-story="referral"]')?.addEventListener('click', () => switchTab('profile'));
-      document.getElementById('moreMarketplacesBtn')?.addEventListener('click', () => switchTab('catalogs'));
-      document.getElementById('moreProductsBtn')?.addEventListener('click', () => switchTab('products'));
+      document.getElementById('moreMarketplacesBtn')?.addEventListener('click', () => {
+        currentSubScreen = 'marketplaces';
+        switchTab('catalogs');
+      });
+      document.getElementById('moreProductsBtn')?.addEventListener('click', () => {
+        currentSubScreen = 'productsCatalog';
+        switchTab('catalogs');
+      });
       document.querySelectorAll('.marketplace-story').forEach(el => {
         el.addEventListener('click', () => {
           const url = el.getAttribute('data-url');
@@ -725,12 +731,26 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg">
           <h2 class="text-xl font-bold mb-4">✨ Новый заказ</h2>
           <label class="text-white/70 text-sm">Ссылка на товар</label>
-          <input type="text" id="orderUrl" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${d.url}" placeholder="https://...">
+          <input type="text" id="orderUrl" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-1" value="${d.url}" placeholder="https://...">
+          <div id="parsedOrderTitle" class="text-cyan-400 text-xs mb-3 hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Цена (¥)</label>
           <input type="number" id="orderPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="0">
+          <label class="text-white/70 text-sm block mt-2">Категория</label>
+          <select id="orderCategory" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
+            <option value="">— для автоподбора веса —</option>
+            <option value="Обувь">Обувь</option>
+            <option value="Одежда">Одежда</option>
+            <option value="Аксессуары">Аксессуары</option>
+          </select>
+          <label class="text-white/70 text-sm block">Размер</label>
+          <input type="text" id="orderSize" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Размер (напр. 42, M, L)">
+          <div class="flex items-center gap-2 mb-3">
+            <input type="checkbox" id="orderKeepBox">
+            <label for="orderKeepBox" class="text-white/70 text-sm">Сохранить оригинальную коробку</label>
+          </div>
           <label class="text-white/70 text-sm block mt-2">Вес (кг)</label>
-          <div class="flex items-center gap-3 mt-1"><input type="number" id="orderWeight" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" placeholder="0"><span class="text-white/80 bg-white/10 px-3 py-1 rounded-full">кг</span></div>
-          <div class="mt-3"><label class="text-white/70 text-sm">Промокод</label><div class="flex gap-2 mt-1"><input type="text" id="promoCode" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Введите промокод"><button id="applyPromoBtn" class="bg-cyan-500 px-4 py-3 rounded-xl">Применить</button></div><p id="promoMessage" class="text-xs mt-1 hidden"></p></div>
+          <div class="flex items-center gap-3 mt-1"><input type="number" id="orderWeight" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" placeholder="0" data-packaging="0.3"><span class="text-white/80 bg-white/10 px-3 py-1 rounded-full">кг</span></div>
+          <div class="mt-3"><label class="text-white/70 text-sm">Промокод</label><div class="flex flex-col sm:flex-row gap-2 mt-1"><input type="text" id="promoCode" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Введите промокод"><button id="applyPromoBtn" class="bg-cyan-500 px-4 py-3 rounded-xl whitespace-nowrap">Применить</button></div><p id="promoMessage" class="text-xs mt-1 hidden"></p></div>
           <p class="mt-4 text-lg">Итого: <span id="orderTotal" class="font-bold text-cyan-400">${(d.total - (d.discountAmount || 0)).toFixed(2)}</span> ❄️</p>
           ${d.discountAmount > 0 ? `<p class="text-green-400 text-sm mt-1">Скидка: -${d.discountAmount} ❄️</p>` : ''}
           <p class="text-white/70 text-xs mt-1">*Предоплата 75%: <span id="prepaymentAmount" class="font-bold text-cyan-300">${((d.total - (d.discountAmount || 0)) * 0.75).toFixed(2)}</span> ❄️</p>
@@ -779,6 +799,65 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       
       if (priceInp) priceInp.addEventListener('input', update);
       if (weightInp) weightInp.addEventListener('input', update);
+
+      // Умный подбор веса по категории и размеру
+      const orderCategory = document.getElementById('orderCategory');
+      const orderSize = document.getElementById('orderSize');
+      const orderKeepBox = document.getElementById('orderKeepBox');
+
+      async function fetchOrderWeight(category, size) {
+        if (!category || !size) return;
+        try {
+          const { data } = await supabaseClient
+            .from('weight_standards')
+            .select('weight_kg, packaging_weight_kg')
+            .eq('category', category)
+            .eq('size_label', size)
+            .eq('is_active', true)
+            .maybeSingle();
+          if (data && weightInp) {
+            weightInp.value = data.weight_kg;
+            weightInp.dataset.packaging = data.packaging_weight_kg || 0.3;
+            update();
+          }
+        } catch(e) { console.log('weight_standards:', e.message); }
+      }
+
+      if (orderCategory) orderCategory.onchange = () => fetchOrderWeight(orderCategory.value, orderSize?.value);
+      if (orderSize) orderSize.onchange = () => fetchOrderWeight(orderCategory?.value, orderSize.value);
+      if (orderKeepBox && weightInp) {
+        orderKeepBox.onchange = () => {
+          const base = parseFloat(weightInp.value) || 0;
+          const pkg = parseFloat(weightInp.dataset.packaging || 0.3);
+          weightInp.value = orderKeepBox.checked
+            ? Math.min(100, +(base + pkg).toFixed(2))
+            : Math.max(0, +(base - pkg).toFixed(2));
+          update();
+        };
+      }
+
+      // Кэш парсинга для URL
+      if (urlInp) {
+        urlInp.addEventListener('change', async () => {
+          const urlVal = urlInp.value.trim();
+          if (!urlVal || !urlVal.startsWith('http')) return;
+          try {
+            const { data: cached } = await supabaseClient
+              .from('parsed_products')
+              .select('*')
+              .eq('url', urlVal)
+              .gte('expires_at', new Date().toISOString())
+              .maybeSingle();
+            if (cached) {
+              if (cached.price && priceInp) { priceInp.value = cached.price; }
+              if (cached.weight_kg && weightInp) { weightInp.value = cached.weight_kg; }
+              const titleDiv = document.getElementById('parsedOrderTitle');
+              if (titleDiv && cached.title) { titleDiv.innerText = '📦 ' + cached.title; titleDiv.classList.remove('hidden'); }
+              update();
+            }
+          } catch(e) { console.log('parsed_products:', e.message); }
+        });
+      }
 
       if (window.tempOrder) {
   if (window.tempOrder.price && window.tempOrder.price !== 520) {
@@ -1226,12 +1305,12 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
               </div>
               <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
                 <h3 class="text-white font-bold text-lg mb-3">⚙️ Настройки наценки</h3>
-                <div class="flex gap-3 mb-3">
+                <div class="flex flex-col sm:flex-row gap-3 mb-3">
                   <select id="marginType" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30">
                     <option value="fixed" ${settings.margin_type === 'fixed' ? 'selected' : ''}>Фикс (BYN)</option>
                     <option value="percent" ${settings.margin_type === 'percent' ? 'selected' : ''}>Процент (%)</option>
                   </select>
-                  <input type="number" id="marginValue" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30" value="${settings.margin_value}" step="1" placeholder="Значение">
+                  <input type="number" id="marginValue" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 min-w-0" value="${settings.margin_value}" step="1" placeholder="Значение">
                 </div>
                 <input type="number" id="payoutThreshold" class="w-full p-2 rounded-lg bg-white/20 border border-white/30 mb-3" value="${settings.payout_threshold}" placeholder="Порог вывода (BYN)">
                 <button id="saveDropshipperSettings" class="w-full bg-cyan-500 py-2 rounded-lg">Сохранить настройки</button>
