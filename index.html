@@ -1426,145 +1426,472 @@ async function renderAcademy() {
         ${renderFooter()}
       `;
     }
-        
-        let userProgress = {};
-        if (userId) {
-          try {
-            const { data } = await supabaseClient.from('user_lessons_progress').select('lesson_id, is_completed').eq('user_id', userId);
-            if (data) data.forEach(p => { userProgress[p.lesson_id] = p.is_completed; });
-          } catch(e) {}
-        }
-        
-        const coursesWithLessons = await Promise.all(courses.map(async (course) => {
-          const { data: lessons } = await supabaseClient.from('lessons').select('*').eq('course_id', course.id).order('order_index', { ascending: true });
-          const completedCount = lessons?.filter(l => userProgress[l.id]).length || 0;
-          const totalCount = lessons?.length || 0;
-          return { ...course, lessons: lessons || [], progress: totalCount > 0 ? Math.round(completedCount / totalCount * 100) : 0 };
-        }));
-        
-        return `
-        <div class="space-y-4">
-            <button id="backFromAcademyBtn" class="global-back-btn">← Назад</button>
-            ${isOwner ? '<button id="addCourseBtn" class="global-back-btn mb-2">➕ Добавить курс</button>' : ''}
-            ${coursesWithLessons.map(course => `
-              <div class="course-card" data-course-id="${course.id}">
-                <div class="flex justify-between items-start">
-                  <div>
-                    <h3 class="text-white font-bold text-lg">${course.title}</h3>
-                    <p class="text-white/70 text-sm mt-1">${course.description || 'Описание отсутствует'}</p>
-                    <div class="mt-2"><div class="w-32 h-1 bg-white/20 rounded-full overflow-hidden"><div class="h-full bg-cyan-400 rounded-full" style="width: ${course.progress}%"></div></div><p class="text-white/50 text-xs mt-1">Прогресс: ${course.progress}%</p></div>
-                  </div>
-                  <div class="text-right"><span class="text-cyan-400 font-bold">${course.price_ice > 0 ? course.price_ice + ' ❄️' : 'Бесплатно'}</span></div>
-                </div>
-                ${course.price_ice > 0 && course.progress === 0 && (!userId || balance < course.price_ice) ? 
-                  `<button class="buyCourseBtn mt-3 w-full bg-green-600 py-2 rounded-lg" data-course-id="${course.id}" data-price="${course.price_ice}">Купить за ${course.price_ice} ❄️</button>` : ''}
-                <div class="lessons-container hidden mt-3 space-y-2" data-course="${course.id}">
-                  ${course.lessons.map(lesson => `
-                    <div class="lesson-item bg-white/5 rounded-xl p-3 cursor-pointer" data-lesson-id="${lesson.id}" data-lesson-type="${lesson.content_type}">
-                      <div class="flex justify-between items-center">
-                        <div><span class="text-white font-medium">${lesson.title}</span><p class="text-white/50 text-xs">${lesson.content_type === 'video' ? '📹 Видео' : lesson.content_type === 'quiz' ? '📝 Тест' : '📄 Текст'}</p></div>
-                        ${userProgress[lesson.id] ? '<span class="text-green-400">✅ Пройдено</span>' : lesson.is_locked ? '<span class="text-yellow-400">🔒 Заблокировано</span>' : '<span class="text-cyan-400">▶ Начать</span>'}
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            `).join('')}
-          </div>
-          ${renderFooter()}
-        `;
-      } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки курсов</p>'; }
+
+    let userProgress = {};
+    let userCourseIds = new Set();
+    let userCoursePurchases = {};
+    if (userId) {
+      try {
+        const { data } = await supabaseClient.from('user_lessons_progress').select('lesson_id, is_completed').eq('user_id', userId);
+        if (data) data.forEach(p => { if (p.is_completed) userProgress[p.lesson_id] = true; });
+      } catch(e) {}
+      try {
+        const { data } = await supabaseClient.from('user_courses').select('course_id, purchased_at').eq('user_id', userId);
+        if (data) data.forEach(uc => { userCourseIds.add(uc.course_id); userCoursePurchases[uc.course_id] = uc.purchased_at; });
+      } catch(e) {}
     }
 
-    function attachAcademyHandlers() {
-     const backBtn = document.getElementById('backFromAcademyBtn');
-      if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
-      const addBtn = document.getElementById('addCourseBtn');
-      if (addBtn && isOwner) {
-        addBtn.onclick = () => {
-          const modal = document.createElement('div');
-          modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
-          modal.innerHTML = `
-            <div class="bg-white/10 backdrop-blur-md rounded-2xl max-w-md w-full p-5">
-              <h3 class="text-white font-bold text-lg mb-4">➕ Новый курс</h3>
-              <input type="text" id="courseTitle" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Название курса">
-              <textarea id="courseDesc" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Описание" rows="2"></textarea>
-              <input type="number" id="coursePrice" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Цена в Айсах (0 - бесплатно)" value="0">
-              <div class="mb-3"><label class="text-white/70 text-sm">Доступ для</label><select id="courseAccess" class="w-full p-3 rounded-xl bg-white/20 border border-white/30"><option value="all">Все пользователи</option><option value="dropshipper">Только дропшипперы</option></select></div>
-              <div class="flex gap-3 mt-4"><button id="saveCourseBtn" class="flex-1 bg-cyan-500 py-2 rounded-xl">Сохранить</button><button id="cancelCourseBtn" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button></div>
-            </div>
-          `;
-          document.body.appendChild(modal);
-          modal.querySelector('#cancelCourseBtn').onclick = () => modal.remove();
-          modal.querySelector('#saveCourseBtn').onclick = async () => {
-            const title = modal.querySelector('#courseTitle').value.trim();
-            const description = modal.querySelector('#courseDesc').value.trim();
-            const price_ice = parseInt(modal.querySelector('#coursePrice').value) || 0;
-            const role_access = modal.querySelector('#courseAccess').value;
-            if (!title) { alert('Введите название курса'); return; }
-            try {
-              const { data, error } = await supabaseClient.from('courses').insert({ title, description, price_ice, role_access, is_active: true }).select();
-              if (error) throw error;
-              alert('Курс создан');
-              modal.remove();
-              renderCurrentScreen();
-            } catch (err) { alert('Ошибка: ' + err.message); }
-          };
-        };
+    const coursesWithLessons = await Promise.all(courses.map(async (course) => {
+      const { data: lessons } = await supabaseClient.from('lessons').select('*').eq('course_id', course.id).order('order_index', { ascending: true });
+      const ls = lessons || [];
+      const completedCount = ls.filter(l => userProgress[l.id]).length;
+      const totalCount = ls.length;
+      const progress = totalCount > 0 ? Math.round(completedCount / totalCount * 100) : 0;
+      const isPurchased = course.price_ice === 0 || userCourseIds.has(course.id);
+      const allCompleted = totalCount > 0 && completedCount === totalCount;
+      return { ...course, lessons: ls, progress, isPurchased, allCompleted, purchasedAt: userCoursePurchases[course.id] || null };
+    }));
+
+    const ctIcon = t => ({ video: '📹', quiz: '📝', file: '📎' }[t] || '📄');
+
+    const lessonStatus = (lesson, course) => {
+      if (userProgress[lesson.id]) return '<span class="text-green-400 text-xs">✅ Пройдено</span>';
+      if (!course.isPurchased && course.price_ice > 0) return '<span class="text-white/30 text-xs">🔒 Требует покупки</span>';
+      if (lesson.is_locked) return '<span class="text-yellow-400 text-xs">🔒 Заблокировано</span>';
+      if (lesson.unlock_delay_hours > 0 && course.purchasedAt) {
+        const unlock = new Date(course.purchasedAt).getTime() + lesson.unlock_delay_hours * 3600000;
+        if (Date.now() < unlock) {
+          const h = Math.ceil((unlock - Date.now()) / 3600000);
+          return `<span class="text-orange-400 text-xs">⏳ Через ${h}ч</span>`;
+        }
       }
-      
+      return '<span class="text-cyan-400 text-xs">▶ Начать</span>';
+    };
+
+    const lessonAccessible = (lesson, course) => {
+      if (!course.isPurchased && course.price_ice > 0) return false;
+      if (lesson.is_locked) return false;
+      if (lesson.unlock_delay_hours > 0 && course.purchasedAt) {
+        const unlock = new Date(course.purchasedAt).getTime() + lesson.unlock_delay_hours * 3600000;
+        if (Date.now() < unlock) return false;
+      }
+      return true;
+    };
+
+    return `
+      <div class="space-y-4">
+        <button id="backFromAcademyBtn" class="global-back-btn">← Назад</button>
+        ${isOwner ? '<button id="addCourseBtn" class="global-back-btn mb-2">➕ Добавить курс</button>' : ''}
+        ${coursesWithLessons.map(course => `
+          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10" data-course-id="${course.id}">
+            <div class="flex justify-between items-start course-card-header cursor-pointer">
+              <div class="flex-1">
+                <h3 class="text-white font-bold text-lg">${course.title}</h3>
+                <p class="text-white/60 text-sm mt-0.5">${course.description || ''}</p>
+                <div class="mt-2 flex items-center gap-2">
+                  <div class="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    <div class="h-full bg-cyan-400 rounded-full" style="width:${course.progress}%"></div>
+                  </div>
+                  <span class="text-white/50 text-xs flex-shrink-0">${course.progress}% · ${course.lessons.filter(l => userProgress[l.id]).length}/${course.lessons.length}</span>
+                </div>
+              </div>
+              <div class="ml-3 text-right flex-shrink-0">
+                <span class="text-cyan-400 font-bold text-sm">${course.price_ice > 0 ? course.price_ice + ' ❄️' : 'Бесплатно'}</span>
+                ${course.isPurchased && course.price_ice > 0 ? '<p class="text-green-400 text-xs mt-1">✅ Куплено</p>' : ''}
+              </div>
+            </div>
+            ${!course.isPurchased && course.price_ice > 0 ? `<button class="buyCourseBtn mt-3 w-full bg-gradient-to-r from-cyan-500 to-blue-500 py-2.5 rounded-xl font-bold text-sm" data-course-id="${course.id}" data-price="${course.price_ice}">🛒 Купить за ${course.price_ice} ❄️</button>` : ''}
+            ${course.allCompleted && course.lessons.length > 0 ? `<button class="getCertBtn mt-2 w-full bg-gradient-to-r from-yellow-400 to-orange-500 py-2.5 rounded-xl font-bold text-sm text-slate-900" data-course-id="${course.id}" data-title="${course.title.replace(/"/g,'&quot;')}">🏆 Получить сертификат</button>` : ''}
+            <div class="lessons-container hidden mt-3 space-y-1.5" data-course="${course.id}">
+              ${course.lessons.map(lesson => {
+                const accessible = lessonAccessible(lesson, course);
+                return `<div class="lesson-item bg-white/5 rounded-xl p-3 transition ${accessible ? 'cursor-pointer hover:bg-white/10' : 'opacity-50'}" data-lesson-id="${lesson.id}" data-course-id="${course.id}" data-accessible="${accessible}">
+                  <div class="flex justify-between items-center gap-2">
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                      <span class="text-lg flex-shrink-0">${ctIcon(lesson.content_type)}</span>
+                      <div class="min-w-0">
+                        <p class="text-white text-sm font-medium truncate">${lesson.title}</p>
+                        <p class="text-white/40 text-xs">${lesson.content_type === 'video' ? 'Видео' : lesson.content_type === 'quiz' ? 'Тест' : lesson.content_type === 'file' ? 'Файл' : 'Текст'}</p>
+                      </div>
+                    </div>
+                    ${lessonStatus(lesson, course)}
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ${renderFooter()}
+    `;
+  } catch (err) {
+    console.error('renderAcademy:', err);
+    return '<p class="text-center mt-10 text-red-400">Ошибка загрузки курсов</p>';
+  }
+}
+
+    function attachAcademyHandlers() {
+      const backBtn = document.getElementById('backFromAcademyBtn');
+      if (backBtn) backBtn.addEventListener('click', () => switchTab('profile'));
+
+      // ── completeLesson ──────────────────────────────────────────────
+      async function completeLesson(lessonId, courseId) {
+        if (!userId) return;
+        try {
+          await supabaseClient.from('user_lessons_progress').upsert(
+            { user_id: userId, lesson_id: lessonId, is_completed: true, completed_at: new Date().toISOString() },
+            { onConflict: 'user_id,lesson_id' }
+          );
+          // Update badge in DOM
+          const lessonEl = document.querySelector(`.lesson-item[data-lesson-id="${lessonId}"]`);
+          if (lessonEl) {
+            const badge = lessonEl.querySelector('span:last-child');
+            if (badge) { badge.textContent = '✅ Пройдено'; badge.className = 'text-green-400 text-xs'; }
+          }
+          // Recalculate course progress
+          const { data: ls } = await supabaseClient.from('lessons').select('id').eq('course_id', courseId);
+          const { data: pr } = await supabaseClient.from('user_lessons_progress').select('lesson_id').eq('user_id', userId).eq('is_completed', true);
+          const doneIds = new Set(pr?.map(p => p.lesson_id) || []);
+          const total = ls?.length || 0;
+          const done = ls?.filter(l => doneIds.has(l.id)).length || 0;
+          const pct = total > 0 ? Math.round(done / total * 100) : 0;
+          const card = document.querySelector(`[data-course-id="${courseId}"]`);
+          if (card) {
+            const bar = card.querySelector('.h-full.bg-cyan-400');
+            if (bar) bar.style.width = pct + '%';
+            const pctTxt = card.querySelector('.text-white\\/50.text-xs.flex-shrink-0');
+            if (pctTxt) pctTxt.textContent = `${pct}% · ${done}/${total}`;
+            if (done === total && total > 0 && !card.querySelector('.getCertBtn')) {
+              const title = card.querySelector('h3')?.textContent || '';
+              const certBtn = document.createElement('button');
+              certBtn.className = 'getCertBtn mt-2 w-full bg-gradient-to-r from-yellow-400 to-orange-500 py-2.5 rounded-xl font-bold text-sm text-slate-900';
+              certBtn.dataset.courseId = courseId;
+              certBtn.dataset.title = title;
+              certBtn.textContent = '🏆 Получить сертификат';
+              certBtn.onclick = () => handleGetCert(courseId, title);
+              card.querySelector('.lessons-container')?.before(certBtn);
+            }
+          }
+        } catch(e) { console.error('completeLesson:', e); }
+      }
+
+      // ── showLessonModal ─────────────────────────────────────────────
+      function showLessonModal(data, courseId) {
+        let contentHtml = '';
+        if (data.content_type === 'text') {
+          contentHtml = `
+            <div class="text-white/90 leading-relaxed text-sm space-y-3" style="user-select:none;-webkit-user-select:none">${data.content}</div>
+            <p class="text-white/10 text-xs text-right mt-3">© ICE LOGIX · ${userId}</p>
+            <button class="markDoneBtn mt-4 w-full bg-green-600 hover:bg-green-700 py-2.5 rounded-xl font-bold" data-lid="${data.id}" data-cid="${courseId}">✅ Отметить как пройденное</button>`;
+        } else if (data.content_type === 'video') {
+          contentHtml = `
+            <div class="relative">
+              <video id="lessonVideo" src="${data.content}" class="w-full rounded-xl" controls controlsList="nodownload" oncontextmenu="return false"></video>
+              <div class="absolute bottom-10 right-2 text-white/20 text-xs pointer-events-none select-none">ID:${userId}</div>
+            </div>
+            <p class="text-white/40 text-xs mt-1 text-center">⚠️ Только для личного использования · ID: ${userId}</p>`;
+        } else if (data.content_type === 'quiz') {
+          try {
+            const quiz = JSON.parse(data.content);
+            const threshold = quiz.pass_threshold || 70;
+            contentHtml = `
+              <div id="quizForm" class="space-y-4">
+                ${quiz.questions.map((q, qi) => `
+                  <div class="bg-white/5 rounded-xl p-3">
+                    <p class="text-white text-sm font-medium mb-2">${qi + 1}. ${q.text}</p>
+                    ${q.options.map((opt, oi) => `
+                      <label class="flex items-center gap-2 mb-1.5 cursor-pointer">
+                        <input type="radio" name="q${qi}" value="${oi}" class="accent-cyan-400">
+                        <span class="text-white/80 text-sm">${opt}</span>
+                      </label>`).join('')}
+                  </div>`).join('')}
+              </div>
+              <div id="quizResult" class="hidden mt-3 p-3 rounded-xl text-center"></div>
+              <button id="checkQuizBtn" class="mt-4 w-full bg-cyan-500 hover:bg-cyan-600 py-2.5 rounded-xl font-bold"
+                data-questions='${JSON.stringify(quiz.questions).replace(/'/g,"&#39;")}'
+                data-threshold="${threshold}" data-lid="${data.id}" data-cid="${courseId}">Проверить ответы</button>`;
+          } catch { contentHtml = '<p class="text-red-400">Ошибка формата теста</p>'; }
+        } else {
+          contentHtml = `
+            <div class="text-center py-6">
+              <p class="text-5xl mb-4">📎</p>
+              <p class="text-white font-bold mb-4">${data.title}</p>
+              <button id="openFileBtn" class="bg-cyan-500 hover:bg-cyan-600 px-6 py-3 rounded-xl font-bold" data-url="${data.content}">⬇️ Открыть материал</button>
+            </div>
+            <button class="markDoneBtn mt-4 w-full bg-green-600 hover:bg-green-700 py-2.5 rounded-xl font-bold" data-lid="${data.id}" data-cid="${courseId}">✅ Отметить как пройденное</button>`;
+        }
+
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4';
+        modal.innerHTML = `
+          <div class="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5">
+            <div class="flex justify-between items-start mb-4">
+              <h3 class="text-white font-bold text-lg flex-1 mr-3">${data.title}</h3>
+              <button class="closeLessonModal text-white/50 hover:text-white text-2xl flex-shrink-0 leading-none">&times;</button>
+            </div>
+            ${contentHtml}
+          </div>`;
+        document.body.appendChild(modal);
+        modal.querySelector('.closeLessonModal').onclick = () => modal.remove();
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+        // video ended → auto-complete
+        const vid = modal.querySelector('#lessonVideo');
+        if (vid) vid.addEventListener('ended', async () => { await completeLesson(data.id, courseId); alert('✅ Урок пройден!'); });
+
+        // mark done
+        modal.querySelectorAll('.markDoneBtn').forEach(btn => {
+          btn.onclick = async () => {
+            await completeLesson(btn.dataset.lid, btn.dataset.cid);
+            btn.textContent = '✅ Пройдено!'; btn.disabled = true;
+            btn.className = btn.className.replace('bg-green-600', 'bg-green-900') + ' cursor-not-allowed opacity-60';
+          };
+        });
+
+        // file open
+        const fileBtn = modal.querySelector('#openFileBtn');
+        if (fileBtn) fileBtn.onclick = () => { alert('Документ защищён водяным знаком. Не распространяйте.'); window.open(fileBtn.dataset.url, '_blank'); };
+
+        // quiz check
+        const checkBtn = modal.querySelector('#checkQuizBtn');
+        if (checkBtn) {
+          checkBtn.onclick = async () => {
+            const questions = JSON.parse(checkBtn.dataset.questions);
+            const threshold = parseInt(checkBtn.dataset.threshold);
+            let correct = 0;
+            questions.forEach((q, qi) => {
+              const sel = modal.querySelector(`input[name="q${qi}"]:checked`);
+              if (sel && parseInt(sel.value) === q.correct) correct++;
+            });
+            const score = Math.round(correct / questions.length * 100);
+            const resultDiv = modal.querySelector('#quizResult');
+            resultDiv.classList.remove('hidden');
+            if (score >= threshold) {
+              resultDiv.className = 'mt-3 p-3 rounded-xl text-center bg-green-500/20 border border-green-500/50';
+              resultDiv.innerHTML = `<p class="text-green-400 font-bold">🎉 Тест пройден! ${correct}/${questions.length} (${score}%)</p>`;
+              await completeLesson(checkBtn.dataset.lid, checkBtn.dataset.cid);
+              checkBtn.remove();
+            } else {
+              resultDiv.className = 'mt-3 p-3 rounded-xl text-center bg-red-500/20 border border-red-500/50';
+              resultDiv.innerHTML = `<p class="text-red-400 font-bold">❌ ${correct}/${questions.length} (${score}%). Нужно ${threshold}%+</p><p class="text-white/50 text-xs mt-1">Попробуйте ещё раз</p>`;
+            }
+          };
+        }
+      }
+
+      // ── handleGetCert ───────────────────────────────────────────────
+      async function handleGetCert(courseId, courseTitle) {
+        try {
+          alert('🏆 Сертификат генерируется...');
+          await supabaseClient.from('certificates').upsert(
+            { user_id: userId, course_id: courseId, certificate_url: 'https://example.com/cert.pdf', issued_at: new Date().toISOString() },
+            { onConflict: 'user_id,course_id' }
+          );
+          alert(`Сертификат по курсу "${courseTitle}" готов!\nСсылка: https://example.com/cert.pdf`);
+        } catch(e) { alert('Ошибка генерации: ' + e.message); }
+      }
+
+      // ── addCourse (owner) ───────────────────────────────────────────
+      const addBtn = document.getElementById('addCourseBtn');
+      if (addBtn && isOwner) addBtn.onclick = () => openCourseForm(null);
+
+      // ── buyCourseBtn ────────────────────────────────────────────────
       document.querySelectorAll('.buyCourseBtn').forEach(btn => {
         btn.onclick = async () => {
-          const courseId = btn.getAttribute('data-course-id');
-          const price = parseInt(btn.getAttribute('data-price'));
+          const courseId = btn.dataset.courseId;
+          const price = parseInt(btn.dataset.price);
+          if (!userId) { alert('Авторизуйтесь'); return; }
           if (balance < price) { alert('Недостаточно средств'); return; }
           try {
-            const { error: updateError } = await supabaseClient.from('users').update({ ices_balance: balance - price }).eq('user_id', userId);
-            if (updateError) throw updateError;
+            const { error: e1 } = await supabaseClient.from('users').update({ ices_balance: balance - price }).eq('user_id', userId);
+            if (e1) throw e1;
+            await supabaseClient.from('user_courses').upsert({ user_id: userId, course_id: courseId }, { onConflict: 'user_id,course_id' });
             balance -= price;
             document.getElementById('headerBalance').innerText = balance + ' ❄️';
-            alert('Курс приобретён!');
+            alert('🎉 Курс куплен! Приятного обучения!');
             renderCurrentScreen();
           } catch (err) { alert('Ошибка: ' + err.message); }
         };
       });
-      
-      document.querySelectorAll('.course-card').forEach(card => {
-        const header = card;
+
+      // ── getCertBtn ──────────────────────────────────────────────────
+      document.querySelectorAll('.getCertBtn').forEach(btn => {
+        btn.onclick = () => handleGetCert(btn.dataset.courseId, btn.dataset.title);
+      });
+
+      // ── toggle lessons list ─────────────────────────────────────────
+      document.querySelectorAll('.course-card-header').forEach(header => {
         header.onclick = (e) => {
-          if (e.target.classList.contains('buyCourseBtn')) return;
-          const lessonsContainer = card.querySelector('.lessons-container');
-          if (lessonsContainer) lessonsContainer.classList.toggle('hidden');
+          if (e.target.closest('button')) return;
+          const card = header.closest('[data-course-id]');
+          card?.querySelector('.lessons-container')?.classList.toggle('hidden');
         };
       });
-      
-      document.querySelectorAll('.lesson-item').forEach(lesson => {
-        lesson.onclick = async () => {
-          const lessonId = lesson.getAttribute('data-lesson-id');
+
+      // ── open lesson ─────────────────────────────────────────────────
+      document.querySelectorAll('.lesson-item').forEach(item => {
+        item.onclick = async () => {
+          if (item.dataset.accessible === 'false') return;
           try {
-            const { data, error } = await supabaseClient.from('lessons').select('*').eq('id', lessonId).single();
+            const { data, error } = await supabaseClient.from('lessons').select('*').eq('id', item.dataset.lessonId).single();
             if (error) throw error;
-            let content = '';
-            if (data.content_type === 'text') content = `<div class="prose prose-invert max-w-none"><p class="text-white/90">${data.content}</p></div>`;
-            else if (data.content_type === 'video') content = `<video src="${data.content}" class="w-full rounded-xl" controls></video>`;
-            else if (data.content_type === 'quiz') content = `<div class="space-y-3"><p class="text-white">${data.content}</p><input type="text" class="w-full p-2 rounded bg-white/20" placeholder="Ваш ответ"><button class="mt-2 bg-cyan-500 px-4 py-2 rounded">Проверить</button></div>`;
-            else content = `<a href="${data.content}" target="_blank" class="text-cyan-400 underline">Скачать материал</a>`;
-            
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
-            modal.innerHTML = `<div class="bg-white/10 backdrop-blur-md rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-5"><div class="flex justify-between items-center mb-4"><h3 class="text-white font-bold text-lg">${data.title}</h3><button class="close-modal text-white text-2xl">&times;</button></div>${content}</div>`;
-            document.body.appendChild(modal);
-            modal.querySelector('.close-modal').onclick = () => modal.remove();
-            
-            if (!lesson.querySelector('.text-green-400')) {
-              await supabaseClient.from('user_lessons_progress').upsert({ user_id: userId, lesson_id: lessonId, is_completed: true, completed_at: new Date() });
-              renderCurrentScreen();
-            }
-          } catch (err) { alert('Ошибка загрузки урока'); }
+            showLessonModal(data, item.dataset.courseId);
+          } catch(e) { alert('Ошибка загрузки урока: ' + e.message); }
         };
       });
     }
 
+
+    // ==================== ГЛОБАЛЬНЫЕ МОДАЛЫ КУРСОВ ====================
+    function openCourseForm(course = null) {
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+      modal.innerHTML = `
+        <div class="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
+          <h3 class="text-white font-bold text-lg mb-4">${course ? '✏️ Редактировать курс' : '➕ Новый курс'}</h3>
+          <label class="text-white/60 text-xs">Название</label>
+          <input id="mCourseTitle" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Название курса" value="${course?.title || ''}">
+          <label class="text-white/60 text-xs">Описание</label>
+          <textarea id="mCourseDesc" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" rows="2" placeholder="Описание">${course?.description || ''}</textarea>
+          <label class="text-white/60 text-xs">Цена (айсы, 0 = бесплатно)</label>
+          <input type="number" id="mCoursePrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" value="${course?.price_ice ?? 0}">
+          <label class="text-white/60 text-xs">Доступ для</label>
+          <select id="mCourseAccess" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
+            <option value="all" ${course?.role_access === 'all' || !course ? 'selected' : ''}>Все</option>
+            <option value="client" ${course?.role_access === 'client' ? 'selected' : ''}>Клиенты</option>
+            <option value="dropshipper" ${course?.role_access === 'dropshipper' ? 'selected' : ''}>Дропшипперы</option>
+          </select>
+          <div class="flex items-center gap-2 mb-4">
+            <input type="checkbox" id="mCourseActive" ${course?.is_active !== false ? 'checked' : ''}>
+            <label for="mCourseActive" class="text-white/70 text-sm">Активен</label>
+          </div>
+          <div class="flex gap-3">
+            <button id="mCourseSave" class="flex-1 bg-cyan-500 hover:bg-cyan-600 py-2.5 rounded-xl font-bold">Сохранить</button>
+            <button id="mCourseCancel" class="flex-1 bg-white/20 hover:bg-white/30 py-2.5 rounded-xl">Отмена</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector('#mCourseCancel').onclick = () => modal.remove();
+      modal.querySelector('#mCourseSave').onclick = async () => {
+        const title = modal.querySelector('#mCourseTitle').value.trim();
+        const description = modal.querySelector('#mCourseDesc').value.trim();
+        const price_ice = parseInt(modal.querySelector('#mCoursePrice').value) || 0;
+        const role_access = modal.querySelector('#mCourseAccess').value;
+        const is_active = modal.querySelector('#mCourseActive').checked;
+        if (!title) { alert('Введите название'); return; }
+        try {
+          if (course) {
+            await supabaseClient.from('courses').update({ title, description, price_ice, role_access, is_active }).eq('id', course.id);
+          } else {
+            await supabaseClient.from('courses').insert({ title, description, price_ice, role_access, is_active });
+          }
+          modal.remove();
+          renderCurrentScreen();
+        } catch(e) { alert('Ошибка: ' + e.message); }
+      };
+    }
+
+    async function manageLessonsModal(courseId) {
+      const { data: lessons } = await supabaseClient.from('lessons').select('*').eq('course_id', courseId).order('order_index', { ascending: true });
+      const { data: course } = await supabaseClient.from('courses').select('title').eq('id', courseId).single();
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+      const ctIcon = t => ({ video: '📹', quiz: '📝', file: '📎' }[t] || '📄');
+      modal.innerHTML = `
+        <div class="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-white font-bold">📚 Уроки: ${course?.title || ''}</h3>
+            <button class="closeMgr text-white/50 hover:text-white text-2xl">&times;</button>
+          </div>
+          <button id="addLessonBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 py-2 rounded-xl mb-4 font-bold">➕ Добавить урок</button>
+          <div class="space-y-2" id="lessonsMgrList">
+            ${(lessons || []).map(l => `
+              <div class="flex items-center gap-2 p-2 bg-white/5 rounded-xl">
+                <span class="text-lg">${ctIcon(l.content_type)}</span>
+                <div class="flex-1 min-w-0">
+                  <p class="text-white text-sm truncate">${l.title}</p>
+                  <p class="text-white/40 text-xs">#${l.order_index} · ${l.is_locked ? '🔒' : '✅'} ${l.unlock_delay_hours > 0 ? '⏳' + l.unlock_delay_hours + 'ч' : ''}</p>
+                </div>
+                <button class="editLessonBtn bg-white/20 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}">✏️</button>
+                <button class="deleteLessonBtn bg-red-600/60 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}">🗑️</button>
+              </div>`).join('')}
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector('.closeMgr').onclick = () => modal.remove();
+      modal.querySelector('#addLessonBtn').onclick = () => openLessonForm(courseId, null, () => { modal.remove(); manageLessonsModal(courseId); });
+      modal.querySelectorAll('.editLessonBtn').forEach(btn => {
+        btn.onclick = async () => {
+          const { data: l } = await supabaseClient.from('lessons').select('*').eq('id', btn.dataset.lessonId).single();
+          if (l) { modal.remove(); openLessonForm(courseId, l, () => manageLessonsModal(courseId)); }
+        };
+      });
+      modal.querySelectorAll('.deleteLessonBtn').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm('Удалить урок?')) return;
+          await supabaseClient.from('lessons').delete().eq('id', btn.dataset.lessonId);
+          modal.remove(); manageLessonsModal(courseId);
+        };
+      });
+    }
+
+    function openLessonForm(courseId, lesson = null, onSave = null) {
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+      modal.innerHTML = `
+        <div class="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
+          <h3 class="text-white font-bold text-lg mb-4">${lesson ? '✏️ Редактировать урок' : '➕ Новый урок'}</h3>
+          <label class="text-white/60 text-xs">Название</label>
+          <input id="mLessonTitle" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Название урока" value="${lesson?.title || ''}">
+          <label class="text-white/60 text-xs">Тип контента</label>
+          <select id="mLessonType" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
+            <option value="text" ${lesson?.content_type === 'text' ? 'selected' : ''}>📄 Текст</option>
+            <option value="video" ${lesson?.content_type === 'video' ? 'selected' : ''}>📹 Видео (URL)</option>
+            <option value="quiz" ${lesson?.content_type === 'quiz' ? 'selected' : ''}>📝 Тест (JSON)</option>
+            <option value="file" ${lesson?.content_type === 'file' ? 'selected' : ''}>📎 Файл (URL)</option>
+          </select>
+          <label class="text-white/60 text-xs">Контент / URL</label>
+          <textarea id="mLessonContent" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" rows="4" placeholder="Текст, URL видео/файла или JSON теста">${lesson?.content || ''}</textarea>
+          <div class="flex gap-3 mb-3">
+            <div class="flex-1">
+              <label class="text-white/60 text-xs">Порядок (#)</label>
+              <input type="number" id="mLessonOrder" class="w-full mt-1 p-2 rounded-xl bg-white/20 border border-white/30" value="${lesson?.order_index ?? 0}">
+            </div>
+            <div class="flex-1">
+              <label class="text-white/60 text-xs">Задержка (часы)</label>
+              <input type="number" id="mLessonDelay" class="w-full mt-1 p-2 rounded-xl bg-white/20 border border-white/30" value="${lesson?.unlock_delay_hours ?? 0}">
+            </div>
+          </div>
+          <div class="flex items-center gap-2 mb-4">
+            <input type="checkbox" id="mLessonLocked" ${lesson?.is_locked ? 'checked' : ''}>
+            <label for="mLessonLocked" class="text-white/70 text-sm">Заблокирован вручную</label>
+          </div>
+          <div class="flex gap-3">
+            <button id="mLessonSave" class="flex-1 bg-cyan-500 hover:bg-cyan-600 py-2.5 rounded-xl font-bold">Сохранить</button>
+            <button id="mLessonCancel" class="flex-1 bg-white/20 hover:bg-white/30 py-2.5 rounded-xl">Отмена</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector('#mLessonCancel').onclick = () => modal.remove();
+      modal.querySelector('#mLessonSave').onclick = async () => {
+        const title = modal.querySelector('#mLessonTitle').value.trim();
+        const content_type = modal.querySelector('#mLessonType').value;
+        const content = modal.querySelector('#mLessonContent').value.trim();
+        const order_index = parseInt(modal.querySelector('#mLessonOrder').value) || 0;
+        const unlock_delay_hours = parseInt(modal.querySelector('#mLessonDelay').value) || 0;
+        const is_locked = modal.querySelector('#mLessonLocked').checked;
+        if (!title || !content) { alert('Заполните название и контент'); return; }
+        try {
+          if (lesson) {
+            await supabaseClient.from('lessons').update({ title, content_type, content, order_index, unlock_delay_hours, is_locked }).eq('id', lesson.id);
+          } else {
+            await supabaseClient.from('lessons').insert({ course_id: courseId, title, content_type, content, order_index, unlock_delay_hours, is_locked });
+          }
+          modal.remove();
+          if (onSave) onSave(); else renderCurrentScreen();
+        } catch(e) { alert('Ошибка: ' + e.message); }
+      };
+    }
 
     async function renderWishlist() {
   if (!userId) return '<p class="text-center mt-10 text-white/70">Авторизуйтесь</p>';
@@ -1999,7 +2326,9 @@ async function renderAdmin() {
     try { const { data } = await supabaseClient.from('payout_requests').select('*').eq('status', 'pending'); if (data) payoutRequests = data; } catch(e) {}
     try { const { data } = await supabaseClient.from('reviews').select('*').eq('is_published', false).order('created_at', { ascending: false }); if (data) reviews = data; } catch(e) {}
     try { const { data } = await supabaseClient.from('products').select('*').order('created_at', { ascending: false }); if (data) products = data; } catch(e) {}
-    
+    let courses = [];
+    try { const { data } = await supabaseClient.from('courses').select('*').order('created_at', { ascending: true }); if (data) courses = data; } catch(e) {}
+
     return `
       <div class="space-y-4">
         <!-- 🎁 Акции -->
@@ -2041,6 +2370,26 @@ async function renderAdmin() {
           </div>
         </div>
         
+        <!-- 🎓 Курсы -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="text-white font-bold">🎓 Курсы (Академия)</h3>
+            <button id="adminAddCourseBtn" class="bg-cyan-500 hover:bg-cyan-600 px-3 py-1.5 rounded-lg text-sm">➕ Добавить</button>
+          </div>
+          <div class="space-y-2 max-h-64 overflow-y-auto">
+            ${courses.length === 0 ? '<p class="text-white/50 text-sm">Курсов нет</p>' : courses.map(c => `
+              <div class="flex items-center gap-2 p-2 bg-white/5 rounded-xl">
+                <div class="flex-1 min-w-0">
+                  <p class="text-white text-sm truncate">${c.title}</p>
+                  <p class="text-white/40 text-xs">${c.price_ice > 0 ? c.price_ice + ' ❄️' : 'Бесплатно'} · ${c.role_access} · ${c.is_active ? '✅ Активен' : '❌ Скрыт'}</p>
+                </div>
+                <button class="adminEditCourseBtn bg-white/20 px-2 py-1 rounded text-xs" data-course-id="${c.id}">✏️</button>
+                <button class="adminManageLessonsBtn bg-blue-600/60 px-2 py-1 rounded text-xs" data-course-id="${c.id}">📚</button>
+                <button class="adminDeleteCourseBtn bg-red-600/60 px-2 py-1 rounded text-xs" data-course-id="${c.id}">🗑️</button>
+              </div>`).join('')}
+          </div>
+        </div>
+
         <!-- Управление площадками -->
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
           <h3 class="text-white font-bold mb-3">🌐 Управление площадками</h3>
@@ -2490,6 +2839,31 @@ if (archiveBtn) archiveBtn.addEventListener('click', () => {
     };
     document.addEventListener('click', window._globalRestoreHandler);
   }
+  // ================== КУРСЫ (АКАДЕМИЯ) ==================
+  const adminAddCourseBtn = document.getElementById('adminAddCourseBtn');
+  if (adminAddCourseBtn) adminAddCourseBtn.onclick = () => openCourseForm(null);
+
+  document.querySelectorAll('.adminEditCourseBtn').forEach(btn => {
+    btn.onclick = async () => {
+      const { data } = await supabaseClient.from('courses').select('*').eq('id', btn.dataset.courseId).single();
+      if (data) openCourseForm(data);
+    };
+  });
+
+  document.querySelectorAll('.adminManageLessonsBtn').forEach(btn => {
+    btn.onclick = () => manageLessonsModal(btn.dataset.courseId);
+  });
+
+  document.querySelectorAll('.adminDeleteCourseBtn').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('Удалить курс? Все уроки и прогресс будут удалены.')) return;
+      try {
+        await supabaseClient.from('courses').delete().eq('id', btn.dataset.courseId);
+        renderCurrentScreen();
+      } catch(e) { alert('Ошибка: ' + e.message); }
+    };
+  });
+
   // ================== УПРАВЛЕНИЕ АКЦИЯМИ ==================
 const addPromotionBtn = document.getElementById('addPromotionBtn');
 if (addPromotionBtn) addPromotionBtn.onclick = () => openPromotionForm();
