@@ -182,21 +182,26 @@ const MAX_REQUESTS_TRUSTED = 100;
 
     async function loadUserData() {
       if (!userId) return;
+      // Fetch core fields — do NOT include optional/new columns here to avoid
+      // breaking this query if a migration hasn't been applied yet.
       const { data, error } = await supabaseClient.from('users')
-        .select('role, ices_balance, referral_code, referral_count, referral_bonus, daily_requests_count, last_request_date, is_trusted, app_settings')
+        .select('role, ices_balance, referral_code, referral_count, referral_bonus, daily_requests_count, last_request_date, is_trusted')
         .eq('user_id', userId).maybeSingle();
       if (!error && data) {
-        isOwner = (data.role === 'owner');
+        isOwner = (data.role === 'owner' || data.role === 'admin');
         balance = data.ices_balance || 0;
         userReferralCode = data.referral_code;
         userLimits.dailyCount = data.daily_requests_count || 0;
         userLimits.lastDate = data.last_request_date ? new Date(data.last_request_date).toDateString() : null;
         userLimits.isTrusted = data.is_trusted || false;
         document.getElementById('headerBalance').innerText = balance + ' ❄️';
-        // Apply saved theme
-        const savedTheme = data.app_settings?.theme || 'dark';
-        applyTheme(savedTheme);
       }
+      // Apply saved theme in a separate resilient call — column may not exist yet
+      try {
+        const { data: settingsRow } = await supabaseClient.from('users')
+          .select('app_settings').eq('user_id', userId).maybeSingle();
+        applyTheme(settingsRow?.app_settings?.theme || 'dark');
+      } catch { applyTheme('dark'); }
     }
 
     async function checkAndUpdateLimit() {
