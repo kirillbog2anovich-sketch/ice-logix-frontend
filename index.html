@@ -1857,14 +1857,10 @@ async function renderAcademy() {
     }
 
     async function manageLessonsModal(courseId) {
-      const [{ data: lessons }, { data: course }] = await Promise.all([
-        supabaseClient.from('lessons').select('*').eq('course_id', courseId).order('order_index', { ascending: true }),
-        supabaseClient.from('courses').select('title').eq('id', courseId).single()
-      ]);
-      const ls = lessons || [];
-      const nextIdx = ls.length > 0 ? Math.max(...ls.map(l => l.order_index ?? 0)) + 1 : 1;
-      const ctIcon = t => ({ video: '📹', quiz: '📝', file: '📎' }[t] || '📄');
+      const ctIcon  = t => ({ video: '📹', quiz: '📝', file: '📎' }[t] || '📄');
       const ctLabel = t => ({ video: 'Видео', quiz: 'Тест', file: 'Файл' }[t] || 'Текст');
+
+      const { data: course } = await supabaseClient.from('courses').select('title').eq('id', courseId).single();
 
       const modal = document.createElement('div');
       modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4';
@@ -1877,46 +1873,78 @@ async function renderAcademy() {
             </div>
             <button class="closeMgr text-white/50 hover:text-white text-2xl flex-shrink-0 ml-3">&times;</button>
           </div>
-          <button id="addLessonBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 py-2.5 rounded-xl my-4 font-bold">➕ Добавить урок</button>
+          <div class="flex gap-2 my-4">
+            <button id="addLessonBtn" class="flex-1 bg-cyan-500 hover:bg-cyan-600 py-2.5 rounded-xl font-bold">➕ Добавить урок</button>
+            <button id="refreshLessonsBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2.5 rounded-xl text-sm" title="Обновить список">🔄</button>
+          </div>
           <div class="space-y-2" id="lessonsMgrList">
-            ${ls.length === 0
-              ? '<p class="text-white/40 text-sm text-center py-4">В этом курсе пока нет уроков</p>'
-              : ls.map(l => `
-              <div class="flex items-center gap-2 p-2.5 bg-white/5 rounded-xl">
-                <span class="text-xl flex-shrink-0">${ctIcon(l.content_type)}</span>
-                <div class="flex-1 min-w-0">
-                  <p class="text-white text-sm font-medium truncate">${l.title}</p>
-                  <p class="text-white/40 text-xs">#${l.order_index} · ${ctLabel(l.content_type)} · ${l.is_locked ? '🔒 Заблокировано' : '✅ Открыто'}${l.unlock_delay_hours > 0 ? ' · ⏳ ' + l.unlock_delay_hours + 'ч' : ''}</p>
-                </div>
-                <button class="previewLessonBtn bg-white/10 hover:bg-white/20 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}" title="Предпросмотр">👁️</button>
-                <button class="editLessonBtn bg-white/20 hover:bg-white/30 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}">✏️</button>
-                <button class="deleteLessonBtn bg-red-600/60 hover:bg-red-600/80 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}">🗑️</button>
-              </div>`).join('')}
+            <p class="text-white/40 text-xs text-center py-3">⏳ Загрузка...</p>
           </div>
         </div>`;
       document.body.appendChild(modal);
       modal.querySelector('.closeMgr').onclick = () => modal.remove();
-      modal.querySelector('#addLessonBtn').onclick = () =>
-        openLessonForm(courseId, null, nextIdx, () => { modal.remove(); manageLessonsModal(courseId); });
-      modal.querySelectorAll('.previewLessonBtn').forEach(btn => {
-        btn.onclick = async () => {
-          const { data: l } = await supabaseClient.from('lessons').select('*').eq('id', btn.dataset.lessonId).single();
-          if (l) previewLessonAdmin(l);
-        };
-      });
-      modal.querySelectorAll('.editLessonBtn').forEach(btn => {
-        btn.onclick = async () => {
-          const { data: l } = await supabaseClient.from('lessons').select('*').eq('id', btn.dataset.lessonId).single();
-          if (l) { modal.remove(); openLessonForm(courseId, l, l.order_index, () => manageLessonsModal(courseId)); }
-        };
-      });
-      modal.querySelectorAll('.deleteLessonBtn').forEach(btn => {
-        btn.onclick = async () => {
-          if (!confirm('Удалить урок? Прогресс пользователей по этому уроку тоже будет удалён.')) return;
-          await supabaseClient.from('lessons').delete().eq('id', btn.dataset.lessonId);
-          modal.remove(); manageLessonsModal(courseId);
-        };
-      });
+
+      const listEl = modal.querySelector('#lessonsMgrList');
+
+      // ── render one lesson row ────────────────────────────────────────
+      const lessonRowHtml = l => `
+        <div class="flex items-center gap-2 p-2.5 bg-white/5 rounded-xl">
+          <span class="text-xl flex-shrink-0">${ctIcon(l.content_type)}</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-white text-sm font-medium truncate">${l.title}</p>
+            <p class="text-white/40 text-xs">#${l.order_index} · ${ctLabel(l.content_type)} · ${l.is_locked ? '🔒 Заблокировано' : '✅ Открыто'}${l.unlock_delay_hours > 0 ? ' · ⏳ ' + l.unlock_delay_hours + 'ч' : ''}</p>
+          </div>
+          <button class="previewLessonBtn bg-white/10 hover:bg-white/20 px-2 py-1 rounded text-xs" data-lid="${l.id}" title="Предпросмотр">👁️</button>
+          <button class="editLessonBtn bg-white/20 hover:bg-white/30 px-2 py-1 rounded text-xs" data-lid="${l.id}">✏️</button>
+          <button class="deleteLessonBtn bg-red-600/60 hover:bg-red-600/80 px-2 py-1 rounded text-xs" data-lid="${l.id}">🗑️</button>
+        </div>`;
+
+      // ── attach handlers to current list items ────────────────────────
+      const attachListHandlers = () => {
+        listEl.querySelectorAll('.previewLessonBtn').forEach(btn => {
+          btn.onclick = async () => {
+            const { data: l } = await supabaseClient.from('lessons').select('*').eq('id', btn.dataset.lid).single();
+            if (l) previewLessonAdmin(l);
+          };
+        });
+        listEl.querySelectorAll('.editLessonBtn').forEach(btn => {
+          btn.onclick = async () => {
+            const { data: l } = await supabaseClient.from('lessons').select('*').eq('id', btn.dataset.lid).single();
+            // Open lesson form ON TOP of this modal (z-[70] > z-[60]); modal stays open
+            if (l) openLessonForm(courseId, l, l.order_index, refreshList);
+          };
+        });
+        listEl.querySelectorAll('.deleteLessonBtn').forEach(btn => {
+          btn.onclick = async () => {
+            if (!confirm('Удалить урок? Прогресс пользователей тоже будет удалён.')) return;
+            const { error } = await supabaseClient.from('lessons').delete().eq('id', btn.dataset.lid);
+            if (error) { alert('Ошибка удаления: ' + error.message); return; }
+            await refreshList();
+          };
+        });
+      };
+
+      // ── re-fetch and re-render the lessons list in place ─────────────
+      const refreshList = async () => {
+        listEl.innerHTML = '<p class="text-white/40 text-xs text-center py-3">⏳ Загрузка...</p>';
+        const { data: freshLessons, error } = await supabaseClient
+          .from('lessons').select('*').eq('course_id', courseId).order('order_index', { ascending: true });
+        if (error) { listEl.innerHTML = `<p class="text-red-400 text-xs text-center py-3">Ошибка: ${error.message}</p>`; return; }
+        const freshLs = freshLessons || [];
+        const nextIdx = freshLs.length > 0 ? Math.max(...freshLs.map(l => l.order_index ?? 0)) + 1 : 1;
+        // Keep the add button's nextIdx up to date
+        modal.querySelector('#addLessonBtn').onclick = () => openLessonForm(courseId, null, nextIdx, refreshList);
+        if (freshLs.length === 0) {
+          listEl.innerHTML = '<p class="text-white/40 text-sm text-center py-4">В этом курсе пока нет уроков. Добавьте первый!</p>';
+        } else {
+          listEl.innerHTML = freshLs.map(lessonRowHtml).join('');
+          attachListHandlers();
+        }
+      };
+
+      // Initial load
+      await refreshList();
+      modal.querySelector('#refreshLessonsBtn').onclick = refreshList;
     }
 
     function openLessonForm(courseId, lesson = null, defaultOrderIndex = 0, onSave = null) {
@@ -2006,15 +2034,34 @@ async function renderAcademy() {
         const is_locked = lockedCheck.checked;
         if (!title) { alert('Введите название урока'); return; }
         if (!content) { alert('Заполните поле «Контент»'); return; }
+        const saveBtn = modal.querySelector('#mLessonSave');
+        saveBtn.disabled = true;
+        saveBtn.textContent = '⏳ Сохранение...';
         try {
+          const payload = {
+            course_id: courseId,
+            title,
+            content_type,
+            content,
+            order_index,
+            is_locked,
+            unlock_delay_hours
+          };
+          let error;
           if (lesson) {
-            await supabaseClient.from('lessons').update({ title, content_type, content, order_index, unlock_delay_hours, is_locked }).eq('id', lesson.id);
+            ({ error } = await supabaseClient.from('lessons').update(payload).eq('id', lesson.id));
           } else {
-            await supabaseClient.from('lessons').insert({ course_id: courseId, title, content_type, content, order_index, unlock_delay_hours, is_locked });
+            ({ error } = await supabaseClient.from('lessons').insert(payload));
           }
+          if (error) throw new Error(error.message);
+          alert('✅ Урок сохранён');
           modal.remove();
-          if (onSave) onSave(); else renderCurrentScreen();
-        } catch(e) { alert('Ошибка: ' + e.message); }
+          if (onSave) await onSave(); else renderCurrentScreen();
+        } catch(e) {
+          alert('❌ Ошибка сохранения: ' + e.message);
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Сохранить';
+        }
       };
     }
 
