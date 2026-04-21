@@ -2742,19 +2742,24 @@ async function renderAdmin() {
 
           <!-- Вкладка: Логи -->
           <div id="analyticsTab-logs" class="hidden">
-            <div class="flex gap-2 mb-3">
-              <input type="text" id="logsAdminFilter" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 text-xs" placeholder="Admin ID">
-              <select id="logsActionFilter" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 text-xs">
-                <option value="">Все действия</option>
-                <option value="order_status">Статус заказа</option>
-                <option value="archive">Архивация</option>
-                <option value="promo">Промокод</option>
-                <option value="product">Товар</option>
-                <option value="payout">Выплата</option>
-                <option value="course">Курс</option>
-                <option value="review">Отзыв</option>
-              </select>
-              <button id="logsLoadBtn" class="bg-cyan-500 hover:bg-cyan-600 px-3 py-2 rounded-lg text-xs font-bold">🔍</button>
+            <div class="space-y-2 mb-3">
+              <div class="relative">
+                <input type="text" id="logsAdminFilter" class="w-full p-2 pl-8 rounded-lg bg-white/20 border border-white/30 text-xs" placeholder="Admin ID или имя">
+                <span class="absolute left-2.5 top-2 text-white/40 pointer-events-none">🔍</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <select id="logsActionFilter" class="flex-1 min-w-0 p-2 rounded-lg bg-white/20 border border-white/30 text-xs">
+                  <option value="">Все действия</option>
+                  <option value="order_status">Статус заказа</option>
+                  <option value="archive">Архивация</option>
+                  <option value="promo">Промокод</option>
+                  <option value="product">Товар</option>
+                  <option value="payout">Выплата</option>
+                  <option value="course">Курс</option>
+                  <option value="review">Отзыв</option>
+                </select>
+                <button id="logsLoadBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-2 rounded-lg text-xs font-bold flex-shrink-0">Загрузить</button>
+              </div>
             </div>
             <div id="logsList" class="space-y-1 max-h-80 overflow-y-auto text-xs">
               <p class="text-white/40 text-center py-3">Нажмите 🔍 для загрузки логов</p>
