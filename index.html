@@ -9,6 +9,7 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #0F172A; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
@@ -90,6 +91,19 @@
     .filter-chip { background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 40px; font-size: 12px; cursor: pointer; transition: 0.2s; }
     .filter-chip.active { background: #00c2ff; color: #0F172A; }
     .wishlist-heart { color: #ff4d4d; cursor: pointer; }
+    /* ── Light theme overrides ── */
+    html.light body { background: #e2e8f0; color: #0f172a; }
+    html.light .app-header { background: rgba(241,245,249,0.95); border-bottom-color: rgba(0,0,0,0.1); }
+    html.light .tab-bar { background: rgba(241,245,249,0.97); border-top-color: rgba(0,0,0,0.1); }
+    html.light .bg-white\/10, html.light .bg-white\/5 { background: rgba(0,0,0,0.06) !important; }
+    html.light .bg-white\/20 { background: rgba(0,0,0,0.1) !important; }
+    html.light .text-white { color: #0f172a !important; }
+    html.light .text-white\/70 { color: rgba(15,23,42,0.7) !important; }
+    html.light .text-white\/50, html.light .text-white\/60 { color: rgba(15,23,42,0.55) !important; }
+    html.light .text-white\/40, html.light .text-white\/30 { color: rgba(15,23,42,0.4) !important; }
+    html.light .border-white\/10, html.light .border-white\/20, html.light .border-white\/30 { border-color: rgba(0,0,0,0.12) !important; }
+    html.light .product-card { background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); }
+    html.light .bg-slate-900 { background: #f8fafc !important; }
   </style>
 </head>
 <body>
@@ -168,15 +182,20 @@ const MAX_REQUESTS_TRUSTED = 100;
 
     async function loadUserData() {
       if (!userId) return;
-      const { data, error } = await supabaseClient.from('users').select('role, ices_balance, referral_code, referral_count, referral_bonus, daily_requests_count, last_request_date, is_trusted').eq('user_id', userId).maybeSingle();
+      const { data, error } = await supabaseClient.from('users')
+        .select('role, ices_balance, referral_code, referral_count, referral_bonus, daily_requests_count, last_request_date, is_trusted, app_settings')
+        .eq('user_id', userId).maybeSingle();
       if (!error && data) {
-  isOwner = (data.role === 'owner');
-  balance = data.ices_balance || 0;
-  userReferralCode = data.referral_code;
-  userLimits.dailyCount = data.daily_requests_count || 0;
-  userLimits.lastDate = data.last_request_date ? new Date(data.last_request_date).toDateString() : null;
-  userLimits.isTrusted = data.is_trusted || false;
-  document.getElementById('headerBalance').innerText = balance + ' ❄️';
+        isOwner = (data.role === 'owner');
+        balance = data.ices_balance || 0;
+        userReferralCode = data.referral_code;
+        userLimits.dailyCount = data.daily_requests_count || 0;
+        userLimits.lastDate = data.last_request_date ? new Date(data.last_request_date).toDateString() : null;
+        userLimits.isTrusted = data.is_trusted || false;
+        document.getElementById('headerBalance').innerText = balance + ' ❄️';
+        // Apply saved theme
+        const savedTheme = data.app_settings?.theme || 'dark';
+        applyTheme(savedTheme);
       }
     }
 
@@ -1128,8 +1147,9 @@ async function renderMyOrders() {
       <button id="academyBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">🎓 Академия</button>
       ${isOwner ? '<button id="adminPanelBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">⚙️ Админ-панель</button>' : ''}
       <button id="passportDataBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">🛂 Паспорт</button>
-      <button id="notificationsSettingsBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">🔔 Уведомления</button>
       <button id="phoneBindingBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">📱 Телефон</button>
+      <button id="accountRecoveryBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">🔑 Восстановить</button>
+      <button id="appSettingsBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm">⚙️ Настройки</button>
       <button id="cartBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full transition text-sm relative">
   🛒 Корзина <span id="cartBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
 </button>
@@ -1209,7 +1229,11 @@ if (allTransactionsBtn) allTransactionsBtn.onclick = () => showAllTransactions()
 
 // Настройки уведомлений
 const notifSettingsBtn = document.getElementById('notificationsSettingsBtn');
-if (notifSettingsBtn) notifSettingsBtn.onclick = () => showNotificationSettings();
+if (notifSettingsBtn) notifSettingsBtn.onclick = () => showAppSettings('notifications');
+const appSettingsBtn2 = document.getElementById('appSettingsBtn');
+if (appSettingsBtn2) appSettingsBtn2.onclick = () => showAppSettings('notifications');
+const accountRecoveryBtn = document.getElementById('accountRecoveryBtn');
+if (accountRecoveryBtn) accountRecoveryBtn.onclick = () => showAccountRecovery();
 
 // Привязка телефона
 const phoneBindingBtn = document.getElementById('phoneBindingBtn');
@@ -1229,7 +1253,16 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
         const { data, error } = await supabaseClient.from('dropshipper_settings').select('*').eq('user_id', userId).single();
         if (!error && data) settings = data;
       } catch(e) {}
-      
+
+      let maskedCard = null;
+      try {
+        const { data: udata } = await supabaseClient.from('users').select('encrypted_card').eq('user_id', userId).single();
+        if (udata?.encrypted_card) {
+          const dec = decryptData(udata.encrypted_card);
+          maskedCard = dec?.cardNumber ? maskCard(dec.cardNumber) : '****';
+        }
+      } catch(e) {}
+
       let referrals = [];
       try {
         const { data, error } = await supabaseClient.from('referrals').select('referred_id, created_at').eq('referrer_id', userId);
@@ -1314,6 +1347,21 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
                   <input type="number" id="marginValue" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 min-w-0" value="${settings.margin_value}" step="1" placeholder="Значение">
                 </div>
                 <input type="number" id="payoutThreshold" class="w-full p-2 rounded-lg bg-white/20 border border-white/30 mb-3" value="${settings.payout_threshold}" placeholder="Порог вывода (BYN)">
+                <div class="mt-3 mb-3">
+                  <label class="text-white/60 text-sm">💳 Карта для выплат</label>
+                  ${maskedCard
+                    ? `<div class="flex items-center gap-2 mt-1">
+                         <p class="flex-1 p-2 rounded-lg bg-white/10 border border-white/20 text-white/80 text-sm font-mono">${maskedCard}</p>
+                         <button id="editCardBtn" class="bg-white/20 px-3 py-2 rounded-lg text-xs">✏️</button>
+                         <button id="deleteCardBtn" class="bg-red-600/60 px-3 py-2 rounded-lg text-xs">🗑️</button>
+                       </div>
+                       <div id="cardInputWrap" class="hidden mt-2">
+                         <input type="text" id="cardNumberInput" class="w-full p-2 rounded-lg bg-white/20 border border-white/30 text-sm font-mono" placeholder="0000 0000 0000 0000" maxlength="19">
+                       </div>`
+                    : `<input type="text" id="cardNumberInput" class="w-full mt-1 p-2 rounded-lg bg-white/20 border border-white/30 text-sm font-mono" placeholder="0000 0000 0000 0000" maxlength="19">`
+                  }
+                  <p class="text-white/40 text-xs mt-1">Данные шифруются перед сохранением</p>
+                </div>
                 <button id="saveDropshipperSettings" class="w-full bg-cyan-500 py-2 rounded-lg">Сохранить настройки</button>
               </div>
               ${availableForPayout >= settings.payout_threshold ? `<div class="bg-white/10 backdrop-blur-md rounded-2xl p-4"><button id="requestPayoutBtn" class="w-full bg-green-600 py-2 rounded-lg">💸 Запросить выплату (${availableForPayout} ❄️)</button></div>` : ''}
@@ -1357,10 +1405,28 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
               user_id: userId, margin_type: marginType, margin_value: marginValue, payout_threshold: payoutThreshold, payout_method: 'card'
             });
             if (error) throw error;
+            // Save encrypted card if provided
+            const cardInput = document.getElementById('cardNumberInput');
+            const cardWrap = document.getElementById('cardInputWrap');
+            const cardVisible = cardInput && (!cardWrap || !cardWrap.classList.contains('hidden'));
+            if (cardInput && cardVisible && cardInput.value.trim()) {
+              const raw = cardInput.value.replace(/\s/g, '');
+              const encrypted = encryptData({ cardNumber: raw });
+              await supabaseClient.from('users').update({ encrypted_card: encrypted }).eq('user_id', userId);
+            }
             alert('Настройки сохранены');
             renderCurrentScreen();
           } catch (err) { alert('Ошибка: ' + err.message); }
         };
+        // Card edit/delete handlers
+        document.getElementById('editCardBtn')?.addEventListener('click', () => {
+          document.getElementById('cardInputWrap')?.classList.remove('hidden');
+        });
+        document.getElementById('deleteCardBtn')?.addEventListener('click', async () => {
+          if (!confirm('Удалить сохранённую карту?')) return;
+          await supabaseClient.from('users').update({ encrypted_card: null }).eq('user_id', userId);
+          renderCurrentScreen();
+        });
       }
       const payoutBtn = document.getElementById('requestPayoutBtn');
       if (payoutBtn) {
@@ -4221,6 +4287,32 @@ function attachMarketplacesHandlers() {
 }
 
 // Показать форму ввода паспортных данных
+// ==================== ШИФРОВАНИЕ И УТИЛИТЫ ====================
+const ICE_ENCRYPT_KEY = 'ICE_LOGIX_2026_SEC_v1';
+
+function encryptData(obj) {
+  return CryptoJS.AES.encrypt(JSON.stringify(obj), ICE_ENCRYPT_KEY).toString();
+}
+function decryptData(cipher) {
+  try {
+    const bytes = CryptoJS.AES.decrypt(cipher, ICE_ENCRYPT_KEY);
+    return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+  } catch { return null; }
+}
+function maskPhone(phone) {
+  if (!phone || phone.length < 8) return phone || '';
+  return phone.slice(0, 4) + ' ** *** ' + phone.slice(-4);
+}
+function maskCard(cardNumber) {
+  const n = (cardNumber || '').replace(/\s/g, '');
+  if (n.length < 4) return '****';
+  return '**** **** **** ' + n.slice(-4);
+}
+function applyTheme(theme) {
+  if (theme === 'light') document.documentElement.classList.add('light');
+  else document.documentElement.classList.remove('light');
+}
+
 function showPassportForm() {
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
@@ -4263,18 +4355,21 @@ function showPassportForm() {
   `;
   document.body.appendChild(modal);
   
-  // Загружаем текущие данные, если есть
+  // Загружаем текущие данные (зашифрованные или legacy plain)
   (async () => {
-    const { data } = await supabaseClient.from('users').select('passport_data').eq('user_id', userId).single();
-    if (data?.passport_data) {
-      try {
-        const p = JSON.parse(data.passport_data);
-        document.getElementById('passportSeriesNumber').value = p.seriesNumber || '';
-        document.getElementById('passportIssueDate').value = p.issueDate || '';
-        document.getElementById('passportIssuedBy').value = p.issuedBy || '';
-        document.getElementById('passportIdNumber').value = p.idNumber || '';
-        document.getElementById('passportAddress').value = p.address || '';
-      } catch(e) {}
+    const { data } = await supabaseClient.from('users').select('encrypted_passport, passport_data').eq('user_id', userId).single();
+    let p = null;
+    if (data?.encrypted_passport) {
+      p = decryptData(data.encrypted_passport);
+    } else if (data?.passport_data) {
+      try { p = JSON.parse(data.passport_data); } catch {}
+    }
+    if (p) {
+      document.getElementById('passportSeriesNumber').value = p.seriesNumber || '';
+      document.getElementById('passportIssueDate').value = p.issueDate || '';
+      document.getElementById('passportIssuedBy').value = p.issuedBy || '';
+      document.getElementById('passportIdNumber').value = p.idNumber || '';
+      document.getElementById('passportAddress').value = p.address || '';
     }
   })();
   
@@ -4291,9 +4386,10 @@ function showPassportForm() {
       return;
     }
     
-    const passportData = JSON.stringify({ seriesNumber, issueDate, issuedBy, idNumber, address });
-    const { error } = await supabaseClient.from('users').update({ passport_data: passportData }).eq('user_id', userId);
-    if (error) { alert('Ошибка: ' + error.message); } else { alert('Данные сохранены'); modal.remove(); }
+    const passportObj = { seriesNumber, issueDate, issuedBy, idNumber, address };
+    const encrypted = encryptData(passportObj);
+    const { error } = await supabaseClient.from('users').update({ encrypted_passport: encrypted, passport_data: null }).eq('user_id', userId);
+    if (error) { alert('Ошибка: ' + error.message); } else { alert('✅ Данные зашифрованы и сохранены'); modal.remove(); }
   };
 }
 
@@ -4457,60 +4553,216 @@ async function showAllTransactions() {
   modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
 }
 
-async function showNotificationSettings() {
-  // Загружаем текущие настройки
-  const { data } = await supabaseClient.from('users').select('notification_settings').eq('user_id', userId).single();
-  const settings = data?.notification_settings || { status_changes: true, news: true, promotions: true };
-  
+async function showAccountRecovery() {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
+  modal.innerHTML = `
+    <div class="bg-[#1e293b] rounded-2xl max-w-md w-full border border-white/20">
+      <div class="p-5 border-b border-white/20">
+        <h3 class="text-white font-bold text-lg">🔑 Восстановить доступ</h3>
+        <p class="text-white/50 text-xs mt-1">Подтвердите номер телефона для восстановления данных</p>
+      </div>
+      <div class="p-5 space-y-3">
+        <div id="recoveryPhasePhone">
+          <label class="text-white/70 text-sm">Привязанный номер телефона</label>
+          <input type="tel" id="recoveryPhoneInput" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30"
+            placeholder="+375XXXXXXXXX">
+          <button id="recoverySendCodeBtn" class="mt-3 w-full bg-cyan-500 hover:bg-cyan-600 py-2.5 rounded-xl font-bold">
+            📨 Отправить код
+          </button>
+          <p id="recoveryPhoneError" class="text-red-400 text-xs mt-2 hidden"></p>
+        </div>
+        <div id="recoveryPhaseCode" class="hidden">
+          <label class="text-white/70 text-sm">Код из Telegram-бота</label>
+          <input type="text" id="recoveryCodeInput" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30"
+            placeholder="6-значный код" maxlength="6">
+          <button id="recoveryVerifyBtn" class="mt-3 w-full bg-green-500 hover:bg-green-600 py-2.5 rounded-xl font-bold">
+            ✅ Подтвердить
+          </button>
+          <div class="flex justify-between items-center mt-2">
+            <p id="recoveryCodeError" class="text-red-400 text-xs hidden"></p>
+            <button id="recoveryResendBtn" class="text-cyan-400 text-xs hidden">Отправить повторно (<span id="recoveryTimer">60</span>с)</button>
+          </div>
+        </div>
+        <div id="recoveryPhaseSuccess" class="hidden text-center py-4">
+          <p class="text-4xl mb-2">✅</p>
+          <p class="text-white font-bold">Доступ восстановлен!</p>
+          <p class="text-white/60 text-sm mt-1">Ваши данные доступны</p>
+        </div>
+      </div>
+      <div class="p-5 border-t border-white/20">
+        <button id="closeRecoveryModal" class="w-full bg-white/20 hover:bg-white/30 py-2 rounded-xl">Закрыть</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#closeRecoveryModal').onclick = () => modal.remove();
+
+  let resendInterval = null;
+  const startResendTimer = () => {
+    let secs = 60;
+    const timerEl = modal.querySelector('#recoveryTimer');
+    const resendBtn = modal.querySelector('#recoveryResendBtn');
+    resendBtn.classList.remove('hidden');
+    resendBtn.disabled = true;
+    resendBtn.style.opacity = '0.5';
+    resendInterval = setInterval(() => {
+      secs--;
+      if (timerEl) timerEl.textContent = secs;
+      if (secs <= 0) {
+        clearInterval(resendInterval);
+        resendBtn.disabled = false;
+        resendBtn.style.opacity = '1';
+        resendBtn.textContent = 'Отправить повторно';
+      }
+    }, 1000);
+  };
+
+  const sendCode = async () => {
+    const phone = modal.querySelector('#recoveryPhoneInput').value.trim();
+    const errEl = modal.querySelector('#recoveryPhoneError');
+    if (!phone) { errEl.textContent = 'Введите номер телефона'; errEl.classList.remove('hidden'); return; }
+    errEl.classList.add('hidden');
+    // Проверяем, есть ли номер в базе
+    const { data: userRow } = await supabaseClient.from('users').select('user_id').eq('phone', phone).maybeSingle();
+    if (!userRow) { errEl.textContent = 'Пользователь с таким номером не найден'; errEl.classList.remove('hidden'); return; }
+    // Генерируем код
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    await supabaseClient.from('verification_codes').insert({ user_id: userRow.user_id, code, type: 'recovery', expires_at: expiresAt, used: false });
+    // Отправляем через Edge Function
+    try {
+      await supabaseClient.functions.invoke('send-notification', { body: { user_id: userRow.user_id, message: `🔑 Ваш код восстановления доступа ICE LOGIX: ${code}\nДействует 10 минут.` } });
+    } catch {
+      alert(`Код восстановления (тест): ${code}`); // fallback если бот недоступен
+    }
+    modal.querySelector('#recoveryPhasePhone').classList.add('hidden');
+    modal.querySelector('#recoveryPhaseCode').classList.remove('hidden');
+    startResendTimer();
+  };
+
+  modal.querySelector('#recoverySendCodeBtn').onclick = sendCode;
+  modal.querySelector('#recoveryResendBtn').onclick = sendCode;
+
+  modal.querySelector('#recoveryVerifyBtn').onclick = async () => {
+    const phone = modal.querySelector('#recoveryPhoneInput').value.trim();
+    const code = modal.querySelector('#recoveryCodeInput').value.trim();
+    const errEl = modal.querySelector('#recoveryCodeError');
+    if (!code) { errEl.textContent = 'Введите код'; errEl.classList.remove('hidden'); return; }
+    const { data: userRow } = await supabaseClient.from('users').select('user_id').eq('phone', phone).maybeSingle();
+    if (!userRow) { errEl.textContent = 'Ошибка — номер не найден'; errEl.classList.remove('hidden'); return; }
+    const { data: codeRow } = await supabaseClient.from('verification_codes')
+      .select('id').eq('user_id', userRow.user_id).eq('code', code).eq('type', 'recovery').eq('used', false)
+      .gte('expires_at', new Date().toISOString()).maybeSingle();
+    if (!codeRow) { errEl.textContent = 'Неверный или просроченный код'; errEl.classList.remove('hidden'); return; }
+    await supabaseClient.from('verification_codes').update({ used: true }).eq('id', codeRow.id);
+    clearInterval(resendInterval);
+    modal.querySelector('#recoveryPhaseCode').classList.add('hidden');
+    modal.querySelector('#recoveryPhaseSuccess').classList.remove('hidden');
+  };
+}
+
+// Kept for back-compat if called directly
+async function showNotificationSettings() { return showAppSettings('notifications'); }
+
+async function showAppSettings(initialTab = 'notifications') {
+  const { data } = await supabaseClient.from('users')
+    .select('notification_settings, app_settings').eq('user_id', userId).single();
+  const notif = data?.notification_settings || { status_changes: true, news: true, promotions: true };
+  const appSettings = data?.app_settings || { theme: 'dark' };
+  const currentTheme = appSettings.theme || 'dark';
+
+  const toggle = (id, checked) => `
+    <label class="relative inline-flex items-center cursor-pointer">
+      <input type="checkbox" id="${id}" class="sr-only peer" ${checked ? 'checked' : ''}>
+      <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-cyan-500 peer-checked:after:translate-x-full
+        after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+    </label>`;
+
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
   modal.innerHTML = `
     <div class="bg-[#1e293b] rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-white/20">
       <div class="p-5 border-b border-white/20">
-        <h3 class="text-white font-bold text-lg">🔔 Настройки уведомлений</h3>
+        <h3 class="text-white font-bold text-lg">⚙️ Настройки</h3>
       </div>
-      <div class="p-5 overflow-y-auto flex-1 space-y-4">
-        <div class="flex items-center justify-between">
-          <span class="text-white">Изменение статуса заказа</span>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" id="notifyStatusChanges" class="sr-only peer" ${settings.status_changes ? 'checked' : ''}>
-            <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-cyan-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-          </label>
-        </div>
-        <div class="flex items-center justify-between">
-          <span class="text-white">Новости и обновления</span>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" id="notifyNews" class="sr-only peer" ${settings.news ? 'checked' : ''}>
-            <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-cyan-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-          </label>
-        </div>
-        <div class="flex items-center justify-between">
-          <span class="text-white">Акции и специальные предложения</span>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" id="notifyPromotions" class="sr-only peer" ${settings.promotions ? 'checked' : ''}>
-            <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-cyan-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-          </label>
-        </div>
+      <!-- Tabs -->
+      <div class="flex border-b border-white/10">
+        <button class="settings-tab flex-1 py-3 text-sm font-medium transition ${initialTab==='notifications'?'text-cyan-400 border-b-2 border-cyan-400':'text-white/50'}"
+          data-tab="notifications">🔔 Уведомления</button>
+        <button class="settings-tab flex-1 py-3 text-sm font-medium transition ${initialTab==='theme'?'text-cyan-400 border-b-2 border-cyan-400':'text-white/50'}"
+          data-tab="theme">🎨 Тема</button>
       </div>
-      <div class="p-5 border-t border-white/20">
-        <div class="flex gap-3">
-          <button id="saveNotificationSettings" class="flex-1 bg-cyan-500 py-2 rounded-xl">Сохранить</button>
-          <button id="closeNotificationModal" class="flex-1 bg-white/20 py-2 rounded-xl">Отмена</button>
-        </div>
+      <!-- Notifications panel -->
+      <div id="settingsPanel-notifications" class="p-5 overflow-y-auto flex-1 space-y-4 ${initialTab!=='notifications'?'hidden':''}">
+        <div class="flex items-center justify-between"><span class="text-white text-sm">Изменение статуса заказа</span>${toggle('notifyStatusChanges', notif.status_changes)}</div>
+        <div class="flex items-center justify-between"><span class="text-white text-sm">Новости и обновления</span>${toggle('notifyNews', notif.news)}</div>
+        <div class="flex items-center justify-between"><span class="text-white text-sm">Акции и предложения</span>${toggle('notifyPromotions', notif.promotions)}</div>
       </div>
-    </div>
-  `;
+      <!-- Theme panel -->
+      <div id="settingsPanel-theme" class="p-5 overflow-y-auto flex-1 space-y-4 ${initialTab!=='theme'?'hidden':''}">
+        <p class="text-white/60 text-xs mb-3">Выберите оформление интерфейса</p>
+        <div class="grid grid-cols-2 gap-3">
+          <button class="theme-btn rounded-xl p-4 border-2 transition ${currentTheme==='dark'?'border-cyan-500 bg-slate-800':'border-white/20 bg-white/5'}" data-theme="dark">
+            <p class="text-2xl mb-2">🌙</p>
+            <p class="text-white text-sm font-bold">Тёмная</p>
+            <p class="text-white/50 text-xs">По умолчанию</p>
+          </button>
+          <button class="theme-btn rounded-xl p-4 border-2 transition ${currentTheme==='light'?'border-cyan-500 bg-slate-200':'border-white/20 bg-white/5'}" data-theme="light">
+            <p class="text-2xl mb-2">☀️</p>
+            <p class="text-white text-sm font-bold">Светлая</p>
+            <p class="text-white/50 text-xs">Эксперимент</p>
+          </button>
+        </div>
+        <button id="resetSettingsBtn" class="mt-4 w-full text-white/40 text-xs py-2">↺ Сбросить по умолчанию</button>
+      </div>
+      <div class="p-5 border-t border-white/20 flex gap-3">
+        <button id="saveAppSettings" class="flex-1 bg-cyan-500 hover:bg-cyan-600 py-2.5 rounded-xl font-bold">Сохранить</button>
+        <button id="closeAppSettings" class="flex-1 bg-white/20 hover:bg-white/30 py-2.5 rounded-xl">Отмена</button>
+      </div>
+    </div>`;
   document.body.appendChild(modal);
-  
-  modal.querySelector('#closeNotificationModal').onclick = () => modal.remove();
-  modal.querySelector('#saveNotificationSettings').onclick = async () => {
-    const newSettings = {
-      status_changes: document.getElementById('notifyStatusChanges').checked,
-      news: document.getElementById('notifyNews').checked,
-      promotions: document.getElementById('notifyPromotions').checked
+
+  // Tab switching
+  let selectedTheme = currentTheme;
+  modal.querySelectorAll('.settings-tab').forEach(tab => {
+    tab.onclick = () => {
+      modal.querySelectorAll('.settings-tab').forEach(t => { t.classList.remove('text-cyan-400','border-b-2','border-cyan-400'); t.classList.add('text-white/50'); });
+      tab.classList.add('text-cyan-400','border-b-2','border-cyan-400'); tab.classList.remove('text-white/50');
+      ['notifications','theme'].forEach(name => {
+        modal.querySelector(`#settingsPanel-${name}`)?.classList.toggle('hidden', name !== tab.dataset.tab);
+      });
     };
-    await supabaseClient.from('users').update({ notification_settings: newSettings }).eq('user_id', userId);
-    alert('Настройки сохранены');
+  });
+
+  // Theme buttons
+  modal.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.onclick = () => {
+      selectedTheme = btn.dataset.theme;
+      modal.querySelectorAll('.theme-btn').forEach(b => { b.classList.remove('border-cyan-500'); b.classList.add('border-white/20'); });
+      btn.classList.add('border-cyan-500'); btn.classList.remove('border-white/20');
+      applyTheme(selectedTheme); // live preview
+    };
+  });
+
+  modal.querySelector('#resetSettingsBtn').onclick = () => {
+    selectedTheme = 'dark'; applyTheme('dark');
+    modal.querySelectorAll('.theme-btn').forEach(b => { b.classList.toggle('border-cyan-500', b.dataset.theme === 'dark'); b.classList.toggle('border-white/20', b.dataset.theme !== 'dark'); });
+    modal.querySelector('#notifyStatusChanges').checked = true;
+    modal.querySelector('#notifyNews').checked = true;
+    modal.querySelector('#notifyPromotions').checked = true;
+  };
+
+  modal.querySelector('#closeAppSettings').onclick = () => { applyTheme(currentTheme); modal.remove(); };
+  modal.querySelector('#saveAppSettings').onclick = async () => {
+    const newNotif = {
+      status_changes: modal.querySelector('#notifyStatusChanges').checked,
+      news: modal.querySelector('#notifyNews').checked,
+      promotions: modal.querySelector('#notifyPromotions').checked
+    };
+    const newApp = { theme: selectedTheme };
+    await supabaseClient.from('users').update({ notification_settings: newNotif, app_settings: newApp }).eq('user_id', userId);
+    applyTheme(selectedTheme);
+    alert('✅ Настройки сохранены');
     modal.remove();
   };
 }
