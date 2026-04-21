@@ -1503,21 +1503,24 @@ async function renderAcademy() {
             ${!course.isPurchased && course.price_ice > 0 ? `<button class="buyCourseBtn mt-3 w-full bg-gradient-to-r from-cyan-500 to-blue-500 py-2.5 rounded-xl font-bold text-sm" data-course-id="${course.id}" data-price="${course.price_ice}">🛒 Купить за ${course.price_ice} ❄️</button>` : ''}
             ${course.allCompleted && course.lessons.length > 0 ? `<button class="getCertBtn mt-2 w-full bg-gradient-to-r from-yellow-400 to-orange-500 py-2.5 rounded-xl font-bold text-sm text-slate-900" data-course-id="${course.id}" data-title="${course.title.replace(/"/g,'&quot;')}">🏆 Получить сертификат</button>` : ''}
             <div class="lessons-container hidden mt-3 space-y-1.5" data-course="${course.id}">
-              ${course.lessons.map(lesson => {
-                const accessible = lessonAccessible(lesson, course);
-                return `<div class="lesson-item bg-white/5 rounded-xl p-3 transition ${accessible ? 'cursor-pointer hover:bg-white/10' : 'opacity-50'}" data-lesson-id="${lesson.id}" data-course-id="${course.id}" data-accessible="${accessible}">
-                  <div class="flex justify-between items-center gap-2">
-                    <div class="flex items-center gap-2 flex-1 min-w-0">
-                      <span class="text-lg flex-shrink-0">${ctIcon(lesson.content_type)}</span>
-                      <div class="min-w-0">
-                        <p class="text-white text-sm font-medium truncate">${lesson.title}</p>
-                        <p class="text-white/40 text-xs">${lesson.content_type === 'video' ? 'Видео' : lesson.content_type === 'quiz' ? 'Тест' : lesson.content_type === 'file' ? 'Файл' : 'Текст'}</p>
+              ${course.lessons.length === 0
+                ? '<p class="text-white/40 text-sm text-center py-3">В этом курсе пока нет уроков</p>'
+                : course.lessons.map(lesson => {
+                    const accessible = lessonAccessible(lesson, course);
+                    const typeLabel = { video: 'Видео', quiz: 'Тест', file: 'Файл', text: 'Текст' }[lesson.content_type] || 'Текст';
+                    return `<div class="lesson-item bg-white/5 rounded-xl p-3 transition ${accessible ? 'cursor-pointer hover:bg-white/10' : 'opacity-50'}" data-lesson-id="${lesson.id}" data-course-id="${course.id}" data-accessible="${accessible}">
+                      <div class="flex justify-between items-center gap-2">
+                        <div class="flex items-center gap-2 flex-1 min-w-0">
+                          <span class="text-lg flex-shrink-0">${ctIcon(lesson.content_type || 'text')}</span>
+                          <div class="min-w-0">
+                            <p class="text-white text-sm font-medium truncate">${lesson.title || 'Без названия'}</p>
+                            <p class="text-white/40 text-xs">${typeLabel}</p>
+                          </div>
+                        </div>
+                        ${lessonStatus(lesson, course)}
                       </div>
-                    </div>
-                    ${lessonStatus(lesson, course)}
-                  </div>
-                </div>`;
-              }).join('')}
+                    </div>`;
+                  }).join('')}
             </div>
           </div>
         `).join('')}
@@ -1791,95 +1794,155 @@ async function renderAcademy() {
     }
 
     async function manageLessonsModal(courseId) {
-      const { data: lessons } = await supabaseClient.from('lessons').select('*').eq('course_id', courseId).order('order_index', { ascending: true });
-      const { data: course } = await supabaseClient.from('courses').select('title').eq('id', courseId).single();
-      const modal = document.createElement('div');
-      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+      const [{ data: lessons }, { data: course }] = await Promise.all([
+        supabaseClient.from('lessons').select('*').eq('course_id', courseId).order('order_index', { ascending: true }),
+        supabaseClient.from('courses').select('title').eq('id', courseId).single()
+      ]);
+      const ls = lessons || [];
+      const nextIdx = ls.length > 0 ? Math.max(...ls.map(l => l.order_index ?? 0)) + 1 : 1;
       const ctIcon = t => ({ video: '📹', quiz: '📝', file: '📎' }[t] || '📄');
+      const ctLabel = t => ({ video: 'Видео', quiz: 'Тест', file: 'Файл' }[t] || 'Текст');
+
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4';
       modal.innerHTML = `
         <div class="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
-          <div class="flex justify-between items-center mb-4">
-            <h3 class="text-white font-bold">📚 Уроки: ${course?.title || ''}</h3>
-            <button class="closeMgr text-white/50 hover:text-white text-2xl">&times;</button>
+          <div class="flex justify-between items-start mb-1">
+            <div>
+              <h3 class="text-white font-bold text-lg">📚 Уроки курса</h3>
+              <p class="text-cyan-400 text-sm">${course?.title || ''}</p>
+            </div>
+            <button class="closeMgr text-white/50 hover:text-white text-2xl flex-shrink-0 ml-3">&times;</button>
           </div>
-          <button id="addLessonBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 py-2 rounded-xl mb-4 font-bold">➕ Добавить урок</button>
+          <button id="addLessonBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 py-2.5 rounded-xl my-4 font-bold">➕ Добавить урок</button>
           <div class="space-y-2" id="lessonsMgrList">
-            ${(lessons || []).map(l => `
-              <div class="flex items-center gap-2 p-2 bg-white/5 rounded-xl">
-                <span class="text-lg">${ctIcon(l.content_type)}</span>
+            ${ls.length === 0
+              ? '<p class="text-white/40 text-sm text-center py-4">В этом курсе пока нет уроков</p>'
+              : ls.map(l => `
+              <div class="flex items-center gap-2 p-2.5 bg-white/5 rounded-xl">
+                <span class="text-xl flex-shrink-0">${ctIcon(l.content_type)}</span>
                 <div class="flex-1 min-w-0">
-                  <p class="text-white text-sm truncate">${l.title}</p>
-                  <p class="text-white/40 text-xs">#${l.order_index} · ${l.is_locked ? '🔒' : '✅'} ${l.unlock_delay_hours > 0 ? '⏳' + l.unlock_delay_hours + 'ч' : ''}</p>
+                  <p class="text-white text-sm font-medium truncate">${l.title}</p>
+                  <p class="text-white/40 text-xs">#${l.order_index} · ${ctLabel(l.content_type)} · ${l.is_locked ? '🔒 Заблокировано' : '✅ Открыто'}${l.unlock_delay_hours > 0 ? ' · ⏳ ' + l.unlock_delay_hours + 'ч' : ''}</p>
                 </div>
-                <button class="editLessonBtn bg-white/20 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}">✏️</button>
-                <button class="deleteLessonBtn bg-red-600/60 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}">🗑️</button>
+                <button class="previewLessonBtn bg-white/10 hover:bg-white/20 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}" title="Предпросмотр">👁️</button>
+                <button class="editLessonBtn bg-white/20 hover:bg-white/30 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}">✏️</button>
+                <button class="deleteLessonBtn bg-red-600/60 hover:bg-red-600/80 px-2 py-1 rounded text-xs" data-lesson-id="${l.id}">🗑️</button>
               </div>`).join('')}
           </div>
         </div>`;
       document.body.appendChild(modal);
       modal.querySelector('.closeMgr').onclick = () => modal.remove();
-      modal.querySelector('#addLessonBtn').onclick = () => openLessonForm(courseId, null, () => { modal.remove(); manageLessonsModal(courseId); });
+      modal.querySelector('#addLessonBtn').onclick = () =>
+        openLessonForm(courseId, null, nextIdx, () => { modal.remove(); manageLessonsModal(courseId); });
+      modal.querySelectorAll('.previewLessonBtn').forEach(btn => {
+        btn.onclick = async () => {
+          const { data: l } = await supabaseClient.from('lessons').select('*').eq('id', btn.dataset.lessonId).single();
+          if (l) previewLessonAdmin(l);
+        };
+      });
       modal.querySelectorAll('.editLessonBtn').forEach(btn => {
         btn.onclick = async () => {
           const { data: l } = await supabaseClient.from('lessons').select('*').eq('id', btn.dataset.lessonId).single();
-          if (l) { modal.remove(); openLessonForm(courseId, l, () => manageLessonsModal(courseId)); }
+          if (l) { modal.remove(); openLessonForm(courseId, l, l.order_index, () => manageLessonsModal(courseId)); }
         };
       });
       modal.querySelectorAll('.deleteLessonBtn').forEach(btn => {
         btn.onclick = async () => {
-          if (!confirm('Удалить урок?')) return;
+          if (!confirm('Удалить урок? Прогресс пользователей по этому уроку тоже будет удалён.')) return;
           await supabaseClient.from('lessons').delete().eq('id', btn.dataset.lessonId);
           modal.remove(); manageLessonsModal(courseId);
         };
       });
     }
 
-    function openLessonForm(courseId, lesson = null, onSave = null) {
+    function openLessonForm(courseId, lesson = null, defaultOrderIndex = 0, onSave = null) {
+      const contentPlaceholders = {
+        text: 'Введите текст урока (поддерживается HTML)',
+        video: 'https://example.com/video.mp4',
+        quiz: '{"questions":[{"text":"Вопрос?","options":["A","B","C"],"correct":0}],"pass_threshold":70}',
+        file: 'https://example.com/document.pdf'
+      };
       const modal = document.createElement('div');
-      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+      modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[70] p-4';
       modal.innerHTML = `
         <div class="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
-          <h3 class="text-white font-bold text-lg mb-4">${lesson ? '✏️ Редактировать урок' : '➕ Новый урок'}</h3>
-          <label class="text-white/60 text-xs">Название</label>
+          <h3 class="text-white font-bold text-lg mb-1">${lesson ? '✏️ Редактировать урок' : '➕ Новый урок'}</h3>
+          <p class="text-white/40 text-xs mb-4">course_id: ${courseId}</p>
+
+          <label class="text-white/60 text-xs">Название <span class="text-red-400">*</span></label>
           <input id="mLessonTitle" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Название урока" value="${lesson?.title || ''}">
+
           <label class="text-white/60 text-xs">Тип контента</label>
           <select id="mLessonType" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
-            <option value="text" ${lesson?.content_type === 'text' ? 'selected' : ''}>📄 Текст</option>
+            <option value="text" ${!lesson || lesson.content_type === 'text' ? 'selected' : ''}>📄 Текст / HTML</option>
             <option value="video" ${lesson?.content_type === 'video' ? 'selected' : ''}>📹 Видео (URL)</option>
             <option value="quiz" ${lesson?.content_type === 'quiz' ? 'selected' : ''}>📝 Тест (JSON)</option>
             <option value="file" ${lesson?.content_type === 'file' ? 'selected' : ''}>📎 Файл (URL)</option>
           </select>
-          <label class="text-white/60 text-xs">Контент / URL</label>
-          <textarea id="mLessonContent" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" rows="4" placeholder="Текст, URL видео/файла или JSON теста">${lesson?.content || ''}</textarea>
+
+          <label class="text-white/60 text-xs">Контент <span class="text-red-400">*</span></label>
+          <p id="mContentHint" class="text-white/30 text-xs mt-0.5 mb-1"></p>
+          <textarea id="mLessonContent" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3 font-mono text-sm" rows="5"
+            placeholder="${contentPlaceholders[lesson?.content_type || 'text']}">${lesson?.content || ''}</textarea>
+
           <div class="flex gap-3 mb-3">
             <div class="flex-1">
               <label class="text-white/60 text-xs">Порядок (#)</label>
-              <input type="number" id="mLessonOrder" class="w-full mt-1 p-2 rounded-xl bg-white/20 border border-white/30" value="${lesson?.order_index ?? 0}">
+              <input type="number" id="mLessonOrder" class="w-full mt-1 p-2 rounded-xl bg-white/20 border border-white/30" value="${lesson?.order_index ?? defaultOrderIndex}" min="0">
             </div>
-            <div class="flex-1">
+            <div class="flex-1" id="mDelayRow" style="${lesson?.is_locked || lesson?.unlock_delay_hours > 0 ? '' : 'opacity:0.4'}">
               <label class="text-white/60 text-xs">Задержка (часы)</label>
-              <input type="number" id="mLessonDelay" class="w-full mt-1 p-2 rounded-xl bg-white/20 border border-white/30" value="${lesson?.unlock_delay_hours ?? 0}">
+              <input type="number" id="mLessonDelay" class="w-full mt-1 p-2 rounded-xl bg-white/20 border border-white/30" value="${lesson?.unlock_delay_hours ?? 0}" min="0">
             </div>
           </div>
+
           <div class="flex items-center gap-2 mb-4">
             <input type="checkbox" id="mLessonLocked" ${lesson?.is_locked ? 'checked' : ''}>
-            <label for="mLessonLocked" class="text-white/70 text-sm">Заблокирован вручную</label>
+            <label for="mLessonLocked" class="text-white/70 text-sm">Заблокирован вручную (или дрип-контент)</label>
           </div>
+
           <div class="flex gap-3">
             <button id="mLessonSave" class="flex-1 bg-cyan-500 hover:bg-cyan-600 py-2.5 rounded-xl font-bold">Сохранить</button>
             <button id="mLessonCancel" class="flex-1 bg-white/20 hover:bg-white/30 py-2.5 rounded-xl">Отмена</button>
           </div>
         </div>`;
       document.body.appendChild(modal);
+
+      // Dynamic content placeholder based on type
+      const typeSelect = modal.querySelector('#mLessonType');
+      const contentArea = modal.querySelector('#mLessonContent');
+      const hintEl = modal.querySelector('#mContentHint');
+      const hints = {
+        text: 'HTML-контент урока',
+        video: 'Прямая ссылка на видео (.mp4) или YouTube',
+        quiz: 'JSON: { questions:[{text,options:[],correct:0}], pass_threshold:70 }',
+        file: 'Прямая ссылка на файл (PDF, ZIP…)'
+      };
+      const updateHint = () => {
+        hintEl.textContent = hints[typeSelect.value] || '';
+        contentArea.placeholder = contentPlaceholders[typeSelect.value] || '';
+      };
+      updateHint();
+      typeSelect.addEventListener('change', updateHint);
+
+      // Toggle delay row visibility with is_locked
+      const lockedCheck = modal.querySelector('#mLessonLocked');
+      const delayRow = modal.querySelector('#mDelayRow');
+      lockedCheck.addEventListener('change', () => {
+        delayRow.style.opacity = lockedCheck.checked ? '1' : '0.4';
+      });
+
       modal.querySelector('#mLessonCancel').onclick = () => modal.remove();
       modal.querySelector('#mLessonSave').onclick = async () => {
         const title = modal.querySelector('#mLessonTitle').value.trim();
-        const content_type = modal.querySelector('#mLessonType').value;
-        const content = modal.querySelector('#mLessonContent').value.trim();
+        const content_type = typeSelect.value;
+        const content = contentArea.value.trim();
         const order_index = parseInt(modal.querySelector('#mLessonOrder').value) || 0;
-        const unlock_delay_hours = parseInt(modal.querySelector('#mLessonDelay').value) || 0;
-        const is_locked = modal.querySelector('#mLessonLocked').checked;
-        if (!title || !content) { alert('Заполните название и контент'); return; }
+        const unlock_delay_hours = lockedCheck.checked ? (parseInt(modal.querySelector('#mLessonDelay').value) || 0) : 0;
+        const is_locked = lockedCheck.checked;
+        if (!title) { alert('Введите название урока'); return; }
+        if (!content) { alert('Заполните поле «Контент»'); return; }
         try {
           if (lesson) {
             await supabaseClient.from('lessons').update({ title, content_type, content, order_index, unlock_delay_hours, is_locked }).eq('id', lesson.id);
@@ -1890,6 +1953,43 @@ async function renderAcademy() {
           if (onSave) onSave(); else renderCurrentScreen();
         } catch(e) { alert('Ошибка: ' + e.message); }
       };
+    }
+
+    function previewLessonAdmin(lesson) {
+      const ctLabels = { video: '📹 Видео', quiz: '📝 Тест', file: '📎 Файл', text: '📄 Текст' };
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/90 flex items-center justify-center z-[80] p-4';
+      let contentHtml = '';
+      if (lesson.content_type === 'video') {
+        contentHtml = `<video src="${lesson.content}" class="w-full rounded-xl" controls></video>`;
+      } else if (lesson.content_type === 'file') {
+        contentHtml = `<div class="text-center py-4"><p class="text-4xl mb-3">📎</p><a href="${lesson.content}" target="_blank" class="text-cyan-400 underline break-all">${lesson.content}</a></div>`;
+      } else if (lesson.content_type === 'quiz') {
+        try {
+          const quiz = JSON.parse(lesson.content);
+          contentHtml = `<div class="space-y-3">${quiz.questions.map((q, i) => `
+            <div class="bg-white/5 rounded-xl p-3">
+              <p class="text-white text-sm font-medium mb-2">${i + 1}. ${q.text}</p>
+              ${q.options.map((o, oi) => `<p class="text-sm ${oi === q.correct ? 'text-green-400 font-bold' : 'text-white/60'}">  ${oi === q.correct ? '✅' : '○'} ${o}</p>`).join('')}
+            </div>`).join('')}<p class="text-white/40 text-xs">Порог: ${quiz.pass_threshold || 70}%</p></div>`;
+        } catch { contentHtml = `<pre class="text-white/70 text-xs whitespace-pre-wrap break-all">${lesson.content}</pre>`; }
+      } else {
+        contentHtml = `<div class="text-white/90 text-sm leading-relaxed">${lesson.content}</div>`;
+      }
+      modal.innerHTML = `
+        <div class="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5">
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <p class="text-white/40 text-xs">${ctLabels[lesson.content_type] || '📄'} · Предпросмотр</p>
+              <h3 class="text-white font-bold text-lg">${lesson.title}</h3>
+            </div>
+            <button class="closePreview text-white/50 hover:text-white text-2xl flex-shrink-0 ml-3">&times;</button>
+          </div>
+          <div class="border-t border-white/10 pt-4">${contentHtml}</div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector('.closePreview').onclick = () => modal.remove();
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
     }
 
     async function renderWishlist() {
