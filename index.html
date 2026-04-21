@@ -8,6 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #0F172A; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
@@ -2523,6 +2524,29 @@ async function renderPromotionsAdminList() {
   }
 }
     
+// ==================== ADMIN LOGGING + CSV HELPERS ====================
+async function logAdminAction(action, details = {}) {
+  if (!userId) return;
+  try {
+    await supabaseClient.from('admin_logs').insert({
+      admin_id: userId,
+      action,
+      details: typeof details === 'object' ? JSON.stringify(details) : String(details),
+      created_at: new Date().toISOString()
+    });
+  } catch(e) { /* silent — never interrupt admin workflow */ }
+}
+
+function downloadCSV(csvContent, filename) {
+  const BOM = '\uFEFF'; // UTF-8 BOM so Excel opens correctly
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
 async function renderAdmin() {
   if (!isOwner) return '<p class="text-center mt-10 text-red-400">Доступ запрещён</p>';
   try {
@@ -2650,6 +2674,93 @@ async function renderAdmin() {
             <button id="adminOrdersNext" class="bg-white/20 px-4 py-2 rounded-lg text-sm" ${adminOrdersPage >= adminOrdersTotalPages ? 'disabled' : ''}>→</button>
           </div>
           </div>
+
+        <!-- 📊 Отчёты и аналитика -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4">
+          <h3 class="text-white font-bold mb-3">📊 Отчёты и аналитика</h3>
+          <!-- Вкладки -->
+          <div class="flex flex-wrap gap-2 mb-4">
+            <button class="analytics-tab filter-chip active" data-tab="transactions">💰 Транзакции</button>
+            <button class="analytics-tab filter-chip" data-tab="analytics">📈 Продажи</button>
+            <button class="analytics-tab filter-chip" data-tab="logs">📝 Логи</button>
+          </div>
+          <!-- Сводка балансов (всегда видна) -->
+          <div id="balanceSummaryBlock" class="grid grid-cols-2 gap-2 mb-4">
+            <p class="text-white/40 text-xs col-span-2 text-center py-1">⏳ Загрузка сводки...</p>
+          </div>
+
+          <!-- Вкладка: Транзакции -->
+          <div id="analyticsTab-transactions">
+            <div class="space-y-2 mb-3">
+              <div class="flex gap-2">
+                <select id="txTypeFilter" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 text-xs">
+                  <option value="">Все типы</option>
+                  <option value="payment">Оплата</option>
+                  <option value="refund">Возврат</option>
+                  <option value="bonus">Бонус</option>
+                  <option value="withdrawal">Вывод</option>
+                  <option value="topup">Пополнение</option>
+                </select>
+                <input type="text" id="txUserFilter" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 text-xs" placeholder="User ID">
+              </div>
+              <div class="flex gap-2">
+                <input type="date" id="txDateFrom" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 text-xs">
+                <input type="date" id="txDateTo" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 text-xs">
+              </div>
+              <div class="flex gap-2">
+                <button id="txLoadBtn" class="flex-1 bg-cyan-500 hover:bg-cyan-600 py-2 rounded-lg text-xs font-bold">🔍 Показать</button>
+                <button id="txExportBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-xs">⬇️ CSV</button>
+              </div>
+            </div>
+            <div id="txList" class="space-y-1 max-h-80 overflow-y-auto text-xs">
+              <p class="text-white/40 text-center py-3">Нажмите «Показать» для загрузки данных</p>
+            </div>
+          </div>
+
+          <!-- Вкладка: Аналитика продаж -->
+          <div id="analyticsTab-analytics" class="hidden">
+            <div class="flex gap-2 mb-4">
+              <select id="analyticsPeriod" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 text-xs">
+                <option value="7">7 дней</option>
+                <option value="30" selected>30 дней</option>
+                <option value="90">90 дней</option>
+              </select>
+              <button id="loadAnalyticsBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-2 rounded-lg text-xs font-bold">🔄 Загрузить</button>
+            </div>
+            <p class="text-white/70 text-xs font-bold mb-2">📈 Продажи по дням</p>
+            <div class="bg-white/5 rounded-xl p-3 mb-1"><canvas id="salesChart"></canvas></div>
+            <p class="text-white/70 text-xs font-bold mb-2 mt-3">🍩 Статусы заказов</p>
+            <div class="bg-white/5 rounded-xl p-3 mb-3"><canvas id="statusChart"></canvas></div>
+            <div class="flex justify-between items-center mb-2">
+              <p class="text-white/70 text-xs font-bold">🏆 Топ-10 товаров</p>
+              <button id="exportTopProductsBtn" class="text-cyan-400 text-xs">⬇️ CSV</button>
+            </div>
+            <div id="topProductsList" class="text-xs">
+              <p class="text-white/40 text-center py-2">Нажмите «Загрузить»</p>
+            </div>
+          </div>
+
+          <!-- Вкладка: Логи -->
+          <div id="analyticsTab-logs" class="hidden">
+            <div class="flex gap-2 mb-3">
+              <input type="text" id="logsAdminFilter" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 text-xs" placeholder="Admin ID">
+              <select id="logsActionFilter" class="flex-1 p-2 rounded-lg bg-white/20 border border-white/30 text-xs">
+                <option value="">Все действия</option>
+                <option value="order_status">Статус заказа</option>
+                <option value="archive">Архивация</option>
+                <option value="promo">Промокод</option>
+                <option value="product">Товар</option>
+                <option value="payout">Выплата</option>
+                <option value="course">Курс</option>
+                <option value="review">Отзыв</option>
+              </select>
+              <button id="logsLoadBtn" class="bg-cyan-500 hover:bg-cyan-600 px-3 py-2 rounded-lg text-xs font-bold">🔍</button>
+            </div>
+            <div id="logsList" class="space-y-1 max-h-80 overflow-y-auto text-xs">
+              <p class="text-white/40 text-center py-3">Нажмите 🔍 для загрузки логов</p>
+            </div>
+          </div>
+        </div>
       ` + renderFooter();
   } catch (err) { return '<p class="text-center mt-10 text-red-400">Ошибка загрузки админ-панели</p>'; }
 }
@@ -2666,6 +2777,7 @@ function attachAdminHandlers() {
       if (!code || !value) { alert('Заполните все поля'); return; }
       try {
         await supabaseClient.from('promocodes').insert({ code, discount_type: type, discount_value: value, is_active: true });
+        logAdminAction('create_promo', { code, type, value });
         alert('Промокод создан');
         renderCurrentScreen();
       } catch (err) { alert('Ошибка: ' + err.message); }
@@ -2678,6 +2790,7 @@ function attachAdminHandlers() {
       const currentActive = btn.getAttribute('data-active') === 'true';
       try {
         await supabaseClient.from('promocodes').update({ is_active: !currentActive }).eq('id', id);
+        logAdminAction('toggle_promo', { id, active: !currentActive });
         alert('Статус обновлён');
         renderCurrentScreen();
       } catch (err) { alert('Ошибка: ' + err.message); }
@@ -2690,6 +2803,7 @@ function attachAdminHandlers() {
       const id = btn.getAttribute('data-id');
       try {
         await supabaseClient.from('reviews').update({ is_published: true }).eq('id', id);
+        logAdminAction('review_approved', { id });
         alert('Отзыв опубликован');
         renderCurrentScreen();
       } catch (err) { alert('Ошибка: ' + err.message); }
@@ -2701,6 +2815,7 @@ function attachAdminHandlers() {
       const id = btn.getAttribute('data-id');
       try {
         await supabaseClient.from('reviews').delete().eq('id', id);
+        logAdminAction('review_rejected', { id });
         alert('Отзыв отклонён');
         renderCurrentScreen();
       } catch (err) { alert('Ошибка: ' + err.message); }
@@ -2752,6 +2867,7 @@ function attachAdminHandlers() {
         if (!title || !price) { alert('Заполните название и цену'); return; }
         try {
           await supabaseClient.from('products').insert({ title, description, price, category, brand, image_url, url, currency: 'CNY', is_active: true });
+          logAdminAction('create_product', { title, category, price });
           alert('Товар добавлен');
           modal.remove();
           renderCurrentScreen();
@@ -2765,6 +2881,7 @@ function attachAdminHandlers() {
       const id = btn.getAttribute('data-id');
       if (confirm('Удалить товар?')) {
         await supabaseClient.from('products').delete().eq('id', id);
+        logAdminAction('delete_product', { id });
         renderCurrentScreen();
       }
     };
@@ -2776,6 +2893,7 @@ function attachAdminHandlers() {
       const id = btn.getAttribute('data-id');
       try {
         await supabaseClient.from('payout_requests').update({ status: 'approved', processed_at: new Date() }).eq('id', id);
+        logAdminAction('payout_approved', { id });
         alert('Заявка одобрена');
         renderCurrentScreen();
       } catch (err) { alert('Ошибка: ' + err.message); }
@@ -2787,6 +2905,7 @@ function attachAdminHandlers() {
       const id = btn.getAttribute('data-id');
       try {
         await supabaseClient.from('payout_requests').update({ status: 'rejected', processed_at: new Date() }).eq('id', id);
+        logAdminAction('payout_rejected', { id });
         alert('Заявка отклонена');
         renderCurrentScreen();
       } catch (err) { alert('Ошибка: ' + err.message); }
@@ -2932,6 +3051,7 @@ function attachAdminHandlers() {
       try {
         const { error } = await supabaseClient.from('orders').update({ archived_at: new Date().toISOString() }).eq('id', orderId);
         if (error) throw error;
+        logAdminAction('archive_order', { orderId });
         alert('Заказ перемещён в архив');
         renderCurrentScreen();
       } catch (err) {
@@ -2987,6 +3107,7 @@ function attachAdminHandlers() {
         try {
           const { error } = await supabaseClient.from('orders').update({ status: newStatus }).eq('id', orderId);
           if (error) throw error;
+          logAdminAction('order_status', { orderId, newStatus, previousStatus });
           const statusMessages = {
             'paid': '✅ Ваш заказ оплачен! Мы приступаем к выкупу.',
             'bought': '🛍️ Товар выкуплен! Ожидайте отправки на склад.',
@@ -3040,6 +3161,7 @@ if (archiveBtn) archiveBtn.addEventListener('click', () => {
       try {
         const { error } = await supabaseClient.from('orders').update({ archived_at: null }).eq('id', orderId);
         if (error) throw error;
+        logAdminAction('restore_order', { orderId });
         alert('Заказ восстановлен');
         renderCurrentScreen();
       } catch (err) {
@@ -3068,14 +3190,237 @@ if (archiveBtn) archiveBtn.addEventListener('click', () => {
       if (!confirm('Удалить курс? Все уроки и прогресс будут удалены.')) return;
       try {
         await supabaseClient.from('courses').delete().eq('id', btn.dataset.courseId);
+        logAdminAction('delete_course', { courseId: btn.dataset.courseId });
         renderCurrentScreen();
       } catch(e) { alert('Ошибка: ' + e.message); }
     };
   });
 
+  // ================== ОТЧЁТЫ И АНАЛИТИКА ==================
+  attachAnalyticsHandlers();
+
   // ================== УПРАВЛЕНИЕ АКЦИЯМИ ==================
 const addPromotionBtn = document.getElementById('addPromotionBtn');
 if (addPromotionBtn) addPromotionBtn.onclick = () => openPromotionForm();
+
+// ==================== АНАЛИТИКА ОБРАБОТЧИКИ ====================
+function attachAnalyticsHandlers() {
+  // ── Tab switching ──────────────────────────────────────────────────
+  document.querySelectorAll('.analytics-tab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('.analytics-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      ['transactions', 'analytics', 'logs'].forEach(name => {
+        const el = document.getElementById(`analyticsTab-${name}`);
+        if (el) el.classList.toggle('hidden', name !== tab.dataset.tab);
+      });
+    };
+  });
+
+  // ── Balance summary (auto-load) ────────────────────────────────────
+  (async () => {
+    const el = document.getElementById('balanceSummaryBlock');
+    if (!el) return;
+    try {
+      const [{ data: users }, { data: txs }] = await Promise.all([
+        supabaseClient.from('users').select('ices_balance, role'),
+        supabaseClient.from('transactions').select('amount, type, created_at').order('created_at', { ascending: false }).limit(500)
+      ]);
+      const total = (users || []).reduce((s, u) => s + (u.ices_balance || 0), 0);
+      const dropTotal = (users || []).filter(u => u.role === 'dropshipper').reduce((s, u) => s + (u.ices_balance || 0), 0);
+      const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+      const sum = (type, since) => (txs || []).filter(t => t.type === type && t.created_at >= since).reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+      el.innerHTML = `
+        <div class="bg-white/5 rounded-xl p-2 text-center"><p class="text-white/50 text-xs">Общий баланс</p><p class="text-cyan-400 font-bold text-sm">${total.toFixed(0)} ❄️</p></div>
+        <div class="bg-white/5 rounded-xl p-2 text-center"><p class="text-white/50 text-xs">Баланс дропш.</p><p class="text-yellow-400 font-bold text-sm">${dropTotal.toFixed(0)} ❄️</p></div>
+        <div class="bg-white/5 rounded-xl p-2 text-center"><p class="text-white/50 text-xs">Пополнения (30д)</p><p class="text-green-400 font-bold text-sm">+${sum('topup', monthAgo).toFixed(0)}</p></div>
+        <div class="bg-white/5 rounded-xl p-2 text-center"><p class="text-white/50 text-xs">Выплаты (30д)</p><p class="text-red-400 font-bold text-sm">-${sum('withdrawal', monthAgo).toFixed(0)}</p></div>`;
+    } catch { el.innerHTML = '<p class="text-white/30 text-xs col-span-2 text-center">Сводка недоступна</p>'; }
+  })();
+
+  // ── Transactions ───────────────────────────────────────────────────
+  let _txData = [];
+  const loadTransactions = async () => {
+    const listEl = document.getElementById('txList');
+    if (!listEl) return;
+    listEl.innerHTML = '<p class="text-white/40 text-center py-3">⏳ Загрузка...</p>';
+    try {
+      let q = supabaseClient.from('transactions').select('*').order('created_at', { ascending: false }).limit(200);
+      const typeF = document.getElementById('txTypeFilter')?.value;
+      const userF = document.getElementById('txUserFilter')?.value.trim();
+      const from  = document.getElementById('txDateFrom')?.value;
+      const to    = document.getElementById('txDateTo')?.value;
+      if (typeF) q = q.eq('type', typeF);
+      if (userF) q = q.eq('user_id', userF);
+      if (from)  q = q.gte('created_at', from + 'T00:00:00');
+      if (to)    q = q.lte('created_at', to   + 'T23:59:59');
+      const { data, error } = await q;
+      if (error) throw error;
+      _txData = data || [];
+      // Fetch usernames
+      const uids = [...new Set(_txData.map(t => t.user_id).filter(Boolean))];
+      let uMap = {};
+      if (uids.length) {
+        const { data: us } = await supabaseClient.from('users').select('user_id, first_name, username').in('user_id', uids);
+        (us || []).forEach(u => { uMap[u.user_id] = u.first_name || u.username || u.user_id; });
+      }
+      if (!_txData.length) { listEl.innerHTML = '<p class="text-white/40 text-center py-3">Транзакций не найдено</p>'; return; }
+      listEl.innerHTML = _txData.map(t => `
+        <div class="flex justify-between items-center p-2 bg-white/5 rounded-lg">
+          <div class="min-w-0 flex-1">
+            <p class="text-white/80 truncate">${uMap[t.user_id] || t.user_id || '—'}</p>
+            <p class="text-white/40">${new Date(t.created_at).toLocaleDateString('ru-RU')} · ${t.type || '—'} · ${t.description || ''}</p>
+          </div>
+          <div class="ml-2 text-right flex-shrink-0">
+            <p class="font-bold ${(t.amount||0) >= 0 ? 'text-green-400' : 'text-red-400'}">${(t.amount||0)>=0?'+':''}${t.amount} ❄️</p>
+            <p class="text-white/40">${t.status || ''}</p>
+          </div>
+        </div>`).join('');
+      logAdminAction('view_transactions', { count: _txData.length });
+    } catch(e) { listEl.innerHTML = `<p class="text-red-400 text-center py-3">Ошибка: ${e.message}</p>`; }
+  };
+  document.getElementById('txLoadBtn')?.addEventListener('click', loadTransactions);
+  document.getElementById('txExportBtn')?.addEventListener('click', () => {
+    if (!_txData.length) { alert('Сначала загрузите транзакции'); return; }
+    const rows = [['Дата','User ID','Тип','Сумма','Статус','Описание'],
+      ..._txData.map(t => [new Date(t.created_at).toLocaleString('ru-RU'), t.user_id||'', t.type||'', t.amount||0, t.status||'', t.description||''])];
+    downloadCSV(rows.map(r => r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n'), 'transactions.csv');
+    logAdminAction('export_csv', { type: 'transactions', count: _txData.length });
+  });
+
+  // ── Analytics / Charts ─────────────────────────────────────────────
+  let _salesChart = null, _statusChart = null, _topData = [];
+  const loadAnalytics = async () => {
+    const period = parseInt(document.getElementById('analyticsPeriod')?.value || 30);
+    const since  = new Date(Date.now() - period * 86400000).toISOString();
+    const topEl  = document.getElementById('topProductsList');
+    if (topEl) topEl.innerHTML = '<p class="text-white/40 text-center py-2">⏳ Загрузка...</p>';
+    try {
+      const { data: orders, error } = await supabaseClient
+        .from('orders').select('id, created_at, status, price_byn, prepayment_amount, items, source_url')
+        .gte('created_at', since).order('created_at', { ascending: true });
+      if (error) throw error;
+      const os = orders || [];
+
+      // Sales by day
+      const byDay = {};
+      os.forEach(o => {
+        const day = (o.created_at||'').slice(0, 10);
+        if (!day) return;
+        if (!byDay[day]) byDay[day] = { count: 0, rev: 0 };
+        byDay[day].count++;
+        byDay[day].rev += o.price_byn || o.prepayment_amount || 0;
+      });
+      const days = Object.keys(byDay).sort();
+
+      const salesCanvas = document.getElementById('salesChart');
+      if (salesCanvas) {
+        if (_salesChart) _salesChart.destroy();
+        _salesChart = new Chart(salesCanvas, {
+          type: 'line',
+          data: {
+            labels: days.map(d => d.slice(5)),
+            datasets: [
+              { label: 'Заказов', data: days.map(d => byDay[d].count), borderColor: '#00c2ff', backgroundColor: '#00c2ff20', tension: 0.4, yAxisID: 'y' },
+              { label: 'Выручка BYN', data: days.map(d => +byDay[d].rev.toFixed(2)), borderColor: '#4ade80', backgroundColor: '#4ade8020', tension: 0.4, yAxisID: 'y1' }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { labels: { color: '#ffffff90', font: { size: 10 } } } },
+            scales: {
+              x:  { ticks: { color: '#aaa', font: { size: 9 } }, grid: { color: '#ffffff15' } },
+              y:  { ticks: { color: '#00c2ff', font: { size: 9 } }, grid: { color: '#ffffff10' } },
+              y1: { position: 'right', ticks: { color: '#4ade80', font: { size: 9 } }, grid: { drawOnChartArea: false } }
+            }
+          }
+        });
+      }
+
+      // Status doughnut
+      const stCounts = {};
+      os.forEach(o => { stCounts[o.status] = (stCounts[o.status] || 0) + 1; });
+      const stLabels = Object.keys(stCounts);
+      const stColors = stLabels.map(s => ({ pending:'#f59e0b', paid:'#10b981', bought:'#3b82f6', on_sklad_cn:'#8b5cf6', in_transit:'#06b6d4', in_belarus:'#14b8a6', delivered:'#10b981', cancelled:'#ef4444' }[s] || '#ffffff40'));
+      const statusCanvas = document.getElementById('statusChart');
+      if (statusCanvas) {
+        if (_statusChart) _statusChart.destroy();
+        _statusChart = new Chart(statusCanvas, {
+          type: 'doughnut',
+          data: { labels: stLabels.map(s => getStatusText(s)), datasets: [{ data: stLabels.map(s => stCounts[s]), backgroundColor: stColors }] },
+          options: { responsive: true, plugins: { legend: { labels: { color: '#ffffff90', font: { size: 10 } }, position: 'bottom' } } }
+        });
+      }
+
+      // Top products from order items
+      const prodMap = {};
+      os.forEach(o => {
+        (Array.isArray(o.items) ? o.items : []).forEach(item => {
+          const key = item.productId || item.product_id || item.title || 'Unknown';
+          if (!prodMap[key]) prodMap[key] = { title: item.title || key, count: 0, rev: 0 };
+          prodMap[key].count += item.quantity || 1;
+          prodMap[key].rev   += ((item.price || 0) * 0.45 + 12) * (item.quantity || 1);
+        });
+      });
+      _topData = Object.values(prodMap).sort((a,b) => b.count - a.count).slice(0, 10);
+
+      // Top marketplaces by domain
+      const domMap = {};
+      os.forEach(o => { try { const d = new URL(o.source_url||'').hostname.replace('www.',''); domMap[d] = (domMap[d]||0)+1; } catch {} });
+      const topDomains = Object.entries(domMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+      if (topEl) {
+        topEl.innerHTML = `
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead><tr class="text-white/40"><th class="text-left pb-1">Товар</th><th class="text-right pb-1">Шт.</th><th class="text-right pb-1">Выручка</th></tr></thead>
+              <tbody>${(_topData.length ? _topData : [{title:'Нет данных в заказах',count:0,rev:0}]).map(p=>`
+                <tr class="border-t border-white/5">
+                  <td class="py-1 text-white/80 truncate max-w-[160px]">${p.title}</td>
+                  <td class="py-1 text-cyan-400 text-right">${p.count}</td>
+                  <td class="py-1 text-green-400 text-right">${p.rev.toFixed(2)}</td>
+                </tr>`).join('')}</tbody>
+            </table>
+          </div>
+          ${topDomains.length ? `<p class="text-white/40 text-xs mt-2">🌐 Площадки: ${topDomains.map(([d,c])=>`${d} (${c})`).join(' · ')}</p>` : ''}`;
+      }
+      logAdminAction('view_analytics', { period });
+    } catch(e) { if (topEl) topEl.innerHTML = `<p class="text-red-400 text-center py-2">Ошибка: ${e.message}</p>`; }
+  };
+  document.getElementById('loadAnalyticsBtn')?.addEventListener('click', loadAnalytics);
+  document.getElementById('exportTopProductsBtn')?.addEventListener('click', () => {
+    if (!_topData.length) { alert('Сначала загрузите аналитику'); return; }
+    const rows = [['Товар','Продано шт.','Выручка BYN'], ..._topData.map(p=>[p.title, p.count, p.rev.toFixed(2)])];
+    downloadCSV(rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n'), 'top_products.csv');
+    logAdminAction('export_csv', { type: 'top_products' });
+  });
+
+  // ── Admin logs ─────────────────────────────────────────────────────
+  document.getElementById('logsLoadBtn')?.addEventListener('click', async () => {
+    const listEl = document.getElementById('logsList');
+    if (!listEl) return;
+    listEl.innerHTML = '<p class="text-white/40 text-center py-3">⏳ Загрузка...</p>';
+    try {
+      let q = supabaseClient.from('admin_logs').select('*').order('created_at', { ascending: false }).limit(100);
+      const af = document.getElementById('logsAdminFilter')?.value.trim();
+      const ac = document.getElementById('logsActionFilter')?.value;
+      if (af) q = q.eq('admin_id', af);
+      if (ac) q = q.ilike('action', `%${ac}%`);
+      const { data, error } = await q;
+      if (error) throw error;
+      const logs = data || [];
+      if (!logs.length) { listEl.innerHTML = '<p class="text-white/40 text-center py-3">Логов не найдено</p>'; return; }
+      listEl.innerHTML = logs.map(l => `
+        <div class="p-2 bg-white/5 rounded-lg">
+          <div class="flex justify-between items-start">
+            <span class="text-cyan-400 font-medium">${l.action}</span>
+            <span class="text-white/40 text-xs">${new Date(l.created_at).toLocaleString('ru-RU')}</span>
+          </div>
+          <p class="text-white/50 text-xs">Admin: ${l.admin_id} · ${l.details || ''}</p>
+        </div>`).join('');
+    } catch(e) { listEl.innerHTML = `<p class="text-red-400 text-center py-3">Ошибка: ${e.message}</p>`; }
+  });
+}
 
 async function openPromotionForm(promotion = null) {
   const isEdit = !!promotion;
