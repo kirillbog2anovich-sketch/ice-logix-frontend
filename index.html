@@ -1441,16 +1441,25 @@ async function renderAcademy() {
       } catch(e) {}
     }
 
-    const coursesWithLessons = await Promise.all(courses.map(async (course) => {
-      const { data: lessons } = await supabaseClient.from('lessons').select('*').eq('course_id', course.id).order('order_index', { ascending: true });
-      const ls = lessons || [];
+    // Single batch query for all lessons (avoids N+1)
+    const courseIds = courses.map(c => c.id);
+    const { data: allLessonsData } = await supabaseClient
+      .from('lessons').select('*').in('course_id', courseIds).order('order_index', { ascending: true });
+    const lessonsByCourse = {};
+    (allLessonsData || []).forEach(l => {
+      if (!lessonsByCourse[l.course_id]) lessonsByCourse[l.course_id] = [];
+      lessonsByCourse[l.course_id].push(l);
+    });
+
+    const coursesWithLessons = courses.map(course => {
+      const ls = lessonsByCourse[course.id] || [];
       const completedCount = ls.filter(l => userProgress[l.id]).length;
       const totalCount = ls.length;
       const progress = totalCount > 0 ? Math.round(completedCount / totalCount * 100) : 0;
       const isPurchased = course.price_ice === 0 || userCourseIds.has(course.id);
       const allCompleted = totalCount > 0 && completedCount === totalCount;
       return { ...course, lessons: ls, progress, isPurchased, allCompleted, purchasedAt: userCoursePurchases[course.id] || null };
-    }));
+    });
 
     const ctIcon = t => ({ video: '📹', quiz: '📝', file: '📎' }[t] || '📄');
 
@@ -1483,7 +1492,7 @@ async function renderAcademy() {
         <button id="backFromAcademyBtn" class="global-back-btn">← Назад</button>
         ${isOwner ? '<button id="addCourseBtn" class="global-back-btn mb-2">➕ Добавить курс</button>' : ''}
         ${coursesWithLessons.map(course => `
-          <div class="course-card bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10" data-course-id="${course.id}">
+          <div class="course-card bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10" data-course-id="${course.id}" data-is-purchased="${course.isPurchased}" data-price-ice="${course.price_ice}">
             <div class="flex justify-between items-start">
               <div class="flex-1">
                 <h3 class="text-white font-bold text-lg">${course.title}</h3>
@@ -1502,7 +1511,7 @@ async function renderAcademy() {
             </div>
             ${!course.isPurchased && course.price_ice > 0 ? `<button class="buyCourseBtn mt-3 w-full bg-gradient-to-r from-cyan-500 to-blue-500 py-2.5 rounded-xl font-bold text-sm" data-course-id="${course.id}" data-price="${course.price_ice}">🛒 Купить за ${course.price_ice} ❄️</button>` : ''}
             ${course.allCompleted && course.lessons.length > 0 ? `<button class="getCertBtn mt-2 w-full bg-gradient-to-r from-yellow-400 to-orange-500 py-2.5 rounded-xl font-bold text-sm text-slate-900" data-course-id="${course.id}" data-title="${course.title.replace(/"/g,'&quot;')}">🏆 Получить сертификат</button>` : ''}
-            <div class="lessons-container hidden mt-3 space-y-1.5" data-course="${course.id}">
+            <div class="lessons-container hidden mt-3 space-y-1.5" data-course="${course.id}" data-loaded="true">
               ${course.lessons.length === 0
                 ? '<p class="text-white/40 text-sm text-center py-3">В этом курсе пока нет уроков</p>'
                 : course.lessons.map(lesson => {
@@ -1722,23 +1731,77 @@ async function renderAcademy() {
         btn.onclick = () => handleGetCert(btn.dataset.courseId, btn.dataset.title);
       });
 
-      // ── toggle lessons list ─────────────────────────────────────────
-      document.querySelectorAll('.course-card').forEach(card => {
-        card.onclick = (e) => {
-          if (e.target.closest('button')) return;
-          card.querySelector('.lessons-container')?.classList.toggle('hidden');
-        };
+      // ── helpers for lesson items ────────────────────────────────────
+      const lessonItemHtml = (lesson, courseId, isPurchased, priceIce) => {
+        const accessible = (isPurchased || priceIce === 0) && !lesson.is_locked;
+        const ctIcon = { video: '📹', quiz: '📝', file: '📎' }[lesson.content_type] || '📄';
+        const ctLabel = { video: 'Видео', quiz: 'Тест', file: 'Файл' }[lesson.content_type] || 'Текст';
+        return `<div class="lesson-item bg-white/5 rounded-xl p-3 transition ${accessible ? 'cursor-pointer hover:bg-white/10' : 'opacity-50'}"
+          data-lesson-id="${lesson.id}" data-course-id="${courseId}" data-accessible="${accessible}">
+          <div class="flex justify-between items-center gap-2">
+            <div class="flex items-center gap-2 flex-1 min-w-0">
+              <span class="text-lg flex-shrink-0">${ctIcon}</span>
+              <div class="min-w-0">
+                <p class="text-white text-sm font-medium truncate">${lesson.title || 'Без названия'}</p>
+                <p class="text-white/40 text-xs">${ctLabel}</p>
+              </div>
+            </div>
+            <span class="text-cyan-400 text-xs">▶ Начать</span>
+          </div>
+        </div>`;
+      };
+
+      const attachLessonItemHandlers = (container) => {
+        container.querySelectorAll('.lesson-item').forEach(item => {
+          item.onclick = async (e) => {
+            e.stopPropagation(); // prevent card click from toggling the container
+            if (item.dataset.accessible === 'false') return;
+            try {
+              const { data, error } = await supabaseClient.from('lessons').select('*').eq('id', item.dataset.lessonId).single();
+              if (error) throw error;
+              showLessonModal(data, item.dataset.courseId);
+            } catch(e) { alert('Ошибка загрузки урока: ' + e.message); }
+          };
+        });
+      };
+
+      // Attach handlers to pre-rendered lesson items
+      document.querySelectorAll('.lessons-container').forEach(container => {
+        attachLessonItemHandlers(container);
       });
 
-      // ── open lesson ─────────────────────────────────────────────────
-      document.querySelectorAll('.lesson-item').forEach(item => {
-        item.onclick = async () => {
-          if (item.dataset.accessible === 'false') return;
-          try {
-            const { data, error } = await supabaseClient.from('lessons').select('*').eq('id', item.dataset.lessonId).single();
-            if (error) throw error;
-            showLessonModal(data, item.dataset.courseId);
-          } catch(e) { alert('Ошибка загрузки урока: ' + e.message); }
+      // ── toggle lessons list (with lazy reload) ──────────────────────
+      document.querySelectorAll('.course-card').forEach(card => {
+        card.onclick = async (e) => {
+          if (e.target.closest('button')) return;
+          if (e.target.closest('.lesson-item')) return; // handled by lesson item handler
+          const container = card.querySelector('.lessons-container');
+          if (!container) return;
+
+          // If lessons are not yet loaded (or reload forced), fetch them
+          if (!container.dataset.loaded) {
+            container.innerHTML = '<p class="text-white/40 text-xs text-center py-3">⏳ Загрузка уроков...</p>';
+            container.classList.remove('hidden');
+            const courseId = card.dataset.courseId;
+            const isPurchased = card.dataset.isPurchased === 'true';
+            const priceIce = parseInt(card.dataset.priceIce) || 0;
+            try {
+              const { data: lessons, error } = await supabaseClient
+                .from('lessons').select('*').eq('course_id', courseId).order('order_index', { ascending: true });
+              if (error) throw error;
+              if (!lessons || lessons.length === 0) {
+                container.innerHTML = '<p class="text-white/40 text-sm text-center py-3">В этом курсе пока нет уроков</p>';
+              } else {
+                container.innerHTML = lessons.map(l => lessonItemHtml(l, courseId, isPurchased, priceIce)).join('');
+                attachLessonItemHandlers(container);
+              }
+              container.dataset.loaded = 'true';
+            } catch(err) {
+              container.innerHTML = '<p class="text-red-400 text-xs text-center py-3">Ошибка загрузки уроков</p>';
+            }
+            return;
+          }
+          container.classList.toggle('hidden');
         };
       });
     }
