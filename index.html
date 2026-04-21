@@ -1483,8 +1483,8 @@ async function renderAcademy() {
         <button id="backFromAcademyBtn" class="global-back-btn">← Назад</button>
         ${isOwner ? '<button id="addCourseBtn" class="global-back-btn mb-2">➕ Добавить курс</button>' : ''}
         ${coursesWithLessons.map(course => `
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10" data-course-id="${course.id}">
-            <div class="flex justify-between items-start course-card-header cursor-pointer">
+          <div class="course-card bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10" data-course-id="${course.id}">
+            <div class="flex justify-between items-start">
               <div class="flex-1">
                 <h3 class="text-white font-bold text-lg">${course.title}</h3>
                 <p class="text-white/60 text-sm mt-0.5">${course.description || ''}</p>
@@ -1720,11 +1720,10 @@ async function renderAcademy() {
       });
 
       // ── toggle lessons list ─────────────────────────────────────────
-      document.querySelectorAll('.course-card-header').forEach(header => {
-        header.onclick = (e) => {
+      document.querySelectorAll('.course-card').forEach(card => {
+        card.onclick = (e) => {
           if (e.target.closest('button')) return;
-          const card = header.closest('[data-course-id]');
-          card?.querySelector('.lessons-container')?.classList.toggle('hidden');
+          card.querySelector('.lessons-container')?.classList.toggle('hidden');
         };
       });
 
