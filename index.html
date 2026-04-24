@@ -154,6 +154,10 @@ const MAX_REQUESTS_TRUSTED = 100;
     let reviewsPage = 1;
     let reviewsTotalPages = 1;
 
+    // Global key for Edge Function calls (Authorization header)
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
+    const PARSE_PRODUCT_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co/functions/v1/parse-product';
+
     async function init() {
       tg = window.Telegram.WebApp;
       tg.ready();
@@ -748,8 +752,13 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       analyzeBtn.disabled = true;
 
       try {
-        const { data, error } = await supabaseClient.functions.invoke('parse-product', { body: { url } });
-        if (error) throw new Error(error.message || 'Ошибка вызова функции');
+        const _resp1 = await fetch(PARSE_PRODUCT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+          body: JSON.stringify({ url })
+        });
+        if (!_resp1.ok) throw new Error('Ошибка вызова функции (HTTP ' + _resp1.status + ')');
+        const data = await _resp1.json();
         if (!data.success) throw new Error(data.error || 'Не удалось проанализировать');
 
         if (data.price != null) document.getElementById('calcPrice').value = data.price;
@@ -1102,8 +1111,13 @@ if (createBtn) {
           analyzeOrderBtn.disabled = true;
 
           try {
-            const { data, error } = await supabaseClient.functions.invoke('parse-product', { body: { url } });
-            if (error) throw new Error(error.message || 'Ошибка вызова функции');
+            const _resp2 = await fetch(PARSE_PRODUCT_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+              body: JSON.stringify({ url })
+            });
+            if (!_resp2.ok) throw new Error('Ошибка вызова функции (HTTP ' + _resp2.status + ')');
+            const data = await _resp2.json();
             if (!data.success) throw new Error(data.error || 'Не удалось проанализировать');
 
             const priceInp = document.getElementById('orderPrice');
