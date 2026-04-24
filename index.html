@@ -564,9 +564,9 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           <p class="text-green-400 text-sm mt-1" id="promoDiscount"></p>
           </div>
                     <label class="text-white/70 text-sm">Ссылка на товар (необязательно)</label>
-          <div class="flex gap-2 mt-1 mb-1">
-            <input type="text" id="calcUrl" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" placeholder="https://poizon.com/...">
-            <button id="analyzeLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition">🔍 Анализировать</button>
+          <div class="flex flex-wrap gap-2 mt-1 mb-1">
+            <input type="text" id="calcUrl" class="flex-1 min-w-[200px] p-3 rounded-xl bg-white/20 border border-white/30" placeholder="https://poizon.com/...">
+            <button id="analyzeLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
           </div>
           <div id="parsedProductTitle" class="text-cyan-400 text-xs mb-3 hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Цена (¥)</label>
@@ -660,95 +660,6 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     }
 
     
-  // ======== ОБРАБОТЧИК КНОПКИ «АНАЛИЗИРОВАТЬ ССЫЛКУ» ========
-  const analyzeBtn = document.getElementById('analyzeLinkBtn');
-  if (analyzeBtn) {
-    analyzeBtn.addEventListener('click', async () => {
-      const urlInput = document.getElementById('calcUrl');
-      const url = urlInput?.value.trim();
-      if (!url) {
-        alert('Вставьте ссылку на товар');
-        return;
-      }
-
-      // Проверка лимитов
-      const limitCheck = await checkAndUpdateLimit();
-      if (!limitCheck.allowed) {
-        alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
-        return;
-      }
-
-      // Показываем состояние загрузки
-      const originalText = analyzeBtn.innerText;
-      analyzeBtn.innerText = '⏳ Анализ...';
-      analyzeBtn.disabled = true;
-
-      try {
-        const { data, error } = await supabaseClient.functions.invoke('parse-product', {
-          body: { url }
-        });
-
-        if (error) throw new Error(error.message || 'Ошибка вызова функции');
-        if (!data.success) throw new Error(data.error || 'Не удалось проанализировать');
-
-        // Заполняем поля
-        if (data.price) {
-          document.getElementById('calcPrice').value = data.price;
-        }
-        if (data.weight_kg) {
-          const slider = document.getElementById('calcWeight');
-          const valSpan = document.getElementById('weightVal');
-          slider.value = data.weight_kg;
-          if (valSpan) valSpan.innerText = parseFloat(data.weight_kg).toFixed(1) + ' кг';
-        }
-        const titleDiv = document.getElementById('parsedProductTitle');
-        if (titleDiv && data.title) {
-          titleDiv.innerText = '📦 ' + data.title;
-          titleDiv.classList.remove('hidden');
-        } else if (titleDiv) {
-          titleDiv.innerText = '✅ Данные получены';
-          titleDiv.classList.remove('hidden');
-        }
-
-        // Увеличиваем счётчик лимита (т.к. checkAndUpdateLimit только проверяет, но не увеличивает)
-        if (userId) {
-          const newCount = limitCheck.currentCount + 1;
-          await supabaseClient.from('users').update({ daily_requests_count: newCount, last_request_date: new Date().toISOString() }).eq('user_id', userId);
-          userLimits.dailyCount = newCount;
-        } else {
-          const guestKey = 'ice_guest_requests';
-          let guestData = JSON.parse(localStorage.getItem(guestKey) || '{"count":0,"date":""}');
-          const today = new Date().toDateString();
-          if (guestData.date !== today) guestData = { count: 0, date: today };
-          guestData.count++;
-          localStorage.setItem(guestKey, JSON.stringify(guestData));
-        }
-
-        // Зелёная вспышка кнопки
-        analyzeBtn.classList.add('bg-green-500');
-        setTimeout(() => {
-          analyzeBtn.classList.remove('bg-green-500');
-        }, 1000);
-
-      } catch (err) {
-        alert('Ошибка анализа: ' + err.message);
-        const titleDiv = document.getElementById('parsedProductTitle');
-        if (titleDiv) {
-          titleDiv.innerText = '❌ ' + err.message;
-          titleDiv.classList.remove('hidden');
-        }
-        // Красная вспышка
-        analyzeBtn.classList.add('bg-red-500');
-        setTimeout(() => {
-          analyzeBtn.classList.remove('bg-red-500');
-        }, 2000);
-      } finally {
-        analyzeBtn.innerText = originalText;
-        analyzeBtn.disabled = false;
-      }
-    });
-  }
-    
     // Увеличиваем счётчик
     if (userId) {
       const newCount = limitCheck.currentCount + 1;
@@ -819,6 +730,64 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     };
   };
   
+  // ── Обработчик кнопки «Анализировать» (калькулятор) ──────────────
+  const analyzeBtn = document.getElementById('analyzeLinkBtn');
+  if (analyzeBtn) {
+    analyzeBtn.addEventListener('click', async () => {
+      const url = document.getElementById('calcUrl')?.value.trim();
+      if (!url) { alert('Вставьте ссылку на товар'); return; }
+
+      const limitCheck = await checkAndUpdateLimit();
+      if (!limitCheck.allowed) {
+        alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
+        return;
+      }
+
+      const origText = analyzeBtn.innerText;
+      analyzeBtn.innerText = '⏳ Анализ...';
+      analyzeBtn.disabled = true;
+
+      try {
+        const { data, error } = await supabaseClient.functions.invoke('parse-product', { body: { url } });
+        if (error) throw new Error(error.message || 'Ошибка вызова функции');
+        if (!data.success) throw new Error(data.error || 'Не удалось проанализировать');
+
+        if (data.price != null) document.getElementById('calcPrice').value = data.price;
+        if (data.weight_kg != null) {
+          if (slider) slider.value = data.weight_kg;
+          if (valSpan) valSpan.innerText = parseFloat(data.weight_kg).toFixed(1) + ' кг';
+        }
+        const titleDiv = document.getElementById('parsedProductTitle');
+        if (titleDiv) {
+          titleDiv.innerText = data.title ? '📦 ' + data.title : '✅ Данные получены';
+          titleDiv.classList.remove('hidden');
+        }
+        // Увеличиваем счётчик
+        if (userId) {
+          const nc = limitCheck.currentCount + 1;
+          await supabaseClient.from('users').update({ daily_requests_count: nc, last_request_date: new Date().toISOString() }).eq('user_id', userId);
+          userLimits.dailyCount = nc;
+        } else {
+          const gk = 'ice_guest_requests';
+          let gd = JSON.parse(localStorage.getItem(gk) || '{"count":0,"date":""}');
+          if (gd.date !== new Date().toDateString()) gd = { count: 0, date: new Date().toDateString() };
+          gd.count++; localStorage.setItem(gk, JSON.stringify(gd));
+        }
+        analyzeBtn.classList.add('bg-green-500');
+        setTimeout(() => analyzeBtn.classList.remove('bg-green-500'), 1000);
+      } catch (err) {
+        alert('Ошибка анализа: ' + err.message);
+        const titleDiv = document.getElementById('parsedProductTitle');
+        if (titleDiv) { titleDiv.innerText = '❌ ' + err.message; titleDiv.classList.remove('hidden'); }
+        analyzeBtn.classList.add('bg-red-500');
+        setTimeout(() => analyzeBtn.classList.remove('bg-red-500'), 2000);
+      } finally {
+        analyzeBtn.innerText = origText;
+        analyzeBtn.disabled = false;
+      }
+    });
+  }
+
   const toNewOrderBtn = document.getElementById('toNewOrderBtn');
   if (toNewOrderBtn) toNewOrderBtn.onclick = () => { 
     if (window.tempOrder) switchTab('neworder'); 
@@ -849,7 +818,10 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg">
           <h2 class="text-xl font-bold mb-4">✨ Новый заказ</h2>
           <label class="text-white/70 text-sm">Ссылка на товар</label>
-          <input type="text" id="orderUrl" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-1" value="${d.url}" placeholder="https://...">
+          <div class="flex flex-wrap gap-2 mt-1 mb-1">
+            <input type="text" id="orderUrl" class="flex-1 min-w-[200px] p-3 rounded-xl bg-white/20 border border-white/30" value="${d.url}" placeholder="https://...">
+            <button id="analyzeOrderLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
+          </div>
           <div id="parsedOrderTitle" class="text-cyan-400 text-xs mb-3 hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Цена (¥)</label>
           <input type="number" id="orderPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="0">
@@ -1107,9 +1079,77 @@ if (createBtn) {
 
       window.tempOrder = null;
       switchTab('home');
-    } catch (err) { alert('Ошибка: ' + err.message); }
+      } catch (err) { alert('Ошибка: ' + err.message); }
   };
 }
+
+      // ── Обработчик кнопки «Анализировать» (новый заказ) ──────────────
+      const analyzeOrderBtn = document.getElementById('analyzeOrderLinkBtn');
+      if (analyzeOrderBtn) {
+        analyzeOrderBtn.addEventListener('click', async () => {
+          const urlInput = document.getElementById('orderUrl');
+          const url = urlInput?.value.trim();
+          if (!url) { alert('Вставьте ссылку на товар'); return; }
+
+          const limitCheck = await checkAndUpdateLimit();
+          if (!limitCheck.allowed) {
+            alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
+            return;
+          }
+
+          const origText = analyzeOrderBtn.innerText;
+          analyzeOrderBtn.innerText = '⏳ Анализ...';
+          analyzeOrderBtn.disabled = true;
+
+          try {
+            const { data, error } = await supabaseClient.functions.invoke('parse-product', { body: { url } });
+            if (error) throw new Error(error.message || 'Ошибка вызова функции');
+            if (!data.success) throw new Error(data.error || 'Не удалось проанализировать');
+
+            const priceInp = document.getElementById('orderPrice');
+            const weightInp = document.getElementById('orderWeight');
+            const titleDiv = document.getElementById('parsedOrderTitle');
+
+            if (priceInp && data.price != null) priceInp.value = data.price;
+            if (weightInp && data.weight_kg != null) weightInp.value = data.weight_kg;
+            if (titleDiv) {
+              titleDiv.innerText = data.title ? '📦 ' + data.title : '✅ Данные получены';
+              titleDiv.classList.remove('hidden');
+            }
+            // Обновляем tempOrder и пересчитываем итог
+            if (window.tempOrder) {
+              if (data.price != null) window.tempOrder.price = data.price;
+              if (data.weight_kg != null) window.tempOrder.weight = data.weight_kg;
+              window.tempOrder.url = url;
+            }
+            if (typeof update === 'function') update();
+
+            // Увеличиваем счётчик
+            if (userId) {
+              const nc = limitCheck.currentCount + 1;
+              await supabaseClient.from('users').update({ daily_requests_count: nc, last_request_date: new Date().toISOString() }).eq('user_id', userId);
+              userLimits.dailyCount = nc;
+            } else {
+              const gk = 'ice_guest_requests';
+              let gd = JSON.parse(localStorage.getItem(gk) || '{"count":0,"date":""}');
+              if (gd.date !== new Date().toDateString()) gd = { count: 0, date: new Date().toDateString() };
+              gd.count++; localStorage.setItem(gk, JSON.stringify(gd));
+            }
+
+            analyzeOrderBtn.classList.add('bg-green-500');
+            setTimeout(() => analyzeOrderBtn.classList.remove('bg-green-500'), 1000);
+          } catch (err) {
+            alert('Ошибка анализа: ' + err.message);
+            const titleDiv = document.getElementById('parsedOrderTitle');
+            if (titleDiv) { titleDiv.innerText = '❌ ' + err.message; titleDiv.classList.remove('hidden'); }
+            analyzeOrderBtn.classList.add('bg-red-500');
+            setTimeout(() => analyzeOrderBtn.classList.remove('bg-red-500'), 2000);
+          } finally {
+            analyzeOrderBtn.innerText = origText;
+            analyzeOrderBtn.disabled = false;
+          }
+        });
+      }
     }
 
     // ==================== РЕНДЕР МОИХ ЗАКАЗОВ (ДЛЯ ПРОФИЛЯ) ====================
