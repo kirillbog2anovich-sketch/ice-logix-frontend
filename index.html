@@ -764,7 +764,7 @@ if (analyzeBtn) {
       
       // 2. Ожидаем завершения (polling каждые 2 секунды, до 60 секунд)
       let result = null;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 45; i++) {
         await new Promise(r => setTimeout(r, 2000));
         const { data: checkData } = await supabaseClient
           .from('parse_queue')
@@ -1142,7 +1142,7 @@ if (analyzeBtn) {
       
       // 2. Ожидаем завершения (polling каждые 2 секунды, до 60 секунд)
       let result = null;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 45; i++) {
         await new Promise(r => setTimeout(r, 2000));
         const { data: checkData } = await supabaseClient
           .from('parse_queue')
