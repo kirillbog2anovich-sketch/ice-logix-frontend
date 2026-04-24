@@ -734,68 +734,88 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     };
   };
   
-  // ── Обработчик кнопки «Анализировать» (калькулятор) ──────────────
   const analyzeBtn = document.getElementById('analyzeLinkBtn');
-  if (analyzeBtn) {
-    analyzeBtn.addEventListener('click', async () => {
-      const url = document.getElementById('calcUrl')?.value.trim();
-      if (!url) { alert('Вставьте ссылку на товар'); return; }
-
-      const limitCheck = await checkAndUpdateLimit();
-      if (!limitCheck.allowed) {
-        alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
-        return;
+if (analyzeBtn) {
+  analyzeBtn.addEventListener('click', async () => {
+    const urlInput = document.getElementById('calcUrl');
+    const url = urlInput?.value.trim();
+    if (!url) { alert('Вставьте ссылку на товар'); return; }
+    
+    const limitCheck = await checkAndUpdateLimit();
+    if (!limitCheck.allowed) {
+      alert(`Лимит исчерпан (${limitCheck.currentCount}/${limitCheck.maxRequests}).`);
+      return;
+    }
+    
+    const originalText = analyzeBtn.innerText;
+    analyzeBtn.innerText = '⏳ Анализ...';
+    analyzeBtn.disabled = true;
+    
+    try {
+      // 1. Вставляем задачу в очередь
+      const { data: queueData, error: insErr } = await supabaseClient
+        .from('parse_queue')
+        .insert({ user_id: userId, url, status: 'pending' })
+        .select('id')
+        .single();
+      if (insErr) throw new Error('Не удалось создать задачу: ' + insErr.message);
+      
+      const taskId = queueData.id;
+      
+      // 2. Ожидаем завершения (polling каждые 2 секунды, до 60 секунд)
+      let result = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const { data: checkData } = await supabaseClient
+          .from('parse_queue')
+          .select('status, price, title, weight_kg')
+          .eq('id', taskId)
+          .single();
+        if (checkData && checkData.status === 'done') {
+          result = checkData;
+          break;
+        }
+        if (checkData && checkData.status === 'error') {
+          throw new Error('Не удалось распарсить страницу');
+        }
       }
-
-      const origText = analyzeBtn.innerText;
-      analyzeBtn.innerText = '⏳ Анализ...';
-      analyzeBtn.disabled = true;
-
-      try {
-        const _resp1 = await fetch(PARSE_PRODUCT_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-          body: JSON.stringify({ url })
-        });
-        if (!_resp1.ok) throw new Error('Ошибка вызова функции (HTTP ' + _resp1.status + ')');
-        const data = await _resp1.json();
-        if (!data.success) throw new Error(data.error || 'Не удалось проанализировать');
-
-        if (data.price != null) document.getElementById('calcPrice').value = data.price;
-        if (data.weight_kg != null) {
-          if (slider) slider.value = data.weight_kg;
-          if (valSpan) valSpan.innerText = parseFloat(data.weight_kg).toFixed(1) + ' кг';
-        }
-        const titleDiv = document.getElementById('parsedProductTitle');
-        if (titleDiv) {
-          titleDiv.innerText = data.title ? '📦 ' + data.title : '✅ Данные получены';
-          titleDiv.classList.remove('hidden');
-        }
-        // Увеличиваем счётчик
-        if (userId) {
-          const nc = limitCheck.currentCount + 1;
-          await supabaseClient.from('users').update({ daily_requests_count: nc, last_request_date: new Date().toISOString() }).eq('user_id', userId);
-          userLimits.dailyCount = nc;
-        } else {
-          const gk = 'ice_guest_requests';
-          let gd = JSON.parse(localStorage.getItem(gk) || '{"count":0,"date":""}');
-          if (gd.date !== new Date().toDateString()) gd = { count: 0, date: new Date().toDateString() };
-          gd.count++; localStorage.setItem(gk, JSON.stringify(gd));
-        }
-        analyzeBtn.classList.add('bg-green-500');
-        setTimeout(() => analyzeBtn.classList.remove('bg-green-500'), 1000);
-      } catch (err) {
-        alert('Ошибка анализа: ' + err.message);
-        const titleDiv = document.getElementById('parsedProductTitle');
-        if (titleDiv) { titleDiv.innerText = '❌ ' + err.message; titleDiv.classList.remove('hidden'); }
-        analyzeBtn.classList.add('bg-red-500');
-        setTimeout(() => analyzeBtn.classList.remove('bg-red-500'), 2000);
-      } finally {
-        analyzeBtn.innerText = origText;
-        analyzeBtn.disabled = false;
+      
+      if (!result) throw new Error('Таймаут ожидания парсинга');
+      
+      // 3. Заполняем поля
+      if (result.price) document.getElementById('calcPrice').value = result.price;
+      if (result.weight_kg) {
+        const slider = document.getElementById('calcWeight');
+        const valSpan = document.getElementById('weightVal');
+        slider.value = result.weight_kg;
+        if (valSpan) valSpan.innerText = parseFloat(result.weight_kg).toFixed(1) + ' кг';
       }
-    });
-  }
+      const titleDiv = document.getElementById('parsedProductTitle');
+      if (titleDiv) {
+        titleDiv.innerText = result.title ? '📦 ' + result.title : '✅ Данные получены';
+        titleDiv.classList.remove('hidden');
+      }
+      
+      // Увеличиваем лимит
+      if (userId) {
+        const newCount = limitCheck.currentCount + 1;
+        await supabaseClient.from('users').update({ daily_requests_count: newCount, last_request_date: new Date().toISOString() }).eq('user_id', userId);
+        userLimits.dailyCount = newCount;
+      }
+      
+      analyzeBtn.classList.add('bg-green-500');
+      setTimeout(() => analyzeBtn.classList.remove('bg-green-500'), 1000);
+      
+    } catch (err) {
+      alert('Ошибка анализа: ' + err.message);
+      analyzeBtn.classList.add('bg-red-500');
+      setTimeout(() => analyzeBtn.classList.remove('bg-red-500'), 2000);
+    } finally {
+      analyzeBtn.innerText = originalText;
+      analyzeBtn.disabled = false;
+    }
+  });
+}
 
   const toNewOrderBtn = document.getElementById('toNewOrderBtn');
   if (toNewOrderBtn) toNewOrderBtn.onclick = () => { 
@@ -1092,78 +1112,88 @@ if (createBtn) {
   };
 }
 
-      // ── Обработчик кнопки «Анализировать» (новый заказ) ──────────────
-      const analyzeOrderBtn = document.getElementById('analyzeOrderLinkBtn');
-      if (analyzeOrderBtn) {
-        analyzeOrderBtn.addEventListener('click', async () => {
-          const urlInput = document.getElementById('orderUrl');
-          const url = urlInput?.value.trim();
-          if (!url) { alert('Вставьте ссылку на товар'); return; }
-
-          const limitCheck = await checkAndUpdateLimit();
-          if (!limitCheck.allowed) {
-            alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
-            return;
-          }
-
-          const origText = analyzeOrderBtn.innerText;
-          analyzeOrderBtn.innerText = '⏳ Анализ...';
-          analyzeOrderBtn.disabled = true;
-
-          try {
-            const _resp2 = await fetch(PARSE_PRODUCT_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-              body: JSON.stringify({ url })
-            });
-            if (!_resp2.ok) throw new Error('Ошибка вызова функции (HTTP ' + _resp2.status + ')');
-            const data = await _resp2.json();
-            if (!data.success) throw new Error(data.error || 'Не удалось проанализировать');
-
-            const priceInp = document.getElementById('orderPrice');
-            const weightInp = document.getElementById('orderWeight');
-            const titleDiv = document.getElementById('parsedOrderTitle');
-
-            if (priceInp && data.price != null) priceInp.value = data.price;
-            if (weightInp && data.weight_kg != null) weightInp.value = data.weight_kg;
-            if (titleDiv) {
-              titleDiv.innerText = data.title ? '📦 ' + data.title : '✅ Данные получены';
-              titleDiv.classList.remove('hidden');
-            }
-            // Обновляем tempOrder и пересчитываем итог
-            if (window.tempOrder) {
-              if (data.price != null) window.tempOrder.price = data.price;
-              if (data.weight_kg != null) window.tempOrder.weight = data.weight_kg;
-              window.tempOrder.url = url;
-            }
-            if (typeof update === 'function') update();
-
-            // Увеличиваем счётчик
-            if (userId) {
-              const nc = limitCheck.currentCount + 1;
-              await supabaseClient.from('users').update({ daily_requests_count: nc, last_request_date: new Date().toISOString() }).eq('user_id', userId);
-              userLimits.dailyCount = nc;
-            } else {
-              const gk = 'ice_guest_requests';
-              let gd = JSON.parse(localStorage.getItem(gk) || '{"count":0,"date":""}');
-              if (gd.date !== new Date().toDateString()) gd = { count: 0, date: new Date().toDateString() };
-              gd.count++; localStorage.setItem(gk, JSON.stringify(gd));
-            }
-
-            analyzeOrderBtn.classList.add('bg-green-500');
-            setTimeout(() => analyzeOrderBtn.classList.remove('bg-green-500'), 1000);
-          } catch (err) {
-            alert('Ошибка анализа: ' + err.message);
-            const titleDiv = document.getElementById('parsedOrderTitle');
-            if (titleDiv) { titleDiv.innerText = '❌ ' + err.message; titleDiv.classList.remove('hidden'); }
-            analyzeOrderBtn.classList.add('bg-red-500');
-            setTimeout(() => analyzeOrderBtn.classList.remove('bg-red-500'), 2000);
-          } finally {
-            analyzeOrderBtn.innerText = origText;
-            analyzeOrderBtn.disabled = false;
-          }
-        });
+const analyzeBtn = document.getElementById('analyzeLinkBtn');
+if (analyzeBtn) {
+  analyzeBtn.addEventListener('click', async () => {
+    const urlInput = document.getElementById('calcUrl');
+    const url = urlInput?.value.trim();
+    if (!url) { alert('Вставьте ссылку на товар'); return; }
+    
+    const limitCheck = await checkAndUpdateLimit();
+    if (!limitCheck.allowed) {
+      alert(`Лимит исчерпан (${limitCheck.currentCount}/${limitCheck.maxRequests}).`);
+      return;
+    }
+    
+    const originalText = analyzeBtn.innerText;
+    analyzeBtn.innerText = '⏳ Анализ...';
+    analyzeBtn.disabled = true;
+    
+    try {
+      // 1. Вставляем задачу в очередь
+      const { data: queueData, error: insErr } = await supabaseClient
+        .from('parse_queue')
+        .insert({ user_id: userId, url, status: 'pending' })
+        .select('id')
+        .single();
+      if (insErr) throw new Error('Не удалось создать задачу: ' + insErr.message);
+      
+      const taskId = queueData.id;
+      
+      // 2. Ожидаем завершения (polling каждые 2 секунды, до 60 секунд)
+      let result = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const { data: checkData } = await supabaseClient
+          .from('parse_queue')
+          .select('status, price, title, weight_kg')
+          .eq('id', taskId)
+          .single();
+        if (checkData && checkData.status === 'done') {
+          result = checkData;
+          break;
+        }
+        if (checkData && checkData.status === 'error') {
+          throw new Error('Не удалось распарсить страницу');
+        }
       }
+      
+      if (!result) throw new Error('Таймаут ожидания парсинга');
+      
+      // 3. Заполняем поля
+      if (result.price) document.getElementById('calcPrice').value = result.price;
+      if (result.weight_kg) {
+        const slider = document.getElementById('calcWeight');
+        const valSpan = document.getElementById('weightVal');
+        slider.value = result.weight_kg;
+        if (valSpan) valSpan.innerText = parseFloat(result.weight_kg).toFixed(1) + ' кг';
+      }
+      const titleDiv = document.getElementById('parsedProductTitle');
+      if (titleDiv) {
+        titleDiv.innerText = result.title ? '📦 ' + result.title : '✅ Данные получены';
+        titleDiv.classList.remove('hidden');
+      }
+      
+      // Увеличиваем лимит
+      if (userId) {
+        const newCount = limitCheck.currentCount + 1;
+        await supabaseClient.from('users').update({ daily_requests_count: newCount, last_request_date: new Date().toISOString() }).eq('user_id', userId);
+        userLimits.dailyCount = newCount;
+      }
+      
+      analyzeBtn.classList.add('bg-green-500');
+      setTimeout(() => analyzeBtn.classList.remove('bg-green-500'), 1000);
+      
+    } catch (err) {
+      alert('Ошибка анализа: ' + err.message);
+      analyzeBtn.classList.add('bg-red-500');
+      setTimeout(() => analyzeBtn.classList.remove('bg-red-500'), 2000);
+    } finally {
+      analyzeBtn.innerText = originalText;
+      analyzeBtn.disabled = false;
+    }
+  });
+}
     }
 
     // ==================== РЕНДЕР МОИХ ЗАКАЗОВ (ДЛЯ ПРОФИЛЯ) ====================
