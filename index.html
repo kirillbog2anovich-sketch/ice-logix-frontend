@@ -563,8 +563,11 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           <p class="text-white/70 text-sm" id="promoDesc"></p>
           <p class="text-green-400 text-sm mt-1" id="promoDiscount"></p>
           </div>
-          <label class="text-white/70 text-sm">Ссылка на товар (необязательно)</label>
-          <input type="text" id="calcUrl" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-1" placeholder="https://poizon.com/...">
+                    <label class="text-white/70 text-sm">Ссылка на товар (необязательно)</label>
+          <div class="flex gap-2 mt-1 mb-1">
+            <input type="text" id="calcUrl" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" placeholder="https://poizon.com/...">
+            <button id="analyzeLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition">🔍 Анализировать</button>
+          </div>
           <div id="parsedProductTitle" class="text-cyan-400 text-xs mb-3 hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Цена (¥)</label>
           <input type="number" id="calcPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="0">
@@ -655,6 +658,96 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
       return;
     }
+
+    
+  // ======== ОБРАБОТЧИК КНОПКИ «АНАЛИЗИРОВАТЬ ССЫЛКУ» ========
+  const analyzeBtn = document.getElementById('analyzeLinkBtn');
+  if (analyzeBtn) {
+    analyzeBtn.addEventListener('click', async () => {
+      const urlInput = document.getElementById('calcUrl');
+      const url = urlInput?.value.trim();
+      if (!url) {
+        alert('Вставьте ссылку на товар');
+        return;
+      }
+
+      // Проверка лимитов
+      const limitCheck = await checkAndUpdateLimit();
+      if (!limitCheck.allowed) {
+        alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
+        return;
+      }
+
+      // Показываем состояние загрузки
+      const originalText = analyzeBtn.innerText;
+      analyzeBtn.innerText = '⏳ Анализ...';
+      analyzeBtn.disabled = true;
+
+      try {
+        const { data, error } = await supabaseClient.functions.invoke('parse-product', {
+          body: { url }
+        });
+
+        if (error) throw new Error(error.message || 'Ошибка вызова функции');
+        if (!data.success) throw new Error(data.error || 'Не удалось проанализировать');
+
+        // Заполняем поля
+        if (data.price) {
+          document.getElementById('calcPrice').value = data.price;
+        }
+        if (data.weight_kg) {
+          const slider = document.getElementById('calcWeight');
+          const valSpan = document.getElementById('weightVal');
+          slider.value = data.weight_kg;
+          if (valSpan) valSpan.innerText = parseFloat(data.weight_kg).toFixed(1) + ' кг';
+        }
+        const titleDiv = document.getElementById('parsedProductTitle');
+        if (titleDiv && data.title) {
+          titleDiv.innerText = '📦 ' + data.title;
+          titleDiv.classList.remove('hidden');
+        } else if (titleDiv) {
+          titleDiv.innerText = '✅ Данные получены';
+          titleDiv.classList.remove('hidden');
+        }
+
+        // Увеличиваем счётчик лимита (т.к. checkAndUpdateLimit только проверяет, но не увеличивает)
+        if (userId) {
+          const newCount = limitCheck.currentCount + 1;
+          await supabaseClient.from('users').update({ daily_requests_count: newCount, last_request_date: new Date().toISOString() }).eq('user_id', userId);
+          userLimits.dailyCount = newCount;
+        } else {
+          const guestKey = 'ice_guest_requests';
+          let guestData = JSON.parse(localStorage.getItem(guestKey) || '{"count":0,"date":""}');
+          const today = new Date().toDateString();
+          if (guestData.date !== today) guestData = { count: 0, date: today };
+          guestData.count++;
+          localStorage.setItem(guestKey, JSON.stringify(guestData));
+        }
+
+        // Зелёная вспышка кнопки
+        analyzeBtn.classList.add('bg-green-500');
+        setTimeout(() => {
+          analyzeBtn.classList.remove('bg-green-500');
+        }, 1000);
+
+      } catch (err) {
+        alert('Ошибка анализа: ' + err.message);
+        const titleDiv = document.getElementById('parsedProductTitle');
+        if (titleDiv) {
+          titleDiv.innerText = '❌ ' + err.message;
+          titleDiv.classList.remove('hidden');
+        }
+        // Красная вспышка
+        analyzeBtn.classList.add('bg-red-500');
+        setTimeout(() => {
+          analyzeBtn.classList.remove('bg-red-500');
+        }, 2000);
+      } finally {
+        analyzeBtn.innerText = originalText;
+        analyzeBtn.disabled = false;
+      }
+    });
+  }
     
     // Увеличиваем счётчик
     if (userId) {
