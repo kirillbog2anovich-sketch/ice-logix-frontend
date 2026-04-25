@@ -762,7 +762,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         const taskId = queueData.id;
         let result = null;
 
-        for (let i = 0; i < 45; i++) {
+        for (let i = 0; i < 75; i++) {
           await new Promise(r => setTimeout(r, 2000));
           const { data: checkData } = await supabaseClient
             .from('parse_queue')
@@ -1156,7 +1156,7 @@ if (createBtn) {
             const taskId = queueData.id;
             let result = null;
 
-            for (let i = 0; i < 45; i++) {
+            for (let i = 0; i < 75; i++) {
               await new Promise(r => setTimeout(r, 2000));
               const { data: checkData } = await supabaseClient
                 .from('parse_queue')
