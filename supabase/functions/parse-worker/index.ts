@@ -68,12 +68,12 @@ async function extractData(
 }> {
   if (!DEEPSEEK_KEY) throw new Error("DEEPSEEK_API_KEY not configured");
 
-  const prompt = `You are a helpful e-commerce data extractor. Analyze the product page content provided as Markdown. Extract the following fields and return a single JSON object with these exact keys. Use null for any missing value. Do not include any text outside the JSON.
+  const prompt = `You are a precise e-commerce data extractor. Analyze the product page content provided as Markdown. Extract the following fields and return a single JSON object with these exact keys. Use null for any missing value. Do not include any text outside the JSON.
 
 Fields to extract:
 - title: Full product name.
-- price: The current selling price as a number (without currency symbols or commas). Use '.' as decimal separator. If multiple prices are shown, pick the main/default one.
-- currency: The ISO 4217 currency code (like USD, EUR, CNY, GBP, BYN, RUB).
+- price: The current selling price as a number (without currency symbols or commas). Use '.' as decimal separator. Do not convert the price to another currency. Use exactly the numeric value shown on the page. If multiple prices are displayed, pick the main/default one.
+- currency: The currency code or symbol that appears next to the price (e.g., USD, EUR, CNY, GBP, BYN, RUB, $, €, ¥). If the page shows both a symbol and a code, prefer the ISO code (e.g., USD instead of $). If you cannot determine it, return null.
 - category: The product category in Russian, chosen from: "Обувь", "Одежда", "Аксессуары". Determine by product name, description, or breadcrumbs. If none matches, return null.
 - description: A short description (1-2 sentences) in Russian summarizing the product.
 - color: The main color(s) in Russian, e.g. "Черный/Белый".
@@ -106,47 +106,36 @@ ${markdown.substring(0, 8000)}`;
     const parsed = parseAssistantJson(dsData.choices[0].message.content) as Record<string, unknown>;
 
     let finalPrice: number | null = null;
-    if (typeof parsed.price === "number" && Number.isFinite(parsed.price) && parsed.price > 0) {
+    if (typeof parsed.price === "number" && !isNaN(parsed.price) && parsed.price > 0) {
       finalPrice = parsed.price;
     } else if (parsed.price != null && String(parsed.price).trim() !== "") {
       const n = parseFloat(
         String(parsed.price).replace(/\s/g, "").replace(/,/g, "."),
       );
-      if (Number.isFinite(n) && n > 0) finalPrice = n;
+      if (!isNaN(n) && n > 0) finalPrice = n;
     }
 
-    let finalCurrency: string | null =
-      parsed.currency != null && String(parsed.currency).trim() !== ""
-        ? String(parsed.currency).trim()
-        : null;
-
-    if (finalCurrency) {
-      const fc = finalCurrency;
-      if (["RUB", "руб", "RUR"].includes(fc)) finalCurrency = "RUB";
-      else if (["USD", "$"].includes(fc)) finalCurrency = "USD";
-      else if (["EUR", "€"].includes(fc)) finalCurrency = "EUR";
-      else if (["CNY", "¥"].includes(fc)) finalCurrency = "CNY";
-      else if (["BYN", "бел.руб"].includes(fc)) finalCurrency = "BYN";
-      else {
-        const u = fc.toUpperCase();
-        if (u === "RUB" || u === "RUR") finalCurrency = "RUB";
-        else if (u === "USD") finalCurrency = "USD";
-        else if (u === "EUR") finalCurrency = "EUR";
-        else if (u === "CNY") finalCurrency = "CNY";
-        else if (u === "GBP") finalCurrency = "GBP";
-        else if (u === "BYN") finalCurrency = "BYN";
-      }
+    let finalCurrency: string | null = null;
+    if (typeof parsed.currency === "string" && parsed.currency.length > 0) {
+      const rawCurrency = parsed.currency.toUpperCase();
+      if (rawCurrency === "$" || rawCurrency === "USD") finalCurrency = "USD";
+      else if (rawCurrency === "€" || rawCurrency === "EUR") finalCurrency = "EUR";
+      else if (rawCurrency === "¥" || rawCurrency === "CNY" || rawCurrency === "RMB") finalCurrency = "CNY";
+      else if (rawCurrency === "£" || rawCurrency === "GBP") finalCurrency = "GBP";
+      else if (rawCurrency === "₽" || rawCurrency === "RUB" || rawCurrency === "RUR") finalCurrency = "RUB";
+      else if (rawCurrency === "BYN" || rawCurrency === "BYR") finalCurrency = "BYN";
+      else finalCurrency = rawCurrency;
     }
 
     if (!finalCurrency) {
-      const currencyMatch = markdown.match(/(USD|EUR|CNY|GBP|BYN|RUB|\$|€|¥|руб)/i);
+      const currencyMatch = markdown.match(/(USD|EUR|CNY|GBP|BYN|RUB|\$|€|¥|₽)/i);
       if (currencyMatch) {
-        const sym = currencyMatch[1];
-        if (/^руб$/i.test(sym)) finalCurrency = "RUB";
-        else if (sym === "$") finalCurrency = "USD";
-        else if (sym === "€") finalCurrency = "EUR";
-        else if (sym === "¥") finalCurrency = "CNY";
-        else finalCurrency = sym.toUpperCase();
+        const found = currencyMatch[1].toUpperCase();
+        if (found === "$") finalCurrency = "USD";
+        else if (found === "€") finalCurrency = "EUR";
+        else if (found === "¥") finalCurrency = "CNY";
+        else if (found === "₽") finalCurrency = "RUB";
+        else finalCurrency = found;
       }
     }
 
@@ -170,7 +159,7 @@ ${markdown.substring(0, 8000)}`;
     };
   } catch {
     const titleMatch = markdown.match(/^#\s(.+)$/m);
-    const priceMatch = markdown.match(/(\d+[\.,]\d{1,2})\s?(USD|EUR|CNY|BYN|RUB|\$|€|¥|руб)/i);
+    const priceMatch = markdown.match(/(\d+[\.,]\d{1,2})\s?(USD|EUR|CNY|GBP|BYN|RUB|\$|€|¥|₽|£|руб)/i);
     let price: number | null = null;
     let currency: string | null = null;
     if (priceMatch) {
@@ -180,6 +169,8 @@ ${markdown.substring(0, 8000)}`;
       else if (sym === "$") currency = "USD";
       else if (sym === "€") currency = "EUR";
       else if (sym === "¥") currency = "CNY";
+      else if (sym === "₽") currency = "RUB";
+      else if (sym === "£") currency = "GBP";
       else currency = sym.toUpperCase();
     }
     return {
