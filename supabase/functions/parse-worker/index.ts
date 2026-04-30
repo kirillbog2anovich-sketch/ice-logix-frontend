@@ -68,18 +68,18 @@ async function extractData(
 }> {
   if (!DEEPSEEK_KEY) throw new Error("DEEPSEEK_API_KEY not configured");
 
-  const prompt = `You are a precise e-commerce data extractor. Analyze the product page content provided in Markdown and extract the following fields. Return ONLY a valid JSON object with these exact keys. If a value is not found, use null for strings/numbers.
+  const prompt = `You are a helpful e-commerce data extractor. Analyze the product page content provided as Markdown. Extract the following fields and return a single JSON object with these exact keys. Use null for any missing value. Do not include any text outside the JSON.
 
-Fields:
-- title: Full product name. (string | null)
-- price: Current selling price as a number WITHOUT currency symbols or thousands separators. Use '.' as decimal. (number | null)
-- currency: ISO 4217 code (USD, EUR, CNY, GBP, BYN, RUB). (string | null)
-- category: Product category in Russian, chosen from: "Обувь", "Одежда", "Аксессуары". Determine by product name and description. If unclear, null.
-- description: Concise description (1-2 sentences) in Russian. (string | null)
-- color: Main color(s) in Russian, e.g., "Черный/Белый". (string | null)
-- brand: Manufacturer brand name, e.g., "Nike", "Adidas". (string | null)
+Fields to extract:
+- title: Full product name.
+- price: The current selling price as a number (without currency symbols or commas). Use '.' as decimal separator. If multiple prices are shown, pick the main/default one.
+- currency: The ISO 4217 currency code (like USD, EUR, CNY, GBP, BYN, RUB).
+- category: The product category in Russian, chosen from: "Обувь", "Одежда", "Аксессуары". Determine by product name, description, or breadcrumbs. If none matches, return null.
+- description: A short description (1-2 sentences) in Russian summarizing the product.
+- color: The main color(s) in Russian, e.g. "Черный/Белый".
+- brand: The manufacturer brand name, e.g. "Nike", "Adidas".
 
-Markdown:
+Markdown content:
 ${markdown.substring(0, 8000)}`;
 
   const dsRes = await fetch("https://api.deepseek.com/v1/chat/completions", {
