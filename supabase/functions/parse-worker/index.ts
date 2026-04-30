@@ -5,15 +5,31 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// --- API Ключи из Secrets ---
+// --- API Ключи ---
 const FIRECRAWL_KEY = Deno.env.get("FIRECRAWL_API_KEY") || "";
 const DEEPSEEK_KEY = Deno.env.get("DEEPSEEK_API_KEY") || "";
+const CRAWLBASE_JS_TOKEN = Deno.env.get("CRAWLBASE_JS_TOKEN") || "";
+
+// --- Список китайских доменов ---
+const CHINESE_DOMAINS = [
+  "poizon.com", "dewu.com", "taobao.com", "tmall.com",
+  "1688.com", "jd.com", "vip.com", "mogujie.com",
+  "yougou.com", "yohobuy.com", "secoo.com",
+];
+
+function isChineseUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return CHINESE_DOMAINS.some((domain) => hostname.includes(domain));
+  } catch {
+    return false;
+  }
+}
 
 function marketplaceFromUrl(url: string): string | null {
   try {
     const hostname = new URL(url).hostname.replace(/^www\./, "");
-    const first = hostname.split(".")[0];
-    return first || null;
+    return hostname.split(".")[0] || null;
   } catch {
     return null;
   }
@@ -27,7 +43,23 @@ function parseAssistantJson(content: string): unknown {
   return JSON.parse(raw);
 }
 
-// --- Шаг 1: Получение чистого Markdown через Firecrawl ---
+// --- Шаг 1a: Crawlbase (для китайских сайтов) ---
+async function fetchViaCrawlbase(url: string): Promise<string> {
+  if (!CRAWLBASE_JS_TOKEN) throw new Error("CRAWLBASE_JS_TOKEN not configured");
+
+  const crawlbaseUrl =
+    `https://api.crawlbase.com/?token=${CRAWLBASE_JS_TOKEN}&url=${encodeURIComponent(url)}`;
+  const res = await fetch(crawlbaseUrl);
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Crawlbase error: ${res.status} ${errText}`);
+  }
+
+  return await res.text();
+}
+
+// --- Шаг 1b: Firecrawl (основной / fallback) ---
 async function fetchMarkdown(url: string): Promise<string> {
   if (!FIRECRAWL_KEY) throw new Error("FIRECRAWL_API_KEY not configured");
 
@@ -37,10 +69,7 @@ async function fetchMarkdown(url: string): Promise<string> {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${FIRECRAWL_KEY}`,
     },
-    body: JSON.stringify({
-      url: url,
-      formats: ["markdown"],
-    }),
+    body: JSON.stringify({ url, formats: ["markdown"] }),
   });
 
   if (!res.ok) {
@@ -54,7 +83,7 @@ async function fetchMarkdown(url: string): Promise<string> {
 
 // --- Шаг 2: Извлечение данных с помощью DeepSeek ---
 async function extractData(
-  markdown: string,
+  content: string,
   url: string,
 ): Promise<{
   title: string | null;
@@ -68,7 +97,11 @@ async function extractData(
 }> {
   if (!DEEPSEEK_KEY) throw new Error("DEEPSEEK_API_KEY not configured");
 
-  const prompt = `You are a precise e-commerce data extractor. Analyze the product page content provided as Markdown. Extract the following fields and return a single JSON object with these exact keys. Use null for any missing value. Do not include any text outside the JSON.
+  const isHtml = content.trimStart().startsWith("<");
+  const contentType = isHtml ? "HTML" : "Markdown";
+
+  const prompt =
+    `You are a precise e-commerce data extractor. You are analyzing a product page in ${contentType} format. Extract the following fields and return a single JSON object with these exact keys. Use null for any missing value. Do not include any text outside the JSON.
 
 Fields to extract:
 - title: Full product name.
@@ -79,8 +112,8 @@ Fields to extract:
 - color: The main color(s) in Russian, e.g. "Черный/Белый".
 - brand: The manufacturer brand name, e.g. "Nike", "Adidas".
 
-Markdown content:
-${markdown.substring(0, 8000)}`;
+${contentType} content:
+${content.substring(0, 8000)}`;
 
   const dsRes = await fetch("https://api.deepseek.com/v1/chat/completions", {
     method: "POST",
@@ -103,8 +136,11 @@ ${markdown.substring(0, 8000)}`;
   const marketplace = marketplaceFromUrl(url);
 
   try {
-    const parsed = parseAssistantJson(dsData.choices[0].message.content) as Record<string, unknown>;
+    const parsed = parseAssistantJson(
+      dsData.choices[0].message.content,
+    ) as Record<string, unknown>;
 
+    // --- Цена ---
     let finalPrice: number | null = null;
     if (typeof parsed.price === "number" && !isNaN(parsed.price) && parsed.price > 0) {
       finalPrice = parsed.price;
@@ -115,6 +151,7 @@ ${markdown.substring(0, 8000)}`;
       if (!isNaN(n) && n > 0) finalPrice = n;
     }
 
+    // --- Валюта ---
     let finalCurrency: string | null = null;
     if (typeof parsed.currency === "string" && parsed.currency.length > 0) {
       const rawCurrency = parsed.currency.toUpperCase();
@@ -127,8 +164,9 @@ ${markdown.substring(0, 8000)}`;
       else finalCurrency = rawCurrency;
     }
 
+    // Fallback: ищем валюту в тексте контента
     if (!finalCurrency) {
-      const currencyMatch = markdown.match(/(USD|EUR|CNY|GBP|BYN|RUB|\$|€|¥|₽)/i);
+      const currencyMatch = content.match(/(USD|EUR|CNY|GBP|BYN|RUB|\$|€|¥|₽)/i);
       if (currencyMatch) {
         const found = currencyMatch[1].toUpperCase();
         if (found === "$") finalCurrency = "USD";
@@ -144,7 +182,9 @@ ${markdown.substring(0, 8000)}`;
       : null;
 
     return {
-      title: parsed.title != null && String(parsed.title).trim() !== "" ? String(parsed.title).trim() : null,
+      title: parsed.title != null && String(parsed.title).trim() !== ""
+        ? String(parsed.title).trim()
+        : null,
       price: finalPrice,
       currency: finalCurrency,
       category: parsed.category != null && String(parsed.category).trim() !== ""
@@ -153,13 +193,18 @@ ${markdown.substring(0, 8000)}`;
       description: parsed.description != null && String(parsed.description).trim() !== ""
         ? String(parsed.description).trim()
         : null,
-      color: parsed.color != null && String(parsed.color).trim() !== "" ? String(parsed.color).trim() : null,
+      color: parsed.color != null && String(parsed.color).trim() !== ""
+        ? String(parsed.color).trim()
+        : null,
       brand,
       marketplace,
     };
   } catch {
-    const titleMatch = markdown.match(/^#\s(.+)$/m);
-    const priceMatch = markdown.match(/(\d+[\.,]\d{1,2})\s?(USD|EUR|CNY|GBP|BYN|RUB|\$|€|¥|₽|£|руб)/i);
+    // Fallback regex (работает и для HTML, и для Markdown)
+    const titleMatch = content.match(/^#\s(.+)$/m);
+    const priceMatch = content.match(
+      /(\d+[\.,]\d{1,2})\s?(USD|EUR|CNY|GBP|BYN|RUB|\$|€|¥|₽|£|руб)/i,
+    );
     let price: number | null = null;
     let currency: string | null = null;
     if (priceMatch) {
@@ -198,44 +243,43 @@ Deno.serve(async (req) => {
 
     if (!id || !url) throw new Error("Missing id or url");
 
-    let title: string | null = null;
-    let finalPrice: number | null = null;
-    let finalCurrency: string | null = null;
-    let category: string | null = null;
-    let description: string | null = null;
-    let color: string | null = null;
-    let brand: string | null = null;
-    let marketplace: string | null = null;
+    let content: string | null = null;
 
-    const markdown = await fetchMarkdown(url);
-    log(`Markdown length: ${markdown.length}`);
+    // Для китайских сайтов — сначала Crawlbase (JS-рендеринг)
+    if (isChineseUrl(url) && CRAWLBASE_JS_TOKEN) {
+      try {
+        content = await fetchViaCrawlbase(url);
+        log(`Crawlbase success, HTML length: ${content.length}`);
+      } catch (crawlErr) {
+        const crawlMsg = crawlErr instanceof Error ? crawlErr.message : String(crawlErr);
+        log(`Crawlbase failed: ${crawlMsg}, falling back to Firecrawl`);
+      }
+    }
 
-    const extracted = await extractData(markdown, url);
-    title = extracted.title;
-    finalPrice = extracted.price;
-    finalCurrency = extracted.currency;
-    category = extracted.category;
-    description = extracted.description;
-    color = extracted.color;
-    brand = extracted.brand;
-    marketplace = extracted.marketplace;
+    // Fallback (и для всех не-китайских) — Firecrawl
+    if (!content) {
+      content = await fetchMarkdown(url);
+      log(`Firecrawl success, Markdown length: ${content.length}`);
+    }
+
+    const extracted = await extractData(content, url);
 
     log(
-      `Result: title=${title}, price=${finalPrice} ${finalCurrency}, category=${category}, brand=${brand}, mp=${marketplace}, desc=${description?.slice(0, 40)}, color=${color}`,
+      `Result: title=${extracted.title}, price=${extracted.price} ${extracted.currency}, category=${extracted.category}, brand=${extracted.brand}, mp=${extracted.marketplace}`,
     );
 
     const { error: updateErr } = await supabase
       .from("parse_queue")
       .update({
         status: "done",
-        price: finalPrice,
-        title,
-        currency: finalCurrency,
-        category,
-        description,
-        color,
-        brand,
-        marketplace_name: marketplace,
+        price: extracted.price,
+        title: extracted.title,
+        currency: extracted.currency,
+        category: extracted.category,
+        description: extracted.description,
+        color: extracted.color,
+        brand: extracted.brand,
+        marketplace_name: extracted.marketplace,
       })
       .eq("id", id);
 
