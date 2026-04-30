@@ -573,6 +573,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <button id="analyzeLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
           </div>
           <div id="parsedProductTitle" class="text-cyan-400 text-xs mb-1 hidden"></div>
+          <div id="parsedProductBrand" class="text-white/70 text-xs mb-1 hidden"></div>
+          <div id="parsedProductMarketplace" class="text-white/50 text-xs mb-1 hidden"></div>
           <div id="parsedProductDesc" class="text-white/70 text-xs mb-2 hidden"></div>
           <div id="parsedProductColor" class="text-white/50 text-sm mb-3 hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Цена (<span id="calcPriceCurrency">¥</span>)</label>
@@ -778,7 +780,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           await new Promise(r => setTimeout(r, 2000));
           const { data: checkData } = await supabaseClient
             .from('parse_queue')
-            .select('status, price, title, weight_kg, currency, category, description, color, error_message')
+            .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message')
             .eq('id', taskId)
             .single();
 
@@ -790,28 +792,37 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 
         if (!result) throw new Error('Таймаут ожидания парсинга');
 
-        // Заполняем поля
-        if (result.price != null) document.getElementById('calcPrice').value = result.price;
+        const calcPriceEl = document.getElementById('calcPrice');
+        if (calcPriceEl) {
+          if (result.price != null && result.price !== '' && Number(result.price) > 0) {
+            calcPriceEl.value = result.price;
+          } else {
+            calcPriceEl.value = '';
+          }
+        }
         if (result.weight_kg != null) {
           const slider = document.getElementById('calcWeight');
           const valSpan = document.getElementById('weightVal');
-          slider.value = result.weight_kg;
+          if (slider) slider.value = result.weight_kg;
           if (valSpan) valSpan.innerText = parseFloat(result.weight_kg).toFixed(1) + ' кг';
         }
-        // Заполняем валюту
         if (result.currency) {
           const currencySelect = document.getElementById('calcCurrency');
-          if (currencySelect) currencySelect.value = result.currency;
+          if (currencySelect) {
+            const option = Array.from(currencySelect.options).find(opt => opt.value === result.currency);
+            if (option) currencySelect.value = result.currency;
+          }
         }
-        // Заполняем категорию, если она определилась
         if (result.category) {
           const categorySelect = document.getElementById('calcCategory');
           if (categorySelect) {
-            categorySelect.value = result.category;
-            categorySelect.dispatchEvent(new Event('change'));
+            const option = Array.from(categorySelect.options).find(opt => opt.value === result.category);
+            if (option) {
+              categorySelect.value = result.category;
+              categorySelect.dispatchEvent(new Event('change'));
+            }
           }
         }
-        // Валюта в лейбле цены
         const currencySymbols = { GBP: '£', USD: '$', EUR: '€', CNY: '¥', RUB: '₽', BYN: 'Br' };
         const currLabel = document.getElementById('calcPriceCurrency');
         if (currLabel) {
@@ -827,8 +838,24 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             titleDiv.classList.add('hidden');
           }
         }
-
-        // Описание
+        const brandDiv = document.getElementById('parsedProductBrand');
+        if (brandDiv) {
+          if (result.brand) {
+            brandDiv.innerText = '🏷️ ' + result.brand;
+            brandDiv.classList.remove('hidden');
+          } else {
+            brandDiv.classList.add('hidden');
+          }
+        }
+        const marketplaceDiv = document.getElementById('parsedProductMarketplace');
+        if (marketplaceDiv) {
+          if (result.marketplace_name) {
+            marketplaceDiv.innerText = '🛒 ' + result.marketplace_name;
+            marketplaceDiv.classList.remove('hidden');
+          } else {
+            marketplaceDiv.classList.add('hidden');
+          }
+        }
         const descDiv = document.getElementById('parsedProductDesc');
         if (descDiv) {
           if (result.description) {
@@ -838,8 +865,6 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             descDiv.classList.add('hidden');
           }
         }
-
-        // Цвет
         const colorDiv = document.getElementById('parsedProductColor');
         if (colorDiv) {
           if (result.color) {
@@ -873,6 +898,10 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         if (errDescDiv) errDescDiv.classList.add('hidden');
         const errColorDiv = document.getElementById('parsedProductColor');
         if (errColorDiv) errColorDiv.classList.add('hidden');
+        const errBrandDiv = document.getElementById('parsedProductBrand');
+        if (errBrandDiv) errBrandDiv.classList.add('hidden');
+        const errMpDiv = document.getElementById('parsedProductMarketplace');
+        if (errMpDiv) errMpDiv.classList.add('hidden');
       } finally {
         analyzeBtn.innerText = originalText;
         analyzeBtn.disabled = false;
@@ -915,6 +944,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <button id="analyzeOrderLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
           </div>
           <div id="parsedOrderTitle" class="text-cyan-400 text-xs mb-1 hidden"></div>
+          <div id="parsedOrderBrand" class="text-white/70 text-xs mb-1 hidden"></div>
+          <div id="parsedOrderMarketplace" class="text-white/50 text-xs mb-1 hidden"></div>
           <div id="parsedOrderDesc" class="text-white/70 text-xs mb-2 hidden"></div>
           <div id="parsedOrderColor" class="text-white/50 text-sm mb-3 hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Цена (<span id="orderPriceCurrency">¥</span>)</label>
@@ -1219,7 +1250,7 @@ if (createBtn) {
               await new Promise(r => setTimeout(r, 2000));
               const { data: checkData } = await supabaseClient
                 .from('parse_queue')
-                .select('status, price, title, weight_kg, currency, category, description, color, error_message')
+                .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message')
                 .eq('id', taskId)
                 .single();
 
@@ -1231,29 +1262,35 @@ if (createBtn) {
 
             if (!result) throw new Error('Таймаут ожидания парсинга');
 
-            // Заполняем поля
-            if (result.price != null) {
-              const priceEl = document.getElementById('orderPrice');
-              if (priceEl) priceEl.value = result.price;
+            const orderPriceEl = document.getElementById('orderPrice');
+            if (orderPriceEl) {
+              if (result.price != null && result.price !== '' && Number(result.price) > 0) {
+                orderPriceEl.value = result.price;
+              } else {
+                orderPriceEl.value = '';
+              }
             }
             if (result.weight_kg != null) {
               const weightEl = document.getElementById('orderWeight');
               if (weightEl) weightEl.value = result.weight_kg;
             }
-            // Заполняем валюту
             if (result.currency) {
               const currencySelect = document.getElementById('orderCurrency');
-              if (currencySelect) currencySelect.value = result.currency;
+              if (currencySelect) {
+                const option = Array.from(currencySelect.options).find(opt => opt.value === result.currency);
+                if (option) currencySelect.value = result.currency;
+              }
             }
-            // Заполняем категорию, если она определилась
             if (result.category) {
               const categorySelect = document.getElementById('orderCategory');
               if (categorySelect) {
-                categorySelect.value = result.category;
-                categorySelect.dispatchEvent(new Event('change'));
+                const option = Array.from(categorySelect.options).find(opt => opt.value === result.category);
+                if (option) {
+                  categorySelect.value = result.category;
+                  categorySelect.dispatchEvent(new Event('change'));
+                }
               }
             }
-            // Валюта в лейбле цены
             const currencySymbols = { GBP: '£', USD: '$', EUR: '€', CNY: '¥', RUB: '₽', BYN: 'Br' };
             const currLabel = document.getElementById('orderPriceCurrency');
             if (currLabel) {
@@ -1269,7 +1306,24 @@ if (createBtn) {
                 titleDiv.classList.add('hidden');
               }
             }
-
+            const orderBrandDiv = document.getElementById('parsedOrderBrand');
+            if (orderBrandDiv) {
+              if (result.brand) {
+                orderBrandDiv.innerText = '🏷️ ' + result.brand;
+                orderBrandDiv.classList.remove('hidden');
+              } else {
+                orderBrandDiv.classList.add('hidden');
+              }
+            }
+            const orderMarketplaceDiv = document.getElementById('parsedOrderMarketplace');
+            if (orderMarketplaceDiv) {
+              if (result.marketplace_name) {
+                orderMarketplaceDiv.innerText = '🛒 ' + result.marketplace_name;
+                orderMarketplaceDiv.classList.remove('hidden');
+              } else {
+                orderMarketplaceDiv.classList.add('hidden');
+              }
+            }
             const orderDescDiv = document.getElementById('parsedOrderDesc');
             if (orderDescDiv) {
               if (result.description) {
@@ -1279,7 +1333,6 @@ if (createBtn) {
                 orderDescDiv.classList.add('hidden');
               }
             }
-
             const orderColorDiv = document.getElementById('parsedOrderColor');
             if (orderColorDiv) {
               if (result.color) {
@@ -1316,6 +1369,10 @@ if (createBtn) {
             if (errOrderDescDiv) errOrderDescDiv.classList.add('hidden');
             const errOrderColorDiv = document.getElementById('parsedOrderColor');
             if (errOrderColorDiv) errOrderColorDiv.classList.add('hidden');
+            const errOrderBrandDiv = document.getElementById('parsedOrderBrand');
+            if (errOrderBrandDiv) errOrderBrandDiv.classList.add('hidden');
+            const errOrderMpDiv = document.getElementById('parsedOrderMarketplace');
+            if (errOrderMpDiv) errOrderMpDiv.classList.add('hidden');
           } finally {
             analyzeOrderBtn.innerText = originalText;
             analyzeOrderBtn.disabled = false;
