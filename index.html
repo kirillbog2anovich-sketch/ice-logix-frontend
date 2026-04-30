@@ -572,7 +572,9 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <input type="text" id="calcUrl" class="flex-1 min-w-[200px] p-3 rounded-xl bg-white/20 border border-white/30" placeholder="https://poizon.com/...">
             <button id="analyzeLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
           </div>
-          <div id="parsedProductTitle" class="text-cyan-400 text-xs mb-3 hidden"></div>
+          <div id="parsedProductTitle" class="text-cyan-400 text-xs mb-1 hidden"></div>
+          <div id="parsedProductDesc" class="text-white/70 text-xs mb-2 hidden"></div>
+          <div id="parsedProductColor" class="text-white/50 text-sm mb-3 hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Цена (<span id="calcPriceCurrency">¥</span>)</label>
           <input type="number" id="calcPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="0">
           <label class="text-white/70 text-sm block mt-2">Валюта</label>
@@ -776,7 +778,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           await new Promise(r => setTimeout(r, 2000));
           const { data: checkData } = await supabaseClient
             .from('parse_queue')
-            .select('status, price, title, weight_kg, currency, category, error_message')
+            .select('status, price, title, weight_kg, currency, category, description, color, error_message')
             .eq('id', taskId)
             .single();
 
@@ -818,8 +820,34 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         const titleDiv = document.getElementById('parsedProductTitle');
         if (titleDiv) {
           titleDiv.style.color = '';
-          titleDiv.innerText = result.title ? '📦 ' + result.title : '✅ Данные получены';
-          titleDiv.classList.remove('hidden');
+          if (result.title) {
+            titleDiv.innerText = '📦 ' + result.title;
+            titleDiv.classList.remove('hidden');
+          } else {
+            titleDiv.classList.add('hidden');
+          }
+        }
+
+        // Описание
+        const descDiv = document.getElementById('parsedProductDesc');
+        if (descDiv) {
+          if (result.description) {
+            descDiv.innerText = result.description;
+            descDiv.classList.remove('hidden');
+          } else {
+            descDiv.classList.add('hidden');
+          }
+        }
+
+        // Цвет
+        const colorDiv = document.getElementById('parsedProductColor');
+        if (colorDiv) {
+          if (result.color) {
+            colorDiv.innerText = '🎨 ' + result.color;
+            colorDiv.classList.remove('hidden');
+          } else {
+            colorDiv.classList.add('hidden');
+          }
         }
 
         // Лимиты
@@ -841,6 +869,10 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           titleDiv.innerText = '❌ ' + err.message;
           titleDiv.classList.remove('hidden');
         }
+        const errDescDiv = document.getElementById('parsedProductDesc');
+        if (errDescDiv) errDescDiv.classList.add('hidden');
+        const errColorDiv = document.getElementById('parsedProductColor');
+        if (errColorDiv) errColorDiv.classList.add('hidden');
       } finally {
         analyzeBtn.innerText = originalText;
         analyzeBtn.disabled = false;
@@ -857,7 +889,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 
     // ==================== РЕНДЕР НОВОГО ЗАКАЗА (С ПРОМОКОДАМИ) ====================
     async function renderNewOrder() {
-      const d = window.tempOrder || { url: '', price: placeholder="0", weight: placeholder="0", total: 0, discountAmount: 0, appliedPromo: null };
+      const d = window.tempOrder || { url: '', price: 0, weight: 0, total: 0, discountAmount: 0, appliedPromo: null };
       const finalTotal = d.total - (d.discountAmount || 0);
       return `
       ${window.tempOrder?.items ? `
@@ -882,7 +914,9 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <input type="text" id="orderUrl" class="flex-1 min-w-[200px] p-3 rounded-xl bg-white/20 border border-white/30" value="${d.url}" placeholder="https://...">
             <button id="analyzeOrderLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
           </div>
-          <div id="parsedOrderTitle" class="text-cyan-400 text-xs mb-3 hidden"></div>
+          <div id="parsedOrderTitle" class="text-cyan-400 text-xs mb-1 hidden"></div>
+          <div id="parsedOrderDesc" class="text-white/70 text-xs mb-2 hidden"></div>
+          <div id="parsedOrderColor" class="text-white/50 text-sm mb-3 hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Цена (<span id="orderPriceCurrency">¥</span>)</label>
           <input type="number" id="orderPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="0">
           <label class="text-white/70 text-sm block mt-2">Валюта</label>
@@ -1185,7 +1219,7 @@ if (createBtn) {
               await new Promise(r => setTimeout(r, 2000));
               const { data: checkData } = await supabaseClient
                 .from('parse_queue')
-                .select('status, price, title, weight_kg, currency, category, error_message')
+                .select('status, price, title, weight_kg, currency, category, description, color, error_message')
                 .eq('id', taskId)
                 .single();
 
@@ -1228,8 +1262,32 @@ if (createBtn) {
             const titleDiv = document.getElementById('parsedOrderTitle');
             if (titleDiv) {
               titleDiv.style.color = '';
-              titleDiv.innerText = result.title ? '📦 ' + result.title : '✅ Данные получены';
-              titleDiv.classList.remove('hidden');
+              if (result.title) {
+                titleDiv.innerText = '📦 ' + result.title;
+                titleDiv.classList.remove('hidden');
+              } else {
+                titleDiv.classList.add('hidden');
+              }
+            }
+
+            const orderDescDiv = document.getElementById('parsedOrderDesc');
+            if (orderDescDiv) {
+              if (result.description) {
+                orderDescDiv.innerText = result.description;
+                orderDescDiv.classList.remove('hidden');
+              } else {
+                orderDescDiv.classList.add('hidden');
+              }
+            }
+
+            const orderColorDiv = document.getElementById('parsedOrderColor');
+            if (orderColorDiv) {
+              if (result.color) {
+                orderColorDiv.innerText = '🎨 ' + result.color;
+                orderColorDiv.classList.remove('hidden');
+              } else {
+                orderColorDiv.classList.add('hidden');
+              }
             }
 
             // Пересчитываем итоговую сумму
@@ -1254,6 +1312,10 @@ if (createBtn) {
               titleDiv.innerText = '❌ ' + err.message;
               titleDiv.classList.remove('hidden');
             }
+            const errOrderDescDiv = document.getElementById('parsedOrderDesc');
+            if (errOrderDescDiv) errOrderDescDiv.classList.add('hidden');
+            const errOrderColorDiv = document.getElementById('parsedOrderColor');
+            if (errOrderColorDiv) errOrderColorDiv.classList.add('hidden');
           } finally {
             analyzeOrderBtn.innerText = originalText;
             analyzeOrderBtn.disabled = false;
