@@ -104,6 +104,13 @@
     html.light .border-white\/10, html.light .border-white\/20, html.light .border-white\/30 { border-color: rgba(0,0,0,0.12) !important; }
     html.light .product-card { background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); }
     html.light .bg-slate-900 { background: #f8fafc !important; }
+    .screenshot-widget { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; padding: 16px; margin: 8px 0; }
+    .screenshot-upload-zone { border: 2px dashed #475569; border-radius: 8px; padding: 24px 16px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+    .screenshot-upload-zone:hover, .screenshot-upload-zone.drag-over { border-color: #3b82f6; background: rgba(59,130,246,0.1); }
+    .screenshot-upload-zone.has-file { border-style: solid; border-color: #10b981; }
+    .screenshot-preview { max-width: 200px; max-height: 200px; border-radius: 4px; margin: 12px auto; display: block; }
+    .screenshot-actions { display: flex; gap: 10px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+    .confidence-low { background: rgba(245,158,11,0.18); border: 1px solid #f59e0b; border-radius: 6px; padding: 8px 12px; margin: 8px 0; font-size: 13px; color: #fcd34d; }
   </style>
 </head>
 <body>
@@ -222,6 +229,181 @@ const MAX_REQUESTS_TRUSTED = 100;
         const host = new URL(url).hostname.toLowerCase();
         return HARD_DOMAINS.some(d => host.includes(d));
       } catch { return false; }
+    }
+
+    async function getScreenshotUrl(path) {
+      const { data, error } = await supabaseClient.storage
+        .from('product-screenshots')
+        .createSignedUrl(path, 600);
+      if (error || !data?.signedUrl) return null;
+      return data.signedUrl;
+    }
+
+    async function processScreenshot(taskId, file) {
+      let sessionId = localStorage.getItem('icelogix_session_id');
+      if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        localStorage.setItem('icelogix_session_id', sessionId);
+      }
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+      const path = `${sessionId}/${Date.now()}_${safeName}`;
+      const { error: uploadErr } = await supabaseClient.storage
+        .from('product-screenshots')
+        .upload(path, file, { contentType: file.type, upsert: false });
+      if (uploadErr) throw new Error(`Не удалось загрузить файл: ${uploadErr.message}`);
+      const { data, error } = await supabaseClient.functions.invoke('parse-screenshot', {
+        body: { jobId: taskId, screenshotPath: path },
+      });
+      if (error) throw new Error(`Ошибка распознавания: ${error.message}`);
+      return data;
+    }
+
+    function applyScreenshotResult(data, context) {
+      const currencySymbols = { GBP: '£', USD: '$', EUR: '€', CNY: '¥', RUB: '₽', BYN: 'Br' };
+      if (context === 'calc') {
+        if (data.price != null && Number(data.price) > 0) {
+          const el = document.getElementById('calcPrice');
+          if (el) el.value = data.price;
+        }
+        if (data.currency) {
+          const sel = document.getElementById('calcCurrency');
+          if (sel) { const opt = Array.from(sel.options).find(o => o.value === data.currency); if (opt) sel.value = data.currency; }
+          const lbl = document.getElementById('calcPriceCurrency');
+          if (lbl) lbl.innerText = currencySymbols[data.currency] || data.currency;
+        }
+        const titleDiv = document.getElementById('parsedProductTitle');
+        if (titleDiv && data.title) {
+          titleDiv.style.color = '';
+          titleDiv.innerText = '📦 ' + data.title;
+          titleDiv.classList.remove('hidden');
+        }
+      } else {
+        if (data.price != null && Number(data.price) > 0) {
+          const el = document.getElementById('orderPrice');
+          if (el) el.value = data.price;
+        }
+        if (data.currency) {
+          const sel = document.getElementById('orderCurrency');
+          if (sel) { const opt = Array.from(sel.options).find(o => o.value === data.currency); if (opt) sel.value = data.currency; }
+          const lbl = document.getElementById('orderPriceCurrency');
+          if (lbl) lbl.innerText = currencySymbols[data.currency] || data.currency;
+        }
+        const titleDiv = document.getElementById('parsedOrderTitle');
+        if (titleDiv && data.title) {
+          titleDiv.style.color = '';
+          titleDiv.innerText = '📦 ' + data.title;
+          titleDiv.classList.remove('hidden');
+        }
+        if (typeof update === 'function') update();
+      }
+    }
+
+    function showScreenshotWidget(taskId, checkData, context) {
+      const containerId = context === 'calc' ? 'calcScreenshotWidget' : 'orderScreenshotWidget';
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      const hint = checkData.error_message ||
+        'Эта площадка отдаёт данные товара только в приложении. Загрузите скриншот — мы извлечём название и цену автоматически.';
+
+      container.innerHTML = `
+        <div class="screenshot-widget">
+          <p style="color:rgba(255,255,255,0.9);font-size:13px;font-weight:600;margin-bottom:4px">⚠️ Не удалось автоматически распознать товар</p>
+          <p style="color:rgba(255,255,255,0.55);font-size:12px;margin-bottom:10px">${hint}</p>
+          <div class="screenshot-actions">
+            <button id="swUploadBtn" style="background:#3b82f6;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">📷 Загрузить скриншот</button>
+            <button id="swManualBtn" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">✍ Ввести вручную</button>
+          </div>
+          <div id="swUploadZone" style="display:none;margin-top:12px">
+            <div class="screenshot-upload-zone" id="swDropZone">
+              <div style="font-size:28px;margin-bottom:6px">📷</div>
+              <p style="color:rgba(255,255,255,0.8);font-size:13px;margin-bottom:4px">Перетащите файл или нажмите для выбора</p>
+              <p style="color:rgba(255,255,255,0.4);font-size:11px">Скриншот страницы товара из приложения.<br>Должны быть видны название и цена.<br>JPEG · PNG · WEBP · HEIC — до 10 МБ</p>
+              <input type="file" id="swFileInput" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" style="display:none">
+            </div>
+            <img id="swPreview" class="screenshot-preview" style="display:none" alt="preview">
+            <div id="swRecognizeWrap" style="display:none;text-align:center;margin-top:10px">
+              <button id="swRecognizeBtn" style="background:#06b6d4;color:#fff;border:none;border-radius:10px;padding:9px 22px;font-size:13px;font-weight:600;cursor:pointer">🔍 Распознать товар</button>
+            </div>
+            <div id="swStatus" style="display:none;font-size:12px;text-align:center;margin-top:8px"></div>
+          </div>
+        </div>`;
+      container.classList.remove('hidden');
+
+      let selectedFile = null;
+
+      const uploadBtn = document.getElementById('swUploadBtn');
+      const manualBtn = document.getElementById('swManualBtn');
+      const uploadZone = document.getElementById('swUploadZone');
+      const dropZone = document.getElementById('swDropZone');
+      const fileInput = document.getElementById('swFileInput');
+      const preview = document.getElementById('swPreview');
+      const recognizeWrap = document.getElementById('swRecognizeWrap');
+      const recognizeBtn = document.getElementById('swRecognizeBtn');
+      const statusEl = document.getElementById('swStatus');
+
+      uploadBtn.addEventListener('click', () => {
+        uploadZone.style.display = 'block';
+        uploadBtn.style.display = 'none';
+      });
+
+      manualBtn.addEventListener('click', () => {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+      });
+
+      dropZone.addEventListener('click', () => fileInput.click());
+
+      dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+      });
+
+      fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+      function handleFile(file) {
+        if (file.size > 10 * 1024 * 1024) { alert('Файл слишком большой. Максимум 10 МБ.'); return; }
+        selectedFile = file;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          preview.src = ev.target.result;
+          preview.style.display = 'block';
+          dropZone.classList.add('has-file');
+          recognizeWrap.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+
+      recognizeBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+        recognizeBtn.disabled = true;
+        recognizeBtn.innerText = '⏳ Распознаём…';
+        statusEl.style.display = 'none';
+        try {
+          const data = await processScreenshot(taskId, selectedFile);
+          if (data.status === 'done') {
+            applyScreenshotResult(data, context);
+            if (data.confidence === 'low') {
+              container.innerHTML = '<div class="confidence-low">⚠ Распознавание с низкой уверенностью, проверьте поля перед сохранением</div>';
+            } else {
+              container.innerHTML = '';
+              container.classList.add('hidden');
+            }
+          } else {
+            container.innerHTML = '<div class="screenshot-widget"><p style="color:rgba(255,255,255,0.8);font-size:13px">✍ Не удалось распознать на скриншоте — введите данные вручную</p></div>';
+          }
+        } catch (err) {
+          recognizeBtn.disabled = false;
+          recognizeBtn.innerText = '🔍 Распознать товар';
+          statusEl.style.display = 'block';
+          statusEl.style.color = '#f87171';
+          statusEl.innerText = '❌ ' + err.message;
+        }
+      });
     }
 
     async function checkAndUpdateLimit() {
@@ -589,6 +771,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <button id="analyzeLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
           </div>
           <div id="parsedProductTitle" class="text-cyan-400 text-xs mb-1 hidden"></div>
+          <div id="calcScreenshotWidget" class="hidden"></div>
           <div id="parsedProductBrand" class="text-white/70 text-xs mb-1 hidden"></div>
           <div id="parsedProductMarketplace" class="text-white/50 text-xs mb-1 hidden"></div>
           <div id="parsedProductDesc" class="text-white/70 text-xs mb-2 hidden"></div>
@@ -799,50 +982,28 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           await new Promise(r => setTimeout(r, 2000));
           const { data: checkData } = await supabaseClient
             .from('parse_queue')
-            .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message, parse_method')
+            .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message, parse_method, screenshot_path, image_url')
             .eq('id', taskId)
             .single();
 
           if (checkData?.status === 'done') { result = checkData; break; }
           if (checkData?.status === 'manual_required') {
             manualRequired = true;
-            const calcPriceEl = document.getElementById('calcPrice');
-            if (calcPriceEl && checkData.price != null && Number(checkData.price) > 0) {
-              calcPriceEl.value = checkData.price;
-            }
+            // Fill any partial data that came back
             if (checkData.weight_kg != null) {
               const slider = document.getElementById('calcWeight');
               const valSpan = document.getElementById('weightVal');
               if (slider) slider.value = checkData.weight_kg;
               if (valSpan) valSpan.innerText = parseFloat(checkData.weight_kg).toFixed(1) + ' кг';
             }
-            if (checkData.currency) {
-              const currencySelect = document.getElementById('calcCurrency');
-              if (currencySelect) {
-                const opt = Array.from(currencySelect.options).find(o => o.value === checkData.currency);
-                if (opt) currencySelect.value = checkData.currency;
-              }
-            }
             if (checkData.category) {
               const categorySelect = document.getElementById('calcCategory');
               if (categorySelect) {
                 const opt = Array.from(categorySelect.options).find(o => o.value === checkData.category);
-                if (opt) {
-                  categorySelect.value = checkData.category;
-                  categorySelect.dispatchEvent(new Event('change'));
-                }
+                if (opt) { categorySelect.value = checkData.category; categorySelect.dispatchEvent(new Event('change')); }
               }
             }
-            const titleDiv = document.getElementById('parsedProductTitle');
-            if (titleDiv && checkData.title) {
-              titleDiv.innerText = '📦 ' + checkData.title + ' (частично)';
-              titleDiv.classList.remove('hidden');
-            }
-            alert(
-              '⚠️ Эта площадка защищена от автоматического парсинга.\n' +
-              'Часть данных мы вытянули — пожалуйста, дозаполните цену и вес вручную.\n' +
-              (checkData.error_message ? `\nДетали: ${checkData.error_message}` : '')
-            );
+            showScreenshotWidget(taskId, checkData, 'calc');
             break;
           }
           if (checkData?.status === 'error') {
@@ -1005,6 +1166,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <button id="analyzeOrderLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
           </div>
           <div id="parsedOrderTitle" class="text-cyan-400 text-xs mb-1 hidden"></div>
+          <div id="orderScreenshotWidget" class="hidden"></div>
           <div id="parsedOrderBrand" class="text-white/70 text-xs mb-1 hidden"></div>
           <div id="parsedOrderMarketplace" class="text-white/50 text-xs mb-1 hidden"></div>
           <div id="parsedOrderDesc" class="text-white/70 text-xs mb-2 hidden"></div>
@@ -1314,27 +1476,22 @@ if (createBtn) {
               await new Promise(r => setTimeout(r, 2000));
               const { data: checkData } = await supabaseClient
                 .from('parse_queue')
-                .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message, parse_method')
+                .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message, parse_method, screenshot_path, image_url')
                 .eq('id', taskId)
                 .single();
 
               if (checkData?.status === 'done') { result = checkData; break; }
               if (checkData?.status === 'manual_required') {
                 manualRequired = true;
-                const orderPriceEl = document.getElementById('orderPrice');
-                if (orderPriceEl && checkData.price != null && Number(checkData.price) > 0) {
-                  orderPriceEl.value = checkData.price;
+                // Fill partial category/weight data if returned
+                if (checkData.category) {
+                  const categorySelect = document.getElementById('orderCategory');
+                  if (categorySelect) {
+                    const opt = Array.from(categorySelect.options).find(o => o.value === checkData.category);
+                    if (opt) { categorySelect.value = checkData.category; categorySelect.dispatchEvent(new Event('change')); }
+                  }
                 }
-                const orderTitleDiv = document.getElementById('parsedOrderTitle');
-                if (orderTitleDiv && checkData.title) {
-                  orderTitleDiv.innerText = '📦 ' + checkData.title + ' (частично)';
-                  orderTitleDiv.classList.remove('hidden');
-                }
-                alert(
-                  '⚠️ Эта площадка защищена от автоматического парсинга.\n' +
-                  'Введите цену вручную, всё остальное мы рассчитаем.\n' +
-                  (checkData.error_message ? `\nДетали: ${checkData.error_message}` : '')
-                );
+                showScreenshotWidget(taskId, checkData, 'order');
                 break;
               }
               if (checkData?.status === 'error') {
