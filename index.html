@@ -208,6 +208,22 @@ const MAX_REQUESTS_TRUSTED = 100;
       } catch { applyTheme('dark'); }
     }
 
+    const HARD_DOMAINS = [
+      'pinduoduo.com', 'yangkeduo.com',
+      'goofish.com', 'xianyu.com',
+      'xiaohongshu.com',
+      'poizon.com', 'dewu.com',
+      'taobao.com', 'tmall.com',
+      '1688.com', 'jd.com'
+    ];
+
+    function isHardDomain(url) {
+      try {
+        const host = new URL(url).hostname.toLowerCase();
+        return HARD_DOMAINS.some(d => host.includes(d));
+      } catch { return false; }
+    }
+
     async function checkAndUpdateLimit() {
   const today = new Date().toDateString();
   
@@ -762,7 +778,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       }
 
       const originalText = analyzeBtn.innerText;
-      analyzeBtn.innerText = '⏳ Анализ...';
+      analyzeBtn.innerText = isHardDomain(url) ? '⏳ Обходим защиту…' : '⏳ Анализ...';
       analyzeBtn.disabled = true;
 
       try {
@@ -775,22 +791,67 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 
         const taskId = queueData.id;
         let result = null;
+        let manualRequired = false;
 
-        for (let i = 0; i < 75; i++) {
+        if (isHardDomain(url)) console.log('Hard domain detected:', url);
+        const maxIterations = isHardDomain(url) ? 90 : 75;
+        for (let i = 0; i < maxIterations; i++) {
           await new Promise(r => setTimeout(r, 2000));
           const { data: checkData } = await supabaseClient
             .from('parse_queue')
-            .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message')
+            .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message, parse_method')
             .eq('id', taskId)
             .single();
 
           if (checkData?.status === 'done') { result = checkData; break; }
+          if (checkData?.status === 'manual_required') {
+            manualRequired = true;
+            const calcPriceEl = document.getElementById('calcPrice');
+            if (calcPriceEl && checkData.price != null && Number(checkData.price) > 0) {
+              calcPriceEl.value = checkData.price;
+            }
+            if (checkData.weight_kg != null) {
+              const slider = document.getElementById('calcWeight');
+              const valSpan = document.getElementById('weightVal');
+              if (slider) slider.value = checkData.weight_kg;
+              if (valSpan) valSpan.innerText = parseFloat(checkData.weight_kg).toFixed(1) + ' кг';
+            }
+            if (checkData.currency) {
+              const currencySelect = document.getElementById('calcCurrency');
+              if (currencySelect) {
+                const opt = Array.from(currencySelect.options).find(o => o.value === checkData.currency);
+                if (opt) currencySelect.value = checkData.currency;
+              }
+            }
+            if (checkData.category) {
+              const categorySelect = document.getElementById('calcCategory');
+              if (categorySelect) {
+                const opt = Array.from(categorySelect.options).find(o => o.value === checkData.category);
+                if (opt) {
+                  categorySelect.value = checkData.category;
+                  categorySelect.dispatchEvent(new Event('change'));
+                }
+              }
+            }
+            const titleDiv = document.getElementById('parsedProductTitle');
+            if (titleDiv && checkData.title) {
+              titleDiv.innerText = '📦 ' + checkData.title + ' (частично)';
+              titleDiv.classList.remove('hidden');
+            }
+            alert(
+              '⚠️ Эта площадка защищена от автоматического парсинга.\n' +
+              'Часть данных мы вытянули — пожалуйста, дозаполните цену и вес вручную.\n' +
+              (checkData.error_message ? `\nДетали: ${checkData.error_message}` : '')
+            );
+            break;
+          }
           if (checkData?.status === 'error') {
             throw new Error(checkData.error_message || 'Ошибка парсинга');
           }
         }
 
-        if (!result) throw new Error('Таймаут ожидания парсинга');
+        if (!result && !manualRequired) throw new Error('Таймаут ожидания парсинга');
+        if (manualRequired) return;
 
         const calcPriceEl = document.getElementById('calcPrice');
         if (calcPriceEl) {
@@ -1232,7 +1293,7 @@ if (createBtn) {
           }
 
           const originalText = analyzeOrderBtn.innerText;
-          analyzeOrderBtn.innerText = '⏳ Анализ...';
+          analyzeOrderBtn.innerText = isHardDomain(url) ? '⏳ Обходим защиту…' : '⏳ Анализ...';
           analyzeOrderBtn.disabled = true;
 
           try {
@@ -1245,22 +1306,44 @@ if (createBtn) {
 
             const taskId = queueData.id;
             let result = null;
+            let manualRequired = false;
 
-            for (let i = 0; i < 75; i++) {
+            if (isHardDomain(url)) console.log('Hard domain detected:', url);
+            const maxIterations = isHardDomain(url) ? 90 : 75;
+            for (let i = 0; i < maxIterations; i++) {
               await new Promise(r => setTimeout(r, 2000));
               const { data: checkData } = await supabaseClient
                 .from('parse_queue')
-                .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message')
+                .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message, parse_method')
                 .eq('id', taskId)
                 .single();
 
               if (checkData?.status === 'done') { result = checkData; break; }
+              if (checkData?.status === 'manual_required') {
+                manualRequired = true;
+                const orderPriceEl = document.getElementById('orderPrice');
+                if (orderPriceEl && checkData.price != null && Number(checkData.price) > 0) {
+                  orderPriceEl.value = checkData.price;
+                }
+                const orderTitleDiv = document.getElementById('parsedOrderTitle');
+                if (orderTitleDiv && checkData.title) {
+                  orderTitleDiv.innerText = '📦 ' + checkData.title + ' (частично)';
+                  orderTitleDiv.classList.remove('hidden');
+                }
+                alert(
+                  '⚠️ Эта площадка защищена от автоматического парсинга.\n' +
+                  'Введите цену вручную, всё остальное мы рассчитаем.\n' +
+                  (checkData.error_message ? `\nДетали: ${checkData.error_message}` : '')
+                );
+                break;
+              }
               if (checkData?.status === 'error') {
                 throw new Error(checkData.error_message || 'Ошибка парсинга');
               }
             }
 
-            if (!result) throw new Error('Таймаут ожидания парсинга');
+            if (!result && !manualRequired) throw new Error('Таймаут ожидания парсинга');
+            if (manualRequired) return;
 
             const orderPriceEl = document.getElementById('orderPrice');
             if (orderPriceEl) {
