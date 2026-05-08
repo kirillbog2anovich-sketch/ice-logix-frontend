@@ -133,7 +133,8 @@ async function firecrawlSearch(query: string, limit: number): Promise<SearchHit[
     body: JSON.stringify({
       query,
       limit,
-      scrapeOptions: { formats: ["markdown"] },
+      sources: ["web"],
+      scrapeOptions: { formats: [{ type: "markdown" }, { type: "summary" }] },
     }),
   });
 
@@ -142,7 +143,21 @@ async function firecrawlSearch(query: string, limit: number): Promise<SearchHit[
     throw new Error(`Firecrawl /search ${res.status}: ${errText.substring(0, 200)}`);
   }
   const json = await res.json();
-  const list = Array.isArray(json?.data) ? json.data : Array.isArray(json?.web) ? json.web : [];
+  // /v2/search response shape: { success, data: { web?: [], news?: [], images?: [] }, ... }
+  // Older shape kept as fallback: { data: [...] } or { web: [...] }
+  const data = (json && typeof json === "object" ? json.data : null) as
+    | { web?: unknown[]; news?: unknown[]; images?: unknown[] }
+    | unknown[]
+    | null;
+  let list: Record<string, unknown>[] = [];
+  if (Array.isArray(data)) {
+    list = data as Record<string, unknown>[];
+  } else if (data && typeof data === "object") {
+    const web = (data as { web?: unknown[] }).web;
+    if (Array.isArray(web)) list = web as Record<string, unknown>[];
+  } else if (Array.isArray((json as Record<string, unknown>)?.web)) {
+    list = (json as { web: Record<string, unknown>[] }).web;
+  }
   return list.map((it: Record<string, unknown>) => ({
     url: String(it.url ?? ""),
     title: String(it.title ?? "").substring(0, 200),
