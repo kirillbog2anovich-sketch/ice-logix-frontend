@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Version: 2026.04.20.01 -->
+<!-- Version: 2026.05.08.01 -->
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
@@ -10,6 +10,8 @@
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+  <script src="./pricing-engine.js"></script>
+  <script src="./onboarding.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #0F172A; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
@@ -188,6 +190,12 @@ const MAX_REQUESTS_TRUSTED = 100;
       document.getElementById('userCard').onclick = () => switchTab('profile');
       document.getElementById('settingsBtn').onclick = () => alert('Настройки будут позже');
       document.getElementById('notificationsBtn').onclick = () => alert('Уведомлений пока нет');
+      // Прогреваем кэш курсов НБРБ (1 час) — для quickEstimate в списках
+      if (window.iceLogixPricing?.warmRates) window.iceLogixPricing.warmRates();
+      // Автоматически открываем онбординг для новых пользователей
+      if (!localStorage.getItem('ice_onboarding_shown') && window.iceLogixOnboarding) {
+        setTimeout(() => window.iceLogixOnboarding.open(), 800);
+      }
       switchTab('home');
     }
 
@@ -522,6 +530,7 @@ const MAX_REQUESTS_TRUSTED = 100;
   
   return `
     <div class="scroll-x mb-6">
+      <div class="story-card" data-story="onboarding"><div class="story-icon">👋</div><span class="story-label">Как пользоваться</span></div>
       <div class="story-card" data-story="reports"><div class="story-icon">📸</div><span class="story-label">Отчёты</span></div>
       <div class="story-card" data-story="reviews"><div class="story-icon">⭐</div><span class="story-label">Отзывы</span></div>
       <div class="story-card" data-story="promo"><div class="story-icon">🎁</div><span class="story-label">Акции</span></div>
@@ -562,6 +571,9 @@ const MAX_REQUESTS_TRUSTED = 100;
 
 // ==================== ОБРАБОТЧИК ГЛАВНОЙ ====================
 function attachHomeHandlers() {
+      document.querySelector('[data-story="onboarding"]')?.addEventListener('click', () => {
+        if (window.iceLogixOnboarding) window.iceLogixOnboarding.open();
+      });
       document.querySelector('[data-story="reports"]')?.addEventListener('click', () => switchTab('reports'));
       document.querySelector('[data-story="reviews"]')?.addEventListener('click', () => switchTab('reviews'));
       document.querySelector('[data-story="promo"]')?.addEventListener('click', () => alert('Акции будут позже'));
@@ -632,7 +644,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         url: url,
         price: price,
         weight: 1,
-        total: price * 0.45 + 12,
+        total: window.iceLogixPricing.quickEstimate(price, 1),
         discountAmount: 0,
         appliedPromo: null
       };
@@ -716,7 +728,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         const url = btn.dataset.url;
         const price = parseFloat(btn.dataset.price);
         if (url && !isNaN(price)) {
-          window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
+          window.tempOrder = { url, price, weight: 1, total: window.iceLogixPricing.quickEstimate(price, 1), discountAmount: 0, appliedPromo: null };
           switchTab('neworder');
         }
       };
@@ -731,7 +743,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           supabaseClient.from('user_views').upsert({ user_id: userId, product_id: productId }, { onConflict: 'user_id,product_id' }).then(() => {});
         }
         if (url && !isNaN(price)) {
-          window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
+          window.tempOrder = { url, price, weight: 1, total: window.iceLogixPricing.quickEstimate(price, 1), discountAmount: 0, appliedPromo: null };
           switchTab('neworder');
         }
       };
@@ -788,6 +800,19 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <option value="RUB">RUB (₽)</option>
             <option value="BYN">BYN (Br)</option>
           </select>
+          <label class="text-white/70 text-sm block mt-2">Откуда заказываете</label>
+          <select id="calcSourceCountry" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
+            <option value="CN">🇨🇳 Китай (Poizon, Dewu, Taobao, 1688, Tmall)</option>
+            <option value="PL">🇵🇱 Польша / ЕС (Zalando, ASOS, About You, H&amp;M)</option>
+            <option value="EU">🇪🇺 Европа (через PL-склад)</option>
+            <option value="RU">🇷🇺 Россия (Lamoda, WB, Ozon, Avito, ЦУМ)</option>
+            <option value="US" disabled>🕒 🇺🇸 США — скоро</option>
+            <option value="JP" disabled>🕒 🇯🇵 Япония — скоро</option>
+            <option value="KR" disabled>🕒 🇰🇷 Южная Корея — скоро</option>
+            <option value="AE" disabled>🕒 🇦🇪 ОАЭ — скоро</option>
+            <option value="TR" disabled>🕒 🇹🇷 Турция — скоро</option>
+            <option value="VN" disabled>🕒 🇻🇳 Вьетнам — скоро</option>
+          </select>
           <label class="text-white/70 text-sm block mt-2">Категория</label>
           <select id="calcCategory" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
             <option value="">— выберите для автоподбора веса —</option>
@@ -803,8 +828,22 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           </div>
           <label class="text-white/70 text-sm block">Вес (кг)</label>
           <div class="flex items-center gap-3 mt-1"><input type="range" id="calcWeight" min="0.1" max="30" step="0.1" value="1" class="flex-1" data-packaging="0.3"><span id="weightVal" class="text-white/80 bg-white/10 px-3 py-1 rounded-full">1.0 кг</span></div>
+          <div class="flex items-center gap-2 mt-3">
+            <input type="checkbox" id="calcInsurance">
+            <label for="calcInsurance" class="text-white/70 text-sm">🛡️ Страховка (+2% от стоимости товара)</label>
+          </div>
+          <div class="flex items-center gap-2 mt-2 mb-3">
+            <input type="checkbox" id="calcLegitCheck">
+            <label for="calcLegitCheck" class="text-white/70 text-sm">✅ Legit Check (+15 BYN — проверка подлинности)</label>
+          </div>
           <button id="calcBtn" class="mt-5 w-full bg-cyan-500 hover:bg-cyan-600 py-3 rounded-xl font-bold transition">Рассчитать</button>
-          <div id="calcResult" class="mt-5 hidden bg-white/5 p-4 rounded-xl"><p class="text-white">Примерная стоимость: <span id="totalPrice" class="font-bold text-cyan-400">0</span> ❄️</p><p class="text-white/70 text-xs mt-1">*Окончательная цена после взвешивания на складе</p><button id="toNewOrderBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-xl">Перенести в заказ</button></div>
+          <div id="calcResult" class="mt-5 hidden">
+            <div id="calcBreakdown" class="bg-white/5 p-4 rounded-xl">
+              <p class="text-white">Примерная стоимость: <span id="totalPrice" class="font-bold text-cyan-400">0</span> BYN</p>
+              <p class="text-white/70 text-xs mt-1">*Окончательная цена после взвешивания на складе</p>
+            </div>
+            <button id="toNewOrderBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-xl">Перенести в заказ</button>
+          </div>
         </div>
         ${renderFooter()}
       `;
@@ -918,32 +957,74 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       } catch(e) { console.log('parsed_products cache:', e.message); }
     }
 
-    let price = parseFloat(document.getElementById('calcPrice')?.value) || 0
-    let weight = parseFloat(slider?.value || 1);
-    let total = (price * 0.45) + (weight * 12);
-    
-    // Применяем акцию, если есть
-    let discountAmount = 0;
+    const price = parseFloat(document.getElementById('calcPrice')?.value) || 0;
+    const weight = parseFloat(slider?.value || 1);
+    const currency = document.getElementById('calcCurrency')?.value || 'CNY';
+    const country = document.getElementById('calcSourceCountry')?.value || 'CN';
+    const category = document.getElementById('calcCategory')?.value || '';
+    const insurance = document.getElementById('calcInsurance')?.checked || false;
+    const legitCheck = document.getElementById('calcLegitCheck')?.checked || false;
+
+    // Промо/акция: считаем скидку до вызова движка, затем передаём как extra_discount_byn
     let promotionId = null;
+    let promoExtraDiscount = 0;
     if (window.currentPromotion) {
       const promo = window.currentPromotion;
-      if (total >= (promo.min_order_amount || 0)) {
-        if (promo.discount_type === 'percent') {
-          discountAmount = total * (promo.discount_value / 100);
-        } else {
-          discountAmount = Math.min(promo.discount_value, total);
-        }
+      const roughTotal = window.iceLogixPricing.quickEstimate(price, weight, currency, country);
+      if (roughTotal >= (promo.min_order_amount || 0)) {
+        promoExtraDiscount = promo.discount_type === 'percent'
+          ? roughTotal * (promo.discount_value / 100)
+          : Math.min(promo.discount_value, roughTotal);
         promotionId = promo.id;
       }
     }
-    const finalTotal = total - discountAmount;
-    
-    document.getElementById('totalPrice').innerText = finalTotal.toFixed(2);
-    document.getElementById('calcResult').classList.remove('hidden');
-    window.tempOrder = { 
-      url: document.getElementById('calcUrl')?.value || '', 
-      price, weight, total, finalTotal, discountAmount, 
-      promotionId 
+
+    const result = await window.iceLogixPricing.calculatePrice({
+      product_price: price,
+      product_currency: currency || 'CNY',
+      source_country: country,
+      weight_kg: weight,
+      category,
+      insurance,
+      legit_check: legitCheck,
+      client_level: window.userLevel || 'newbie',
+      is_first_order: !!window.userIsFirstOrder,
+      referral_used: !!window.referralCode,
+      extra_discount_byn: promoExtraDiscount,
+    });
+
+    const breakdownEl = document.getElementById('calcBreakdown');
+    const resultEl = document.getElementById('calcResult');
+    const toOrderBtn = document.getElementById('toNewOrderBtn');
+
+    if (!result.available) {
+      if (breakdownEl) breakdownEl.innerHTML = window.iceLogixPricing.formatBreakdownHTML(result);
+      if (resultEl) resultEl.classList.remove('hidden');
+      if (toOrderBtn) toOrderBtn.classList.add('hidden');
+      window.tempOrder = null;
+      return;
+    }
+
+    if (breakdownEl) breakdownEl.innerHTML = window.iceLogixPricing.formatBreakdownHTML(result);
+    if (resultEl) resultEl.classList.remove('hidden');
+    if (toOrderBtn) toOrderBtn.classList.remove('hidden');
+
+    const totalPriceEl = document.getElementById('totalPrice');
+    if (totalPriceEl) totalPriceEl.innerText = result.total_byn.toFixed(2);
+
+    window.tempOrder = {
+      url: document.getElementById('calcUrl')?.value || '',
+      price, weight,
+      currency, country, category,
+      insurance, legitCheck,
+      total: result.total_byn,
+      total_byn: result.total_byn,
+      total_ice: result.total_ice,
+      breakdown: result.breakdown,
+      deliveryDays: result.delivery_days,
+      finalTotal: result.total_byn,
+      discountAmount: promoExtraDiscount,
+      promotionId,
     };
   };
   
@@ -1147,7 +1228,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   <div class="bg-white/5 rounded-xl p-3 mb-3">
     <p class="text-white font-bold mb-2">🛒 Выбранные товары:</p>
     ${window.tempOrder.items.map(item => {
-      const itemTotal = (item.price * 0.45 + 12) * item.quantity;
+      const itemTotal = window.iceLogixPricing.quickEstimate(item.price, 1) * item.quantity;
       return `
         <div class="flex justify-between text-sm">
           <span class="text-white/70">${item.title} (${item.quantity} шт.)</span>
@@ -1183,6 +1264,19 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <option value="RUB">RUB (₽)</option>
             <option value="BYN">BYN (Br)</option>
           </select>
+          <label class="text-white/70 text-sm block mt-2">Откуда заказываете</label>
+          <select id="orderSourceCountry" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
+            <option value="CN">🇨🇳 Китай (Poizon, Dewu, Taobao, 1688, Tmall)</option>
+            <option value="PL">🇵🇱 Польша / ЕС (Zalando, ASOS, About You, H&amp;M)</option>
+            <option value="EU">🇪🇺 Европа (через PL-склад)</option>
+            <option value="RU">🇷🇺 Россия (Lamoda, WB, Ozon, Avito, ЦУМ)</option>
+            <option value="US" disabled>🕒 🇺🇸 США — скоро</option>
+            <option value="JP" disabled>🕒 🇯🇵 Япония — скоро</option>
+            <option value="KR" disabled>🕒 🇰🇷 Южная Корея — скоро</option>
+            <option value="AE" disabled>🕒 🇦🇪 ОАЭ — скоро</option>
+            <option value="TR" disabled>🕒 🇹🇷 Турция — скоро</option>
+            <option value="VN" disabled>🕒 🇻🇳 Вьетнам — скоро</option>
+          </select>
           <label class="text-white/70 text-sm block mt-2">Категория</label>
           <select id="orderCategory" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
             <option value="">— для автоподбора веса —</option>
@@ -1198,10 +1292,19 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           </div>
           <label class="text-white/70 text-sm block mt-2">Вес (кг)</label>
           <div class="flex items-center gap-3 mt-1"><input type="number" id="orderWeight" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" placeholder="0" data-packaging="0.3"><span class="text-white/80 bg-white/10 px-3 py-1 rounded-full">кг</span></div>
+          <div class="flex items-center gap-2 mt-3">
+            <input type="checkbox" id="orderInsurance">
+            <label for="orderInsurance" class="text-white/70 text-sm">🛡️ Страховка (+2% от стоимости товара)</label>
+          </div>
+          <div class="flex items-center gap-2 mt-2">
+            <input type="checkbox" id="orderLegitCheck">
+            <label for="orderLegitCheck" class="text-white/70 text-sm">✅ Legit Check (+15 BYN — проверка подлинности)</label>
+          </div>
           <div class="mt-3"><label class="text-white/70 text-sm">Промокод</label><div class="flex flex-col sm:flex-row gap-2 mt-1"><input type="text" id="promoCode" class="flex-1 p-3 rounded-xl bg-white/20 border border-white/30" placeholder="Введите промокод"><button id="applyPromoBtn" class="bg-cyan-500 px-4 py-3 rounded-xl whitespace-nowrap">Применить</button></div><p id="promoMessage" class="text-xs mt-1 hidden"></p></div>
-          <p class="mt-4 text-lg">Итого: <span id="orderTotal" class="font-bold text-cyan-400">${(d.total - (d.discountAmount || 0)).toFixed(2)}</span> ❄️</p>
-          ${d.discountAmount > 0 ? `<p class="text-green-400 text-sm mt-1">Скидка: -${d.discountAmount} ❄️</p>` : ''}
-          <p class="text-white/70 text-xs mt-1">*Предоплата 75%: <span id="prepaymentAmount" class="font-bold text-cyan-300">${((d.total - (d.discountAmount || 0)) * 0.75).toFixed(2)}</span> ❄️</p>
+          <div id="orderBreakdown" class="mt-4 hidden"></div>
+          <p class="mt-4 text-lg">Итого: <span id="orderTotal" class="font-bold text-cyan-400">${(d.total - (d.discountAmount || 0)).toFixed(2)}</span> BYN</p>
+          ${d.discountAmount > 0 ? `<p class="text-green-400 text-sm mt-1">Скидка: -${d.discountAmount} BYN</p>` : ''}
+          <p class="text-white/70 text-xs mt-1">*Предоплата 75%: <span id="prepaymentAmount" class="font-bold text-cyan-300">${((d.total - (d.discountAmount || 0)) * 0.75).toFixed(2)}</span> BYN</p>
           <div class="mt-4 flex items-start gap-2">
           <input type="checkbox" id="agreeOffer" class="mt-1">
           <label for="agreeOffer" class="text-white/70 text-sm">
@@ -1235,18 +1338,90 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       const promoInput = document.getElementById('promoCode');
       const promoMessage = document.getElementById('promoMessage');
       
-      const update = () => {
-        let price = parseFloat(priceInp?.value || 520);
-        let weight = parseFloat(weightInp?.value || 1);
-        let total = (price * 0.45) + (weight * 12);
-        let discount = window.tempOrder?.discountAmount || 0;
-        if (totalSpan) totalSpan.innerText = (total - discount).toFixed(2);
-        if (prepaymentSpan) prepaymentSpan.innerText = ((total - discount) * 0.75).toFixed(2);
-        window.tempOrder = { ...window.tempOrder, url: urlInp?.value || '', price: price, weight: weight, total: total, discountAmount: discount };
+      const currencyInp = document.getElementById('orderCurrency');
+      const countryInp = document.getElementById('orderSourceCountry');
+      const categoryInp = document.getElementById('orderCategory');
+      const insuranceInp = document.getElementById('orderInsurance');
+      const legitInp = document.getElementById('orderLegitCheck');
+      const breakdownEl = document.getElementById('orderBreakdown');
+
+      // Восстанавливаем поля из tempOrder, если они есть (после калькулятора)
+      if (window.tempOrder) {
+        if (currencyInp && window.tempOrder.currency) currencyInp.value = window.tempOrder.currency;
+        if (countryInp && window.tempOrder.country) countryInp.value = window.tempOrder.country;
+        if (categoryInp && window.tempOrder.category) categoryInp.value = window.tempOrder.category;
+        if (insuranceInp && window.tempOrder.insurance) insuranceInp.checked = true;
+        if (legitInp && window.tempOrder.legitCheck) legitInp.checked = true;
+      }
+
+      let updateSeq = 0;
+      const update = async () => {
+        const price = parseFloat(priceInp?.value || 0) || 0;
+        const weight = parseFloat(weightInp?.value || 0) || 0;
+        const currency = currencyInp?.value || 'CNY';
+        const country = countryInp?.value || 'CN';
+        const category = categoryInp?.value || '';
+        const insurance = insuranceInp?.checked || false;
+        const legitCheck = legitInp?.checked || false;
+        const discount = window.tempOrder?.discountAmount || 0;
+
+        if (price <= 0 || weight <= 0) {
+          if (totalSpan) totalSpan.innerText = '0.00';
+          if (prepaymentSpan) prepaymentSpan.innerText = '0.00';
+          if (breakdownEl) { breakdownEl.classList.add('hidden'); breakdownEl.innerHTML = ''; }
+          return;
+        }
+
+        const seq = ++updateSeq;
+        const result = await window.iceLogixPricing.calculatePrice({
+          product_price: price,
+          product_currency: currency || 'CNY',
+          source_country: country,
+          weight_kg: weight,
+          category,
+          insurance,
+          legit_check: legitCheck,
+          client_level: window.userLevel || 'newbie',
+          is_first_order: !!window.userIsFirstOrder,
+          referral_used: !!window.referralCode,
+          extra_discount_byn: discount,
+        });
+        if (seq !== updateSeq) return; // более свежий апдейт уже идёт
+
+        if (breakdownEl) {
+          breakdownEl.innerHTML = window.iceLogixPricing.formatBreakdownHTML(result);
+          breakdownEl.classList.remove('hidden');
+        }
+
+        const totalByn = result.available ? result.total_byn : 0;
+        if (totalSpan) totalSpan.innerText = totalByn.toFixed(2);
+        if (prepaymentSpan) prepaymentSpan.innerText = (totalByn * 0.75).toFixed(2);
+
+        window.tempOrder = {
+          ...window.tempOrder,
+          url: urlInp?.value || '',
+          price, weight,
+          currency, country, category,
+          insurance, legitCheck,
+          total: totalByn,
+          total_byn: totalByn,
+          total_ice: result.total_ice || 0,
+          breakdown: result.breakdown || {},
+          deliveryDays: result.delivery_days || null,
+          discountAmount: discount,
+          available: result.available !== false,
+        };
       };
-      
+
       if (priceInp) priceInp.addEventListener('input', update);
       if (weightInp) weightInp.addEventListener('input', update);
+      if (currencyInp) currencyInp.addEventListener('change', update);
+      if (countryInp) countryInp.addEventListener('change', update);
+      if (categoryInp) categoryInp.addEventListener('change', update);
+      if (insuranceInp) insuranceInp.addEventListener('change', update);
+      if (legitInp) legitInp.addEventListener('change', update);
+      // Стартовый расчёт если уже есть данные
+      if ((parseFloat(priceInp?.value) || 0) > 0 && (parseFloat(weightInp?.value) || 0) > 0) update();
 
       // Умный подбор веса по категории и размеру
       const orderCategory = document.getElementById('orderCategory');
@@ -1348,7 +1523,7 @@ if (!window.tempOrder) {
     url: urlInp?.value || '',
     price: price,
     weight: weight,
-    total: (price * 0.45) + (weight * 12),
+    total: window.iceLogixPricing.quickEstimate(price, weight),
     discountAmount: 0
   };
 }
@@ -1399,6 +1574,7 @@ if (createBtn) {
   createBtn.onclick = async () => {
     if (!window.tempOrder || !userId) { alert('Ошибка: заполните все поля'); return; }
     try {
+      const bk = window.tempOrder.breakdown || {};
       const { data, error } = await supabaseClient.from('orders').insert({
         user_id: userId,
         source_url: window.tempOrder.items?.[0]?.url || window.tempOrder.url,
@@ -1406,8 +1582,18 @@ if (createBtn) {
         cart_items: window.tempOrder.items || null,
         weight_estimated: window.tempOrder.weight || 1,
         price_original: window.tempOrder.price || 0,
-        price_byn: (window.tempOrder.price || 0) * 0.45,
-        delivery_cost_estimated: (window.tempOrder.weight || 1) * 12,
+        price_byn: bk.product_cost_byn ?? ((window.tempOrder.price || 0) * 0.45),
+        delivery_cost_estimated: bk.delivery_cost_byn ?? ((window.tempOrder.weight || 1) * 12),
+        commission_byn: bk.commission_byn || 0,
+        insurance_byn: bk.insurance_byn || 0,
+        legit_check_byn: bk.legit_check_byn || 0,
+        customs_duty_byn: bk.customs_duty_byn || 0,
+        currency_buffer_byn: bk.currency_buffer_byn || 0,
+        total_byn: window.tempOrder.total_byn ?? window.tempOrder.total ?? 0,
+        delivery_days_min: window.tempOrder.deliveryDays?.[0] ?? null,
+        delivery_days_max: window.tempOrder.deliveryDays?.[1] ?? null,
+        source_country: window.tempOrder.country || null,
+        product_currency: window.tempOrder.currency || null,
         prepayment_amount: (window.tempOrder.total - window.tempOrder.discountAmount) * 0.75,
         status: 'pending',
         discount_applied: window.tempOrder.discountAmount || 0,
@@ -2850,7 +3036,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         url: url,
         price: price,
         weight: 1,
-        total: price * 0.45 + 12,
+        total: window.iceLogixPricing.quickEstimate(price, 1),
         discountAmount: 0,
         appliedPromo: null
       };
@@ -4037,7 +4223,7 @@ function attachAnalyticsHandlers() {
           const key = item.productId || item.product_id || item.title || 'Unknown';
           if (!prodMap[key]) prodMap[key] = { title: item.title || key, count: 0, rev: 0 };
           prodMap[key].count += item.quantity || 1;
-          prodMap[key].rev   += ((item.price || 0) * 0.45 + 12) * (item.quantity || 1);
+          prodMap[key].rev   += window.iceLogixPricing.quickEstimate(item.price || 0, 1) * (item.quantity || 1);
         });
       });
       _topData = Object.values(prodMap).sort((a,b) => b.count - a.count).slice(0, 10);
@@ -4444,7 +4630,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     const url = btn.dataset.url;
     const price = parseFloat(btn.dataset.price);
     if (!url || isNaN(price)) { alert('Ошибка: не удалось получить данные товара'); return; }
-    window.tempOrder = { url, price, weight: 1, total: price * 0.45 + 12, discountAmount: 0, appliedPromo: null };
+    window.tempOrder = { url, price, weight: 1, total: window.iceLogixPricing.quickEstimate(price, 1), discountAmount: 0, appliedPromo: null };
     currentTab = 'neworder'; currentSubScreen = null; appliedPromo = null; renderCurrentScreen();
   };
   btn._buyHandler = handler;
@@ -4502,7 +4688,7 @@ async function loadMoreProducts() {
         div.querySelector('.addToCartBtn').onclick = (e) => { e.stopPropagation(); addToCart(p.id); };
         div.querySelector('.buyNowBtn').onclick = (e) => {
           e.stopPropagation();
-          if (p.url) { window.tempOrder = { url: p.url, price: p.price, weight: 1, total: p.price * 0.45 + 12, discountAmount: 0, appliedPromo: null }; currentTab = 'neworder'; currentSubScreen = null; appliedPromo = null; renderCurrentScreen(); }
+          if (p.url) { window.tempOrder = { url: p.url, price: p.price, weight: 1, total: window.iceLogixPricing.quickEstimate(p.price, 1), discountAmount: 0, appliedPromo: null }; currentTab = 'neworder'; currentSubScreen = null; appliedPromo = null; renderCurrentScreen(); }
         };
         div.querySelector('.wishlist-heart').onclick = async (e) => {
           e.stopPropagation();
@@ -4517,7 +4703,7 @@ async function loadMoreProducts() {
         };
         div.onclick = () => {
           if (userId) supabaseClient.from('user_views').upsert({ user_id: userId, product_id: p.id }, { onConflict: 'user_id,product_id' }).then(() => {});
-          if (p.url) { window.tempOrder = { url: p.url, price: p.price, weight: 1, total: p.price * 0.45 + 12, discountAmount: 0, appliedPromo: null }; currentTab = 'neworder'; currentSubScreen = null; appliedPromo = null; renderCurrentScreen(); }
+          if (p.url) { window.tempOrder = { url: p.url, price: p.price, weight: 1, total: window.iceLogixPricing.quickEstimate(p.price, 1), discountAmount: 0, appliedPromo: null }; currentTab = 'neworder'; currentSubScreen = null; appliedPromo = null; renderCurrentScreen(); }
         };
         grid.appendChild(div);
       });
@@ -5476,7 +5662,7 @@ async function renderCart() {
     const itemsHtml = data.map(item => {
       const product = item.products;
       if (!product) return '';
-      const itemTotal = (product.price * 0.45 + 12) * item.quantity;
+      const itemTotal = window.iceLogixPricing.quickEstimate(product.price, 1) * item.quantity;
       totalPrice += itemTotal;
       return `
         <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center gap-3" data-cart-id="${item.id}" data-current-qty="${item.quantity}">
@@ -5549,7 +5735,7 @@ function attachCartHandlers() {
       if (!row) return;
       const price = parseFloat(cb.dataset.price) || 0;
       const quantity = getCartRowQuantity(row);
-      total += (price * 0.45 + 12) * quantity;
+      total += window.iceLogixPricing.quickEstimate(price, 1) * quantity;
     });
     const totalSpan = document.getElementById('cartTotalAmount');
     if (totalSpan) totalSpan.innerText = total.toFixed(2) + ' BYN';
@@ -5594,7 +5780,7 @@ function attachCartHandlers() {
         // Обновляем примерную стоимость
         const examplePriceSpan = row.querySelector('.item-example-price');
         if (examplePriceSpan) {
-          const newItemTotal = (pricePerUnit * 0.45 + 12) * newQty;
+          const newItemTotal = window.iceLogixPricing.quickEstimate(pricePerUnit, 1) * newQty;
           examplePriceSpan.innerText = newItemTotal.toFixed(2) + ' BYN (примерно)';
         }
         // Пересчитываем итог
@@ -5671,12 +5857,12 @@ function attachCartHandlers() {
 
       // Расчет общей суммы с учетом количества
       const total = selectedItems.reduce((sum, item) => {
-        return sum + (item.price * 0.45 + 12) * item.quantity;
+        return sum + window.iceLogixPricing.quickEstimate(item.price, 1) * item.quantity;
       }, 0);
 
       // Отладочный alert (можно оставить или удалить)
       const itemsList = selectedItems.map(item =>
-        `${item.title}: ${item.price} × ${item.quantity} = ${((item.price * 0.45 + 12) * item.quantity).toFixed(2)} BYN`
+        `${item.title}: ${item.price} × ${item.quantity} = ${(window.iceLogixPricing.quickEstimate(item.price, 1) * item.quantity).toFixed(2)} BYN`
       ).join('\n');
       alert(`Выбрано товаров: ${selectedItems.length}\n${itemsList}\nОбщая сумма: ${total.toFixed(2)} BYN`);
 
