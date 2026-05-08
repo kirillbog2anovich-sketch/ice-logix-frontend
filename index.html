@@ -1240,12 +1240,56 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   </div>
 ` : ''}
         <div class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg">
-          <h2 class="text-xl font-bold mb-4">✨ Новый заказ</h2>
-          <label class="text-white/70 text-sm">Ссылка на товар</label>
-          <div class="flex flex-wrap gap-2 mt-1 mb-1">
-            <input type="text" id="orderUrl" class="flex-1 min-w-[200px] p-3 rounded-xl bg-white/20 border border-white/30" value="${d.url}" placeholder="https://...">
-            <button id="analyzeOrderLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
+          <h2 class="text-xl font-bold mb-3">✨ Новый заказ</h2>
+
+          <!-- Найти товар: 4 режима -->
+          <label class="text-white/70 text-xs mb-2 block">Как добавить товар?</label>
+          <div id="orderModeSelector" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            <button type="button" data-order-mode="manual" class="order-mode-btn bg-white/10 hover:bg-white/20 px-2 py-2 rounded-xl text-xs font-bold transition flex flex-col items-center gap-1"><span class="text-lg">✍️</span><span>Вручную</span></button>
+            <button type="button" data-order-mode="link" class="order-mode-btn bg-cyan-500 px-2 py-2 rounded-xl text-xs font-bold transition flex flex-col items-center gap-1"><span class="text-lg">🔗</span><span>По ссылке</span></button>
+            <button type="button" data-order-mode="photo" class="order-mode-btn bg-white/10 hover:bg-white/20 px-2 py-2 rounded-xl text-xs font-bold transition flex flex-col items-center gap-1"><span class="text-lg">📸</span><span>По фото</span></button>
+            <button type="button" data-order-mode="text" class="order-mode-btn bg-white/10 hover:bg-white/20 px-2 py-2 rounded-xl text-xs font-bold transition flex flex-col items-center gap-1"><span class="text-lg">🔍</span><span>По описанию</span></button>
           </div>
+
+          <!-- Mode: link (default) -->
+          <div data-order-mode-pane="link">
+            <label class="text-white/70 text-sm">Ссылка на товар</label>
+            <div class="flex flex-wrap gap-2 mt-1 mb-1">
+              <input type="text" id="orderUrl" class="flex-1 min-w-[200px] p-3 rounded-xl bg-white/20 border border-white/30" value="${d.url}" placeholder="https://...">
+              <button id="analyzeOrderLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
+            </div>
+            <p class="text-white/40 text-xs mb-2">Если не получится по ссылке — попросим скриншот.</p>
+          </div>
+
+          <!-- Mode: manual -->
+          <div data-order-mode-pane="manual" class="hidden">
+            <p class="text-white/60 text-xs mb-2">Заполните поля ниже вручную (название, цена, валюта, категория, вес).</p>
+          </div>
+
+          <!-- Mode: photo (search by image) -->
+          <div data-order-mode-pane="photo" class="hidden">
+            <label class="text-white/70 text-sm">Фото товара</label>
+            <div id="orderPhotoUploadZone" class="mt-1 mb-2 p-4 border-2 border-dashed border-white/30 rounded-xl text-center cursor-pointer hover:bg-white/5 transition">
+              <div class="text-3xl mb-1">📸</div>
+              <p class="text-white/80 text-sm font-semibold">Загрузите фото товара</p>
+              <p class="text-white/50 text-xs mt-1">Найдём похожие товары на 4 площадках одновременно</p>
+              <input type="file" id="orderPhotoInput" accept="image/*" class="hidden">
+            </div>
+            <button id="orderPhotoSearchBtn" class="hidden w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти этот товар</button>
+            <div id="orderPhotoPreview" class="hidden mb-2"></div>
+          </div>
+
+          <!-- Mode: text (search by description) -->
+          <div data-order-mode-pane="text" class="hidden">
+            <label class="text-white/70 text-sm">Описание товара</label>
+            <input type="text" id="orderTextQuery" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-2" placeholder="Например: Nike Dunk Low Panda кроссовки">
+            <p class="text-white/40 text-xs mb-2">Чем точнее — тем лучше. Бренд + модель + цвет + категория.</p>
+            <button id="orderTextSearchBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти на 4 площадках</button>
+          </div>
+
+          <!-- Search results (shared by photo/text modes) -->
+          <div id="orderSearchResults" class="hidden mb-3"></div>
+
           <div id="parsedOrderTitle" class="text-cyan-400 text-xs mb-1 hidden"></div>
           <div id="orderScreenshotWidget" class="hidden"></div>
           <div id="parsedOrderBrand" class="text-white/70 text-xs mb-1 hidden"></div>
@@ -1803,6 +1847,253 @@ if (createBtn) {
             analyzeOrderBtn.innerText = originalText;
             analyzeOrderBtn.disabled = false;
           }
+        });
+      }
+
+      // ==================== РЕЖИМЫ ВВОДА (link / manual / photo / text) ====================
+      const modeSelector = document.getElementById('orderModeSelector');
+      const panes = document.querySelectorAll('[data-order-mode-pane]');
+      const orderResultsBox = document.getElementById('orderSearchResults');
+
+      function setOrderMode(mode) {
+        // подсветка кнопок
+        document.querySelectorAll('.order-mode-btn').forEach((btn) => {
+          if (btn.dataset.orderMode === mode) {
+            btn.classList.remove('bg-white/10', 'hover:bg-white/20');
+            btn.classList.add('bg-cyan-500');
+          } else {
+            btn.classList.add('bg-white/10', 'hover:bg-white/20');
+            btn.classList.remove('bg-cyan-500');
+          }
+        });
+        // панели
+        panes.forEach((pane) => {
+          if (pane.dataset.orderModePane === mode) pane.classList.remove('hidden');
+          else pane.classList.add('hidden');
+        });
+        // прячем результаты при переключении на manual/link
+        if ((mode === 'manual' || mode === 'link') && orderResultsBox) {
+          orderResultsBox.classList.add('hidden');
+          orderResultsBox.innerHTML = '';
+        }
+      }
+
+      if (modeSelector) {
+        modeSelector.addEventListener('click', (ev) => {
+          const btn = ev.target.closest('.order-mode-btn');
+          if (!btn) return;
+          setOrderMode(btn.dataset.orderMode);
+        });
+      }
+
+      // ---- Render search results (общий для photo/text режимов) ----
+      function renderOrderSearchResults(payload) {
+        if (!orderResultsBox) return;
+        const list = (payload && payload.results) || [];
+        if (list.length === 0) {
+          orderResultsBox.classList.remove('hidden');
+          orderResultsBox.innerHTML = `
+            <div class="bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-sm text-white/80">
+              ❌ Ничего не нашли. Попробуйте уточнить запрос или другой режим.
+              ${payload?.errors?.length ? '<br><span class="text-xs text-white/50">Площадки с ошибками: ' + payload.errors.map(e => e.platform).join(', ') + '</span>' : ''}
+            </div>`;
+          return;
+        }
+
+        const cards = list.map((r, i) => {
+          const priceLine = (r.price && r.currency)
+            ? `<div class="text-cyan-400 font-bold text-sm mt-1">${r.price} ${r.currency}</div>`
+            : '<div class="text-white/40 text-xs mt-1">Цена не определена</div>';
+          const img = r.image_url
+            ? `<img src="${r.image_url}" class="w-16 h-16 object-cover rounded-lg flex-shrink-0" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`
+            : '<div class="w-16 h-16 bg-white/10 rounded-lg flex-shrink-0 flex items-center justify-center text-2xl">📦</div>';
+          return `
+            <div class="bg-white/5 border border-white/10 rounded-xl p-3 flex gap-3" data-result-idx="${i}">
+              ${img}
+              <div class="flex-1 min-w-0">
+                <div class="text-xs text-white/60 mb-1">${r.flag || ''} ${r.platform_label || r.platform}</div>
+                <div class="text-sm font-semibold text-white truncate" title="${(r.title || '').replace(/"/g, '&quot;')}">${r.title || '(без названия)'}</div>
+                ${priceLine}
+                <div class="flex gap-2 mt-2">
+                  <button data-result-pick="${i}" class="bg-cyan-500 hover:bg-cyan-600 px-3 py-1 rounded-lg text-xs font-bold">✓ Использовать</button>
+                  <a href="${r.url}" target="_blank" rel="noopener" class="bg-white/10 hover:bg-white/20 px-3 py-1 rounded-lg text-xs font-bold">↗ Открыть</a>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        const queryLine = payload.vision_query
+          ? `<div class="text-xs text-white/50 mb-2">🤖 Распознали как: <span class="text-cyan-300">"${payload.vision_query}"</span></div>`
+          : '';
+
+        orderResultsBox.classList.remove('hidden');
+        orderResultsBox.innerHTML = `
+          <div class="text-white/70 text-xs mb-2 mt-2">Найдено ${list.length} результатов на ${payload.platforms?.length || 0} площадках:</div>
+          ${queryLine}
+          <div class="flex flex-col gap-2">${cards}</div>
+        `;
+
+        // Click handler — pick result
+        orderResultsBox.querySelectorAll('[data-result-pick]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.resultPick, 10);
+            const picked = list[idx];
+            if (!picked) return;
+            // Перенесём пользователя в режим «По ссылке», подставим URL и автозапустим анализатор
+            setOrderMode('link');
+            const urlEl = document.getElementById('orderUrl');
+            if (urlEl) urlEl.value = picked.url;
+            // Если нашли цену/валюту — заполним сразу
+            if (picked.price) {
+              const priceEl = document.getElementById('orderPrice');
+              if (priceEl) priceEl.value = picked.price;
+            }
+            if (picked.currency) {
+              const sel = document.getElementById('orderCurrency');
+              if (sel) {
+                const opt = Array.from(sel.options).find((o) => o.value === picked.currency);
+                if (opt) sel.value = picked.currency;
+              }
+              const lbl = document.getElementById('orderPriceCurrency');
+              const curSym = { GBP: '£', USD: '$', EUR: '€', CNY: '¥', RUB: '₽', BYN: 'Br' };
+              if (lbl) lbl.innerText = curSym[picked.currency] || picked.currency;
+            }
+            if (picked.title) {
+              const titleDiv = document.getElementById('parsedOrderTitle');
+              if (titleDiv) {
+                titleDiv.style.color = '';
+                titleDiv.innerText = '📦 ' + picked.title;
+                titleDiv.classList.remove('hidden');
+              }
+            }
+            // Запускаем существующий парсер для уточнения веса/категории/описания
+            const aBtn = document.getElementById('analyzeOrderLinkBtn');
+            if (aBtn) aBtn.click();
+          });
+        });
+      }
+
+      // ---- Mode: photo (search-by-image) ----
+      const photoZone = document.getElementById('orderPhotoUploadZone');
+      const photoInput = document.getElementById('orderPhotoInput');
+      const photoPreview = document.getElementById('orderPhotoPreview');
+      const photoSearchBtn = document.getElementById('orderPhotoSearchBtn');
+      let photoFile = null;
+
+      if (photoZone && photoInput) {
+        photoZone.addEventListener('click', () => photoInput.click());
+        photoZone.addEventListener('dragover', (ev) => { ev.preventDefault(); photoZone.classList.add('bg-white/10'); });
+        photoZone.addEventListener('dragleave', () => photoZone.classList.remove('bg-white/10'));
+        photoZone.addEventListener('drop', (ev) => {
+          ev.preventDefault();
+          photoZone.classList.remove('bg-white/10');
+          const f = ev.dataTransfer?.files?.[0];
+          if (f) handlePhotoSelect(f);
+        });
+        photoInput.addEventListener('change', () => {
+          const f = photoInput.files?.[0];
+          if (f) handlePhotoSelect(f);
+        });
+      }
+
+      function handlePhotoSelect(f) {
+        if (!f.type.startsWith('image/')) {
+          alert('Можно загружать только изображения');
+          return;
+        }
+        if (f.size > 10 * 1024 * 1024) {
+          alert('Файл больше 10 МБ — слишком большой');
+          return;
+        }
+        photoFile = f;
+        if (photoPreview) {
+          photoPreview.classList.remove('hidden');
+          photoPreview.innerHTML = `<img src="${URL.createObjectURL(f)}" class="rounded-xl max-h-40 object-contain mx-auto">`;
+        }
+        if (photoSearchBtn) photoSearchBtn.classList.remove('hidden');
+      }
+
+      if (photoSearchBtn) {
+        photoSearchBtn.addEventListener('click', async () => {
+          if (!photoFile) return;
+          if (!supabaseClient) { alert('База данных недоступна'); return; }
+          const original = photoSearchBtn.innerText;
+          photoSearchBtn.innerText = '⏳ Загружаю фото…';
+          photoSearchBtn.disabled = true;
+          if (orderResultsBox) {
+            orderResultsBox.classList.remove('hidden');
+            orderResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ Распознаём товар на фото и ищем на 4 площадках…</div>';
+          }
+          try {
+            // 1. Загружаем в Storage
+            let sessionId = localStorage.getItem('icelogix_session_id');
+            if (!sessionId) {
+              sessionId = crypto.randomUUID();
+              localStorage.setItem('icelogix_session_id', sessionId);
+            }
+            const safeName = photoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+            const path = `${sessionId}/${Date.now()}_search_${safeName}`;
+            const { error: upErr } = await supabaseClient.storage
+              .from('product-screenshots')
+              .upload(path, photoFile, { contentType: photoFile.type, upsert: false });
+            if (upErr) throw new Error('Загрузка: ' + upErr.message);
+
+            // 2. Вызываем search-by-image
+            photoSearchBtn.innerText = '🔍 Ищем на площадках…';
+            const { data, error } = await supabaseClient.functions.invoke('search-by-image', {
+              body: { screenshotPath: path },
+            });
+            if (error) throw new Error(error.message);
+            if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
+            renderOrderSearchResults(data);
+          } catch (e) {
+            if (orderResultsBox) {
+              orderResultsBox.classList.remove('hidden');
+              orderResultsBox.innerHTML = `<div class="bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-sm text-white/80">❌ ${e.message}</div>`;
+            }
+          } finally {
+            photoSearchBtn.innerText = original;
+            photoSearchBtn.disabled = false;
+          }
+        });
+      }
+
+      // ---- Mode: text (search-products by description) ----
+      const textInput = document.getElementById('orderTextQuery');
+      const textSearchBtn = document.getElementById('orderTextSearchBtn');
+      if (textSearchBtn && textInput) {
+        const runTextSearch = async () => {
+          const q = (textInput.value || '').trim();
+          if (q.length < 3) { alert('Минимум 3 символа в описании'); return; }
+          if (!supabaseClient) { alert('База данных недоступна'); return; }
+          const original = textSearchBtn.innerText;
+          textSearchBtn.innerText = '⏳ Ищем на 4 площадках…';
+          textSearchBtn.disabled = true;
+          if (orderResultsBox) {
+            orderResultsBox.classList.remove('hidden');
+            orderResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ Параллельно опрашиваем площадки…</div>';
+          }
+          try {
+            const { data, error } = await supabaseClient.functions.invoke('search-products', {
+              body: { query: q },
+            });
+            if (error) throw new Error(error.message);
+            if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
+            renderOrderSearchResults(data);
+          } catch (e) {
+            if (orderResultsBox) {
+              orderResultsBox.classList.remove('hidden');
+              orderResultsBox.innerHTML = `<div class="bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-sm text-white/80">❌ ${e.message}</div>`;
+            }
+          } finally {
+            textSearchBtn.innerText = original;
+            textSearchBtn.disabled = false;
+          }
+        };
+        textSearchBtn.addEventListener('click', runTextSearch);
+        textInput.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); runTextSearch(); }
         });
       }
     }
