@@ -1886,37 +1886,59 @@ if (createBtn) {
         });
       }
 
+      // ---- Sanitization helpers (защита от XSS — данные из внешних источников) ----
+      const _ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;' };
+      function escHtml(s) { return String(s == null ? '' : s).replace(/[&<>"'\/]/g, (c) => _ESC_MAP[c]); }
+      function safeUrl(u) {
+        const s = String(u || '').trim();
+        if (!s) return '';
+        // Разрешаем только http(s):// — режем javascript:, data:, file: и т.д.
+        try {
+          const parsed = new URL(s);
+          if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.href;
+        } catch { /* not a valid URL */ }
+        return '';
+      }
+
       // ---- Render search results (общий для photo/text режимов) ----
       function renderOrderSearchResults(payload) {
         if (!orderResultsBox) return;
         const list = (payload && payload.results) || [];
         if (list.length === 0) {
           orderResultsBox.classList.remove('hidden');
+          const errPlatforms = (payload?.errors || []).map((e) => escHtml(e.platform)).join(', ');
           orderResultsBox.innerHTML = `
             <div class="bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-sm text-white/80">
               ❌ Ничего не нашли. Попробуйте уточнить запрос или другой режим.
-              ${payload?.errors?.length ? '<br><span class="text-xs text-white/50">Площадки с ошибками: ' + payload.errors.map(e => e.platform).join(', ') + '</span>' : ''}
+              ${errPlatforms ? '<br><span class="text-xs text-white/50">Площадки с ошибками: ' + errPlatforms + '</span>' : ''}
             </div>`;
           return;
         }
 
         const cards = list.map((r, i) => {
-          const priceLine = (r.price && r.currency)
-            ? `<div class="text-cyan-400 font-bold text-sm mt-1">${r.price} ${r.currency}</div>`
+          const priceNum = (typeof r.price === 'number' && isFinite(r.price)) ? r.price : null;
+          const currency = typeof r.currency === 'string' ? escHtml(r.currency) : '';
+          const priceLine = (priceNum && currency)
+            ? `<div class="text-cyan-400 font-bold text-sm mt-1">${escHtml(priceNum)} ${currency}</div>`
             : '<div class="text-white/40 text-xs mt-1">Цена не определена</div>';
-          const img = r.image_url
-            ? `<img src="${r.image_url}" class="w-16 h-16 object-cover rounded-lg flex-shrink-0" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`
+          const safeImg = safeUrl(r.image_url);
+          const img = safeImg
+            ? `<img src="${escHtml(safeImg)}" class="w-16 h-16 object-cover rounded-lg flex-shrink-0" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`
             : '<div class="w-16 h-16 bg-white/10 rounded-lg flex-shrink-0 flex items-center justify-center text-2xl">📦</div>';
+          const safeHref = safeUrl(r.url);
+          const titleEsc = escHtml(r.title || '(без названия)');
+          const platformLabel = escHtml(r.platform_label || r.platform || '');
+          const flag = escHtml(r.flag || '');
           return `
             <div class="bg-white/5 border border-white/10 rounded-xl p-3 flex gap-3" data-result-idx="${i}">
               ${img}
               <div class="flex-1 min-w-0">
-                <div class="text-xs text-white/60 mb-1">${r.flag || ''} ${r.platform_label || r.platform}</div>
-                <div class="text-sm font-semibold text-white truncate" title="${(r.title || '').replace(/"/g, '&quot;')}">${r.title || '(без названия)'}</div>
+                <div class="text-xs text-white/60 mb-1">${flag} ${platformLabel}</div>
+                <div class="text-sm font-semibold text-white truncate" title="${titleEsc}">${titleEsc}</div>
                 ${priceLine}
                 <div class="flex gap-2 mt-2">
                   <button data-result-pick="${i}" class="bg-cyan-500 hover:bg-cyan-600 px-3 py-1 rounded-lg text-xs font-bold">✓ Использовать</button>
-                  <a href="${r.url}" target="_blank" rel="noopener" class="bg-white/10 hover:bg-white/20 px-3 py-1 rounded-lg text-xs font-bold">↗ Открыть</a>
+                  ${safeHref ? `<a href="${escHtml(safeHref)}" target="_blank" rel="noopener noreferrer" class="bg-white/10 hover:bg-white/20 px-3 py-1 rounded-lg text-xs font-bold">↗ Открыть</a>` : ''}
                 </div>
               </div>
             </div>
@@ -1924,12 +1946,13 @@ if (createBtn) {
         }).join('');
 
         const queryLine = payload.vision_query
-          ? `<div class="text-xs text-white/50 mb-2">🤖 Распознали как: <span class="text-cyan-300">"${payload.vision_query}"</span></div>`
+          ? `<div class="text-xs text-white/50 mb-2">🤖 Распознали как: <span class="text-cyan-300">"${escHtml(payload.vision_query)}"</span></div>`
           : '';
 
+        const platformsCount = Array.isArray(payload.platforms) ? payload.platforms.length : 0;
         orderResultsBox.classList.remove('hidden');
         orderResultsBox.innerHTML = `
-          <div class="text-white/70 text-xs mb-2 mt-2">Найдено ${list.length} результатов на ${payload.platforms?.length || 0} площадках:</div>
+          <div class="text-white/70 text-xs mb-2 mt-2">Найдено ${list.length} результатов на ${platformsCount} площадках:</div>
           ${queryLine}
           <div class="flex flex-col gap-2">${cards}</div>
         `;
@@ -1941,9 +1964,11 @@ if (createBtn) {
             const picked = list[idx];
             if (!picked) return;
             // Перенесём пользователя в режим «По ссылке», подставим URL и автозапустим анализатор
+            const cleanedUrl = safeUrl(picked.url);
+            if (!cleanedUrl) return;
             setOrderMode('link');
             const urlEl = document.getElementById('orderUrl');
-            if (urlEl) urlEl.value = picked.url;
+            if (urlEl) urlEl.value = cleanedUrl;
             // Если нашли цену/валюту — заполним сразу
             if (picked.price) {
               const priceEl = document.getElementById('orderPrice');
