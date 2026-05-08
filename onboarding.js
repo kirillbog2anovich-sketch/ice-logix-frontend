@@ -379,10 +379,10 @@
     startProgress();
   }
 
-  function startProgress() {
+  function startProgress(resetElapsed) {
     stopProgress();
     progressStartTs = Date.now();
-    progressElapsed = 0;
+    if (resetElapsed !== false) progressElapsed = 0;
     const fill = overlayEl?.querySelector(`.ice-progress-fill[data-slide="${currentIndex}"]`);
     const tick = () => {
       if (isPaused || !overlayEl) return;
@@ -402,7 +402,7 @@
 
   function pause() { isPaused = true; }
   function resume() {
-    if (isPaused) { isPaused = false; progressStartTs = Date.now(); startProgress(); }
+    if (isPaused) { isPaused = false; progressStartTs = Date.now(); startProgress(false); }
   }
 
   function onKey(e) {
@@ -429,7 +429,7 @@
       try { return localStorage.getItem('ice_onboarding_shown') === '1'; } catch (_e) { return false; }
     },
     reset: () => { try { localStorage.removeItem('ice_onboarding_shown'); } catch (_e) {} },
-    version: '2026.05.08.01',
+    version: '2026.05.08.02',
   };
 
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -134,7 +134,13 @@
     if (currency === 'BYN') return amount;
     const key = `${currency}_to_BYN`;
     const rate = rates[key];
-    if (!rate) return amount;
+    if (!rate) {
+      // Неподдерживаемая валюта: НЕ возвращаем amount как BYN — это даёт грубо завышенную цену.
+      // Логируем и используем USD как наиболее консервативный fallback (большинство магазинов так маркетят).
+      try { console.warn(`[iceLogixPricing] Неизвестная валюта "${currency}" — fallback на USD-курс`); } catch (_e) {}
+      const fallback = rates['USD_to_BYN'];
+      return fallback ? amount * fallback : amount;
+    }
     return amount * rate;
   }
 
@@ -273,11 +279,11 @@
       discountBYN += input.extra_discount_byn;
     }
 
-    // 11. Итого
-    const totalBYN = round2(
+    // 11. Итого (защищаем от ухода в минус, если скидки больше суммы)
+    const totalBYN = Math.max(0, round2(
       productCostBYN + currencyBufferBYN + deliveryBYN + commissionBYN +
       insuranceBYN + legitCheckBYN + customsDutyBYN - discountBYN
-    );
+    ));
 
     return {
       available: true,
@@ -461,7 +467,7 @@
     COUNTRY_AVAILABILITY,
     ESTIMATED_WEIGHT_KG,
     FALLBACK_RATES,
-    version: '2026.05.08.02',
+    version: '2026.05.08.03',
   };
 
 })(typeof window !== 'undefined' ? window : globalThis);
