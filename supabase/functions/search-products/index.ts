@@ -29,7 +29,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const FIRECRAWL_KEY = Deno.env.get("FIRECRAWL_API_KEY") || "";
-const DEEPSEEK_KEY = Deno.env.get("DEEPSEEK_API_KEY") || "";
+const OPENROUTER_KEY = Deno.env.get("OPENROUTER_API_KEY") || "";
+const TEXT_MODEL = Deno.env.get("OPENROUTER_TEXT_MODEL") || "anthropic/claude-sonnet-4.6";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -52,25 +53,42 @@ type PlatformConfig = {
 };
 
 const PLATFORMS: PlatformConfig[] = [
-  // Китай (основные рынки заказов)
+  // 🇨🇳 Китай — все основные торговые площадки (недоступны напрямую из Беларуси)
   { id: "poizon", label: "Poizon / Dewu", flag: "🇨🇳", domain: "dewu.com", defaultCurrency: "CNY" },
   { id: "taobao", label: "Taobao", flag: "🇨🇳", domain: "taobao.com", defaultCurrency: "CNY" },
   { id: "tmall", label: "Tmall", flag: "🇨🇳", domain: "tmall.com", defaultCurrency: "CNY" },
   { id: "1688", label: "1688", flag: "🇨🇳", domain: "1688.com", defaultCurrency: "CNY" },
-  // Польша / ЕС (эквивалент «из Европы»)
+  { id: "jd", label: "JD.com", flag: "🇨🇳", domain: "jd.com", defaultCurrency: "CNY" },
+  // 🇪🇺 Европа / ЕС
   { id: "zalando", label: "Zalando", flag: "🇵🇱", domain: "zalando.pl", defaultCurrency: "EUR" },
-  { id: "aboutyou", label: "About You", flag: "🇪🇺", domain: "aboutyou.com", defaultCurrency: "EUR" },
-  { id: "asos", label: "ASOS", flag: "🇪🇺", domain: "asos.com", defaultCurrency: "EUR" },
+  { id: "aboutyou", label: "About You", flag: "🇩🇪", domain: "aboutyou.com", defaultCurrency: "EUR" },
+  { id: "asos", label: "ASOS", flag: "🇬🇧", domain: "asos.com", defaultCurrency: "EUR" },
   { id: "farfetch", label: "Farfetch", flag: "🇪🇺", domain: "farfetch.com", defaultCurrency: "EUR" },
   { id: "endclothing", label: "END.", flag: "🇬🇧", domain: "endclothing.com", defaultCurrency: "GBP" },
-  // Россия (остаются в списке поддерживаемых, но НЕ входят в дефолт — работают в Беларуси)
+  { id: "mrporter", label: "Mr Porter", flag: "🇬🇧", domain: "mrporter.com", defaultCurrency: "GBP" },
+  { id: "mytheresa", label: "Mytheresa", flag: "🇩🇪", domain: "mytheresa.com", defaultCurrency: "EUR" },
+  { id: "ssense", label: "SSENSE", flag: "🇨🇦", domain: "ssense.com", defaultCurrency: "EUR" },
+  { id: "vinted", label: "Vinted", flag: "🇪🇺", domain: "vinted.com", defaultCurrency: "EUR" },
+  { id: "sneakerstudio", label: "SneakerStudio", flag: "🇵🇱", domain: "sneakerstudio.com", defaultCurrency: "EUR" },
+  // 🇺🇸 США (sneaker / streetwear)
+  { id: "goat", label: "GOAT", flag: "🇺🇸", domain: "goat.com", defaultCurrency: "USD" },
+  { id: "stockx", label: "StockX", flag: "🇺🇸", domain: "stockx.com", defaultCurrency: "USD" },
+  // 🇯🇵 Япония / Азия
+  { id: "mercari", label: "Mercari", flag: "🇯🇵", domain: "mercari.com", defaultCurrency: "USD" },
+  // 🇷🇺 Россия — оставлены, но НЕ в дефолте (работают в Беларуси, клиент закажет сам)
   { id: "wildberries", label: "Wildberries", flag: "🇷🇺", domain: "wildberries.ru", qualifiers: "купить", defaultCurrency: "RUB" },
   { id: "lamoda", label: "Lamoda", flag: "🇷🇺", domain: "lamoda.ru", qualifiers: "купить", defaultCurrency: "RUB" },
   { id: "ozon", label: "Ozon", flag: "🇷🇺", domain: "ozon.ru", qualifiers: "купить", defaultCurrency: "RUB" },
 ];
 
-// Дефолт — только площадки недоступные в Беларуси (без WB/Lamoda/Ozon)
-const DEFAULT_PLATFORMS = ["poizon", "taobao", "zalando", "asos", "farfetch"];
+// Дефолт — все площадки недоступные напрямую в Беларуси.
+// Сюда НЕ входят wildberries/lamoda/ozon — клиент закажет сам, посредник не нужен.
+const DEFAULT_PLATFORMS = [
+  "poizon", "taobao", "tmall", "1688", "jd",
+  "zalando", "aboutyou", "asos", "farfetch", "endclothing",
+  "mrporter", "mytheresa", "ssense", "vinted", "sneakerstudio",
+  "goat", "stockx", "mercari",
+];
 
 function getPlatform(id: string): PlatformConfig | null {
   return PLATFORMS.find((p) => p.id === id) ?? null;
@@ -178,7 +196,7 @@ async function extractFromMarkdown(
   md: string,
   fallbackTitle: string,
 ): Promise<{ title: string | null; price: number | null; currency: string | null }> {
-  if (!DEEPSEEK_KEY || !md) {
+  if (!OPENROUTER_KEY || !md) {
     const fb = extractPriceFromMarkdown(md || "");
     return { title: fallbackTitle || null, price: fb.price, currency: fb.currency };
   }
@@ -196,14 +214,14 @@ Markdown:
 ${md.substring(0, 6000)}`;
 
   try {
-    const res = await fetch("https://api.deepseek.com/v1/chat/completions", {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${DEEPSEEK_KEY}`,
+        "Authorization": `Bearer ${OPENROUTER_KEY}`,
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model: TEXT_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0,
       }),
@@ -229,6 +247,79 @@ ${md.substring(0, 6000)}`;
   }
 }
 
+// ─── LLM QUERY ENHANCER (Claude Sonnet 4.6 через OpenRouter) ────────────────
+// Берёт сырой запрос пользователя ("зип худи кляйн копия серый мужской")
+// и превращает в нормализованный поисковый запрос на английском
+// ("Calvin Klein zip hoodie men gray") + извлекает brand/category для re-ranking.
+async function enhanceQuery(raw: string): Promise<{
+  enhanced_en: string;
+  enhanced_ru: string;
+  brand: string | null;
+  category: string | null;
+  ok: boolean;
+}> {
+  const fallback = { enhanced_en: raw, enhanced_ru: raw, brand: null, category: null, ok: false };
+  if (!OPENROUTER_KEY) return fallback;
+
+  const prompt = `Ты помогаешь искать товары в международных интернет-магазинах.
+
+Пользователь ввёл запрос на любом языке (часто кратко, с опечатками, разговорно).
+Твоя задача — нормализовать запрос для поиска в Google по сайтам типа zalando.com, asos.com, poizon.com, goat.com и т.д.
+
+Правила:
+- "копия", "реплика", "1:1" → удалить (магазины такое не индексируют)
+- сокращения брендов раскрыть: "кляйн"→"Calvin Klein", "тнф"→"The North Face", "стасси"→"Stussy"
+- категории по-английски: "худи"→"hoodie", "кроссовки"→"sneakers", "джинсы"→"jeans", "ремень"→"belt"
+- gender: "мужской"→"men", "женский"→"women"
+- цвет: "серый"→"gray", "чёрный"→"black"
+- НЕ добавлять цены, размеры, артикулы — этого нет в исходном запросе
+
+Запрос пользователя: """${raw}"""
+
+Верни ТОЛЬКО валидный JSON (никаких markdown-оборок), пример формата:
+{"enhanced_en":"Calvin Klein zip hoodie men gray","enhanced_ru":"Calvin Klein худи на молнии мужское серое","brand":"Calvin Klein","category":"hoodie"}
+
+Если запрос непонятен или это не товар — верни {"enhanced_en":"${raw}","enhanced_ru":"${raw}","brand":null,"category":null}.`;
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENROUTER_KEY}`,
+      },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0,
+        max_tokens: 200,
+      }),
+    });
+    if (!res.ok) return fallback;
+    const data = await res.json();
+    const parsed = parseAssistantJson(String(data.choices?.[0]?.message?.content ?? ""));
+    const en = typeof parsed.enhanced_en === "string" && parsed.enhanced_en.trim() ? parsed.enhanced_en.trim() : raw;
+    const ru = typeof parsed.enhanced_ru === "string" && parsed.enhanced_ru.trim() ? parsed.enhanced_ru.trim() : raw;
+    return {
+      enhanced_en: en,
+      enhanced_ru: ru,
+      brand: typeof parsed.brand === "string" && parsed.brand.trim() ? parsed.brand.trim() : null,
+      category: typeof parsed.category === "string" && parsed.category.trim() ? parsed.category.trim() : null,
+      ok: true,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+// Какой язык запроса использовать для какой платформы
+function queryLangForPlatform(platformId: string): "en" | "ru" {
+  // RU площадки и Mercari (часто JP/EN) → используем русский / оригинал
+  if (["wildberries", "lamoda", "ozon"].includes(platformId)) return "ru";
+  // Все остальные международные → английский
+  return "en";
+}
+
 // ─── ОДНА ПЛОЩАДКА ───────────────────────────────────────────────────────────
 type SearchResult = {
   platform: string;
@@ -245,13 +336,15 @@ type SearchResult = {
 
 async function searchOnePlatform(
   platform: PlatformConfig,
-  query: string,
+  queries: { en: string; ru: string },
   topN: number,
 ): Promise<SearchResult[]> {
-  // Оборачиваем оригинальный запрос в кавычки для non-fuzzy match (оператор Firecrawl).
-  // Это отфильтровывает каталожные страницы ("кроссовки Nike") и приют к товарным PDP-страницам.
-  const escaped = query.replace(/"/g, " ").trim();
-  const fullQuery = `"${escaped}" ${platform.qualifiers || ""} site:${platform.domain}`.trim();
+  // Выбираем язык запроса под язык площадки (en для int'l, ru для WB/Lamoda/Ozon)
+  const lang = queryLangForPlatform(platform.id);
+  const baseQuery = (lang === "en" ? queries.en : queries.ru).replace(/"/g, " ").trim();
+  // БЕЗ кавычек — для fuzzy-матча по описанию (товарных PDP-страниц всё равно мало в каталоге).
+  // qualifiers (например "купить" для рус.) добавляют контекст
+  const fullQuery = `${baseQuery} ${platform.qualifiers || ""} site:${platform.domain}`.trim();
   let hits: SearchHit[] = [];
   try {
     hits = await firecrawlSearch(fullQuery, topN);
@@ -339,9 +432,14 @@ Deno.serve(async (req) => {
 
   const topN = Math.min(Math.max(body.topN ?? 3, 1), 5);
 
-  // Параллельно по всем площадкам
+  // 1. LLM-улучшение запроса (Claude Sonnet 4.6)
+  // "зип худи кляйн копия серый мужской" → "Calvin Klein zip hoodie men gray"
+  const enh = await enhanceQuery(query);
+  const queries = { en: enh.enhanced_en, ru: enh.enhanced_ru };
+
+  // 2. Параллельно по всем площадкам — каждая использует свой язык запроса
   const allResults: SearchResult[][] = await Promise.all(
-    platforms.map((p) => searchOnePlatform(p, query, topN).catch((e) => ([{
+    platforms.map((p) => searchOnePlatform(p, queries, topN).catch((e) => ([{
       platform: p.id,
       platform_label: p.label,
       flag: p.flag,
@@ -362,6 +460,9 @@ Deno.serve(async (req) => {
     JSON.stringify({
       ok: true,
       query,
+      enhanced_query: enh.ok ? enh.enhanced_en : null,
+      brand: enh.brand,
+      category: enh.category,
       platforms: platforms.map((p) => p.id),
       total: successful.length,
       results: successful,

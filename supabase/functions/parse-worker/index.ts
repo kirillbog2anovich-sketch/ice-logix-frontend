@@ -7,8 +7,9 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ─── API Keys ─────────────────────────────────────────────────────────────────
 const FIRECRAWL_KEY = Deno.env.get("FIRECRAWL_API_KEY") || "";
-const DEEPSEEK_KEY = Deno.env.get("DEEPSEEK_API_KEY") || "";
+const OPENROUTER_KEY = Deno.env.get("OPENROUTER_API_KEY") || "";
 const CRAWLBASE_JS_TOKEN = Deno.env.get("CRAWLBASE_JS_TOKEN") || "";
+const TEXT_MODEL = Deno.env.get("OPENROUTER_TEXT_MODEL") || "anthropic/claude-sonnet-4.6";
 
 // ─── Chinese domain list ──────────────────────────────────────────────────────
 const CHINESE_DOMAINS = [
@@ -237,7 +238,7 @@ async function extractData(
   brand: string | null;
   marketplace: string | null;
 }> {
-  if (!DEEPSEEK_KEY) throw new Error("DEEPSEEK_API_KEY not configured");
+  if (!OPENROUTER_KEY) throw new Error("OPENROUTER_API_KEY not configured");
 
   const isHtml = content.trimStart().startsWith("<");
   const contentType = isHtml ? "HTML" : "Markdown";
@@ -274,14 +275,14 @@ ${content.substring(0, 8000)}`;
   let dsResponse: Record<string, unknown> | null = null;
 
   try {
-    const dsRes = await fetch("https://api.deepseek.com/v1/chat/completions", {
+    const dsRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${DEEPSEEK_KEY}`,
+        "Authorization": `Bearer ${OPENROUTER_KEY}`,
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model: TEXT_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0,
       }),

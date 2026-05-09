@@ -205,6 +205,85 @@
       return it ? it.broad : (specific || null);
     }
 
+    // ─── 2-step category UI ──────────────────────────────────────────────────
+    // Превращает существующий <select id="..."> в двухуровневый выбор:
+    //   шаг 1 — Обувь / Одежда / Аксессуары (broad-select добавлен сверху)
+    //   шаг 2 — конкретное наименование (master-select, опции отфильтрованы)
+    // Это менее перегруженно для мобильного UX и стилистически чище.
+    function enhanceCategoryTwoStep(selectId) {
+      const master = document.getElementById(selectId);
+      if (!master || master.dataset.twoStepEnhanced === '1') return;
+      master.dataset.twoStepEnhanced = '1';
+
+      const groups = ['Обувь', 'Одежда', 'Аксессуары'];
+      const groupIcons = { 'Обувь': '👟', 'Одежда': '👕', 'Аксессуары': '💼' };
+
+      // Создаём broad-select
+      const broad = document.createElement('select');
+      broad.id = selectId + 'Broad';
+      broad.className = master.className;
+      broad.innerHTML = '<option value="">— тип товара —</option>' +
+        groups.map(g => `<option value="${g}">${groupIcons[g]} ${g}</option>`).join('');
+
+      // Вставляем перед master
+      master.parentNode.insertBefore(broad, master);
+
+      // Сохраняем оригинальный HTML опций для восстановления
+      const originalHTML = master.innerHTML;
+
+      // Изначально master скрыт (broad ещё не выбран)
+      master.style.display = 'none';
+
+      function rebuildSpecific(broadValue) {
+        if (!broadValue) {
+          master.innerHTML = originalHTML;
+          master.style.display = 'none';
+          master.value = '';
+          return;
+        }
+        const items = CATEGORY_MAP.filter(c => c.broad === broadValue);
+        let html = `<option value="">— конкретное наименование —</option>`;
+        for (const c of items) {
+          html += `<option value="${c.value}" data-broad="${c.broad}" data-default-weight="${c.defaultWeight}">${c.icon} ${c.value}</option>`;
+        }
+        master.innerHTML = html;
+        master.style.display = '';
+        master.value = '';
+      }
+
+      // Если master уже имел выбранное значение (например, прилетело из парсера)
+      const initial = master.value;
+      if (initial) {
+        const broadVal = getCategoryBroad(initial);
+        if (broadVal) {
+          broad.value = broadVal;
+          rebuildSpecific(broadVal);
+          master.value = initial;
+        }
+      }
+
+      broad.addEventListener('change', () => {
+        rebuildSpecific(broad.value);
+        // Триггерим событие на master чтобы существующие onchange-хендлеры (вес и т.д.) сработали
+        master.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      // Также если кто-то снаружи задаёт master.value программно (парсер) — поддержим broad
+      const origDescriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+      Object.defineProperty(master, 'value', {
+        get() { return origDescriptor.get.call(this); },
+        set(v) {
+          const broadVal = getCategoryBroad(v);
+          if (broadVal && broad.value !== broadVal) {
+            broad.value = broadVal;
+            rebuildSpecific(broadVal);
+          }
+          origDescriptor.set.call(this, v);
+        },
+        configurable: true,
+      });
+    }
+
     // ─── ВАЛИДАЦИЯ ЗАКАЗА перед отправкой ────────────────────────────────────
     // Особенно важно для режима «Вручную» — там данные не проходят парсер.
     // Возвращает массив ошибок (пустой = всё ок).
@@ -331,6 +410,115 @@ const MAX_REQUESTS_TRUSTED = 100;
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZydndkYWdqcHR0dmZ2amFuYndxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTc4MzgsImV4cCI6MjA5MTIzMzgzOH0.P9GQSW6NLN1BhR66PX-LP4ysZBXFeWIXRYIRvhRjo1c';
     const PARSE_PRODUCT_URL = 'https://vrvwdagjpttvfvjanbwq.supabase.co/functions/v1/parse-product';
 
+    // ─── ФИНАЛЬНАЯ МОДАЛКА-ПРЕВЬЮ ПЕРЕД СОХРАНЕНИЕМ ───────────────────────────
+    // Показывает: фото-кандидат (image confirmation), сравнение цены с рынком,
+    // полный обзор заказа. Возвращает Promise<boolean> — true если пользователь подтвердил.
+    function _ipMoneyFmt(v) { return (Math.round(Number(v || 0) * 100) / 100).toFixed(2); }
+    function showOrderPreviewModal(order) {
+      return new Promise((resolve) => {
+        const title = order?.title || '';
+        const brand = order?.brand || '';
+        const marketplace = order?.marketplaceName || order?.marketplace || '';
+        const price = Number(order?.price || 0);
+        const currency = order?.currency || '';
+        const size = order?.size || '';
+        const country = order?.country || '';
+        const weight = Number(order?.weight || 0);
+        const totalByn = Number(order?.total_byn ?? order?.total ?? 0);
+        const discount = Number(order?.discountAmount || 0);
+
+        const _esc = (s) => String(s == null ? '' : s).replace(/[&<>"'\/]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;'}[c]));
+
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4';
+        overlay.innerHTML = `
+          <div class="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-5 border border-white/10 shadow-2xl">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-lg font-bold text-white">📋 Проверьте заказ</h3>
+              <button id="ipClose" class="text-white/60 hover:text-white text-2xl leading-none">×</button>
+            </div>
+
+            <div id="ipMatchPanel" class="bg-white/5 border border-white/10 rounded-xl p-3 mb-3 hidden">
+              <p class="text-xs text-white/60 mb-2">🔍 Похоже на этот товар:</p>
+              <div class="flex gap-3 items-center">
+                <img id="ipMatchImg" src="" class="w-20 h-20 rounded-lg object-cover bg-white/10 hidden">
+                <div class="flex-1 min-w-0">
+                  <p id="ipMatchTitle" class="text-sm text-white font-medium truncate"></p>
+                  <p id="ipMatchPrice" class="text-xs text-cyan-400 mt-1"></p>
+                  <a id="ipMatchLink" href="#" target="_blank" class="text-xs text-blue-400 hover:underline truncate block">Открыть →</a>
+                </div>
+              </div>
+            </div>
+
+            <div id="ipPriceWarn" class="bg-orange-500/15 border border-orange-400/30 rounded-xl p-3 mb-3 text-sm text-orange-100 hidden"></div>
+
+            <div class="bg-white/5 rounded-xl p-3 mb-3 space-y-1.5 text-sm">
+              <div class="flex justify-between"><span class="text-white/60">Товар:</span><span class="text-white text-right ml-2">${_esc(title || '—')}</span></div>
+              ${brand ? `<div class="flex justify-between"><span class="text-white/60">Бренд:</span><span class="text-white">${_esc(brand)}</span></div>` : ''}
+              ${marketplace ? `<div class="flex justify-between"><span class="text-white/60">Площадка:</span><span class="text-white">${_esc(marketplace)}</span></div>` : ''}
+              ${size ? `<div class="flex justify-between"><span class="text-white/60">Размер:</span><span class="text-white">${_esc(size)}</span></div>` : ''}
+              ${country ? `<div class="flex justify-between"><span class="text-white/60">Страна:</span><span class="text-white">${_esc(country)}</span></div>` : ''}
+              ${weight ? `<div class="flex justify-between"><span class="text-white/60">Вес:</span><span class="text-white">${weight.toFixed(2)} кг</span></div>` : ''}
+              ${price ? `<div class="flex justify-between"><span class="text-white/60">Цена товара:</span><span class="text-white">${_ipMoneyFmt(price)} ${_esc(currency)}</span></div>` : ''}
+              ${totalByn ? `<div class="flex justify-between text-base font-bold pt-2 border-t border-white/10"><span class="text-white">Итого:</span><span class="text-cyan-400">${_ipMoneyFmt(totalByn - discount)} BYN</span></div>` : ''}
+            </div>
+
+            <div class="flex gap-2">
+              <button id="ipBack" class="flex-1 bg-white/10 hover:bg-white/20 text-white px-4 py-3 rounded-xl text-sm font-semibold">← Назад</button>
+              <button id="ipConfirm" class="flex-2 bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl text-sm font-bold flex-1">✓ Сохранить заказ</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+
+        const finish = (val) => { overlay.remove(); resolve(val); };
+        overlay.querySelector('#ipClose').onclick = () => finish(false);
+        overlay.querySelector('#ipBack').onclick = () => finish(false);
+        overlay.querySelector('#ipConfirm').onclick = () => finish(true);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(false); });
+
+        // Фоновый поиск: image confirmation + price comparison
+        if (title && supabaseClient && window.iceLogixPricing) {
+          const q = [brand, title].filter(Boolean).join(' ').trim();
+          supabaseClient.functions.invoke('search-products', { body: { query: q, topN: 3 } })
+            .then(({ data, error }) => {
+              if (error || !data?.ok || !Array.isArray(data.results) || data.results.length === 0) return;
+              const first = data.results.find(r => r.image_url || r.title) || data.results[0];
+              if (!first) return;
+              const panel = overlay.querySelector('#ipMatchPanel');
+              const img = overlay.querySelector('#ipMatchImg');
+              const tEl = overlay.querySelector('#ipMatchTitle');
+              const pEl = overlay.querySelector('#ipMatchPrice');
+              const lEl = overlay.querySelector('#ipMatchLink');
+              if (panel) panel.classList.remove('hidden');
+              if (img && first.image_url) { img.src = first.image_url; img.classList.remove('hidden'); }
+              if (tEl) tEl.textContent = first.title || '';
+              if (pEl && first.price && first.currency) {
+                pEl.textContent = `${_ipMoneyFmt(first.price)} ${first.currency}`;
+              }
+              if (lEl && first.url) { lEl.href = first.url; }
+
+              // Price comparison: avg по результатам в той же валюте
+              if (price && currency) {
+                const sameCcy = data.results.filter(r => r.price && r.currency === currency);
+                if (sameCcy.length >= 2) {
+                  const avg = sameCcy.reduce((s, r) => s + r.price, 0) / sameCcy.length;
+                  const dev = Math.abs(price - avg) / avg;
+                  if (dev > 0.2) {
+                    const warn = overlay.querySelector('#ipPriceWarn');
+                    if (warn) {
+                      warn.classList.remove('hidden');
+                      const direction = price > avg ? 'выше' : 'ниже';
+                      warn.innerHTML = `⚠️ Ваша цена <b>${_ipMoneyFmt(price)} ${_esc(currency)}</b> на ${(dev * 100).toFixed(0)}% ${direction} средней по рынку (~${_ipMoneyFmt(avg)} ${_esc(currency)} на ${sameCcy.length} площадках). Перепроверьте.`;
+                    }
+                  }
+                }
+              }
+            })
+            .catch(() => { /* silent — модалка работает без preview */ });
+        }
+      });
+    }
+
     async function init() {
       tg = window.Telegram.WebApp;
       tg.ready();
@@ -361,6 +549,13 @@ const MAX_REQUESTS_TRUSTED = 100;
         setTimeout(() => window.iceLogixOnboarding.open(), 800);
       }
       switchTab('home');
+      // Watch for category selects to apply 2-step UI enhancement
+      const enhanceAllCategorySelects = () => {
+        ['calcCategory', 'orderCategory', 'productCategory'].forEach(enhanceCategoryTwoStep);
+      };
+      enhanceAllCategorySelects();
+      const moEnhance = new MutationObserver(enhanceAllCategorySelects);
+      moEnhance.observe(document.body, { childList: true, subtree: true });
     }
 
     async function loadUserData() {
@@ -954,23 +1149,31 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 
           <!-- Mode: photo (search by image) -->
           <div data-calc-mode-pane="photo" class="hidden">
-            <label class="text-white/70 text-sm">Фото товара</label>
+            <label class="text-white/70 text-sm">Фото товара (можно до 5)</label>
             <div id="calcPhotoUploadZone" class="mt-1 mb-2 p-4 border-2 border-dashed border-white/30 rounded-xl text-center cursor-pointer hover:bg-white/5 transition">
               <div class="text-3xl mb-1">📸</div>
               <p class="text-white/80 text-sm font-semibold">Загрузите фото товара</p>
-              <p class="text-white/50 text-xs mt-1">Найдём похожие товары на 4 площадках одновременно</p>
-              <input type="file" id="calcPhotoInput" accept="image/*" class="hidden">
+              <p class="text-white/50 text-xs mt-1">Несколько фото = более точный поиск. Принимаем до 5 шт.</p>
+              <input type="file" id="calcPhotoInput" accept="image/*" multiple class="hidden">
             </div>
+            <div id="calcPhotoPreview" class="hidden mb-2 grid grid-cols-3 gap-2"></div>
+            <label class="text-white/70 text-xs mt-2 block">Описание товара (опц.) — улучшит поиск</label>
+            <input id="calcPhotoHint" type="text" placeholder="Напр. Calvin Klein zip hoodie серый M" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-2 text-sm">
             <button id="calcPhotoSearchBtn" class="hidden w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти этот товар</button>
-            <div id="calcPhotoPreview" class="hidden mb-2"></div>
           </div>
 
           <!-- Mode: text (search by description) -->
           <div data-calc-mode-pane="text" class="hidden">
             <label class="text-white/70 text-sm">Описание товара</label>
             <input type="text" id="calcTextQuery" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-2" placeholder="Например: Nike Dunk Low Panda кроссовки">
-            <p class="text-white/40 text-xs mb-2">Чем точнее — тем лучше. Бренд + модель + цвет + категория.</p>
-            <button id="calcTextSearchBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти на 5 площадках</button>
+            <p class="text-white/40 text-xs mb-2">Бренд + модель + цвет + категория. ИИ улучшит формулировку — пиши как удобно.</p>
+            <label class="text-white/70 text-xs mt-1 block">Фото (опц.) — точнее результаты</label>
+            <div id="calcTextPhotoZone" class="mt-1 mb-2 p-2 border border-dashed border-white/30 rounded-xl text-center cursor-pointer hover:bg-white/5 transition text-xs text-white/60">
+              📷 Прикрепить фото (опц.)
+              <input type="file" id="calcTextPhotoInput" accept="image/*" class="hidden">
+            </div>
+            <div id="calcTextPhotoPreview" class="hidden mb-2"></div>
+            <button id="calcTextSearchBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти товар</button>
           </div>
 
           <!-- Search results (shared by photo/text modes) -->
@@ -1531,7 +1734,31 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   const calcPhotoInput = document.getElementById('calcPhotoInput');
   const calcPhotoPreview = document.getElementById('calcPhotoPreview');
   const calcPhotoSearchBtn = document.getElementById('calcPhotoSearchBtn');
-  let calcPhotoFile = null;
+  const calcPhotoHint = document.getElementById('calcPhotoHint');
+  const calcPhotoFiles = []; // multi-photo (до 5)
+  function renderCalcPhotoPreviews() {
+    if (!calcPhotoPreview) return;
+    if (calcPhotoFiles.length === 0) {
+      calcPhotoPreview.classList.add('hidden');
+      calcPhotoPreview.innerHTML = '';
+      if (calcPhotoSearchBtn) calcPhotoSearchBtn.classList.add('hidden');
+      return;
+    }
+    calcPhotoPreview.classList.remove('hidden');
+    calcPhotoPreview.innerHTML = calcPhotoFiles.map((f, i) =>
+      `<div class="relative">
+        <img src="${URL.createObjectURL(f)}" class="rounded-xl w-full h-24 object-cover">
+        <button type="button" data-rm-calc-photo="${i}" class="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center shadow-lg">×</button>
+      </div>`).join('');
+    if (calcPhotoSearchBtn) calcPhotoSearchBtn.classList.remove('hidden');
+    calcPhotoPreview.querySelectorAll('[data-rm-calc-photo]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const i = parseInt(btn.dataset.rmCalcPhoto, 10);
+        calcPhotoFiles.splice(i, 1);
+        renderCalcPhotoPreviews();
+      });
+    });
+  }
   if (calcPhotoZone && calcPhotoInput) {
     calcPhotoZone.addEventListener('click', () => calcPhotoInput.click());
     calcPhotoZone.addEventListener('dragover', (ev) => { ev.preventDefault(); calcPhotoZone.classList.add('bg-white/10'); });
@@ -1539,27 +1766,23 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     calcPhotoZone.addEventListener('drop', (ev) => {
       ev.preventDefault();
       calcPhotoZone.classList.remove('bg-white/10');
-      const f = ev.dataTransfer?.files?.[0];
-      if (f) handleCalcPhotoSelect(f);
+      handleCalcPhotoFiles(ev.dataTransfer?.files);
     });
-    calcPhotoInput.addEventListener('change', () => {
-      const f = calcPhotoInput.files?.[0];
-      if (f) handleCalcPhotoSelect(f);
-    });
+    calcPhotoInput.addEventListener('change', () => handleCalcPhotoFiles(calcPhotoInput.files));
   }
-  function handleCalcPhotoSelect(f) {
-    if (!f.type.startsWith('image/')) { alert('Можно загружать только изображения'); return; }
-    if (f.size > 10 * 1024 * 1024) { alert('Файл больше 10 МБ — слишком большой'); return; }
-    calcPhotoFile = f;
-    if (calcPhotoPreview) {
-      calcPhotoPreview.classList.remove('hidden');
-      calcPhotoPreview.innerHTML = `<img src="${URL.createObjectURL(f)}" class="rounded-xl max-h-40 object-contain mx-auto">`;
+  function handleCalcPhotoFiles(files) {
+    if (!files || !files.length) return;
+    for (const f of files) {
+      if (!f.type.startsWith('image/')) continue;
+      if (f.size > 10 * 1024 * 1024) { alert(`${f.name}: больше 10 МБ`); continue; }
+      if (calcPhotoFiles.length >= 5) { alert('Можно загрузить максимум 5 фото'); break; }
+      calcPhotoFiles.push(f);
     }
-    if (calcPhotoSearchBtn) calcPhotoSearchBtn.classList.remove('hidden');
+    renderCalcPhotoPreviews();
   }
   if (calcPhotoSearchBtn) {
     calcPhotoSearchBtn.addEventListener('click', async () => {
-      if (!calcPhotoFile) return;
+      if (calcPhotoFiles.length === 0) return;
       if (!supabaseClient) { alert('База данных недоступна'); return; }
       const original = calcPhotoSearchBtn.innerText;
       calcPhotoSearchBtn.innerText = '⏳ Загружаю фото…';
@@ -1574,15 +1797,23 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           sessionId = crypto.randomUUID();
           localStorage.setItem('icelogix_session_id', sessionId);
         }
-        const safeName = calcPhotoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
-        const path = `${sessionId}/${Date.now()}_search_${safeName}`;
-        const { error: upErr } = await supabaseClient.storage
-          .from('product-screenshots')
-          .upload(path, calcPhotoFile, { contentType: calcPhotoFile.type, upsert: false });
-        if (upErr) throw new Error('Загрузка: ' + upErr.message);
+        // Загружаем все фото параллельно, передаём первое (Apify Lens работает с одним) + список всех
+        const paths = await Promise.all(calcPhotoFiles.map(async (f) => {
+          const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+          const path = `${sessionId}/${Date.now()}_search_${safeName}`;
+          const { error: upErr } = await supabaseClient.storage
+            .from('product-screenshots')
+            .upload(path, f, { contentType: f.type, upsert: false });
+          if (upErr) throw new Error('Загрузка: ' + upErr.message);
+          return path;
+        }));
         calcPhotoSearchBtn.innerText = '🔍 Ищем на площадках…';
         const { data, error } = await supabaseClient.functions.invoke('search-by-image', {
-          body: { screenshotPath: path },
+          body: {
+            screenshotPath: paths[0],
+            screenshotPaths: paths,
+            descriptionHint: (calcPhotoHint?.value || '').trim() || null,
+          },
         });
         if (error) throw new Error(error.message);
         if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
@@ -1599,9 +1830,37 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     });
   }
 
-  // ---- Mode: text (search-products by description) ----
+  // ---- Mode: text (search-products by description, optional photo) ----
   const calcTextInput = document.getElementById('calcTextQuery');
   const calcTextSearchBtn = document.getElementById('calcTextSearchBtn');
+  const calcTextPhotoZone = document.getElementById('calcTextPhotoZone');
+  const calcTextPhotoInput = document.getElementById('calcTextPhotoInput');
+  const calcTextPhotoPreview = document.getElementById('calcTextPhotoPreview');
+  let calcTextPhotoFile = null;
+  if (calcTextPhotoZone && calcTextPhotoInput) {
+    calcTextPhotoZone.addEventListener('click', () => calcTextPhotoInput.click());
+    calcTextPhotoInput.addEventListener('change', () => {
+      const f = calcTextPhotoInput.files?.[0];
+      if (!f) return;
+      if (!f.type.startsWith('image/')) { alert('Только изображения'); return; }
+      if (f.size > 10 * 1024 * 1024) { alert('Файл больше 10 МБ'); return; }
+      calcTextPhotoFile = f;
+      if (calcTextPhotoPreview) {
+        calcTextPhotoPreview.classList.remove('hidden');
+        calcTextPhotoPreview.innerHTML =
+          `<div class="relative inline-block">
+            <img src="${URL.createObjectURL(f)}" class="rounded-xl max-h-32 object-contain">
+            <button type="button" id="calcTextPhotoRemove" class="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center shadow-lg">×</button>
+          </div>`;
+        document.getElementById('calcTextPhotoRemove')?.addEventListener('click', () => {
+          calcTextPhotoFile = null;
+          calcTextPhotoPreview.classList.add('hidden');
+          calcTextPhotoPreview.innerHTML = '';
+          calcTextPhotoInput.value = '';
+        });
+      }
+    });
+  }
   if (calcTextSearchBtn && calcTextInput) {
     const runCalcTextSearch = async () => {
       const q = (calcTextInput.value || '').trim();
@@ -1612,15 +1871,36 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       calcTextSearchBtn.disabled = true;
       if (calcResultsBox) {
         calcResultsBox.classList.remove('hidden');
-        calcResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ Параллельно опрашиваем площадки…</div>';
+        calcResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ ИИ улучшает запрос и параллельно опрашивает площадки…</div>';
       }
       try {
-        const { data, error } = await supabaseClient.functions.invoke('search-products', {
-          body: { query: q },
-        });
-        if (error) throw new Error(error.message);
-        if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
-        renderCalcSearchResults(data);
+        // Если приложили фото — отправляем через search-by-image (фото как primary, текст как hint)
+        if (calcTextPhotoFile) {
+          let sessionId = localStorage.getItem('icelogix_session_id');
+          if (!sessionId) {
+            sessionId = crypto.randomUUID();
+            localStorage.setItem('icelogix_session_id', sessionId);
+          }
+          const safeName = calcTextPhotoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+          const path = `${sessionId}/${Date.now()}_search_${safeName}`;
+          const { error: upErr } = await supabaseClient.storage
+            .from('product-screenshots')
+            .upload(path, calcTextPhotoFile, { contentType: calcTextPhotoFile.type, upsert: false });
+          if (upErr) throw new Error('Загрузка фото: ' + upErr.message);
+          const { data, error } = await supabaseClient.functions.invoke('search-by-image', {
+            body: { screenshotPath: path, descriptionHint: q },
+          });
+          if (error) throw new Error(error.message);
+          if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
+          renderCalcSearchResults(data);
+        } else {
+          const { data, error } = await supabaseClient.functions.invoke('search-products', {
+            body: { query: q },
+          });
+          if (error) throw new Error(error.message);
+          if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
+          renderCalcSearchResults(data);
+        }
       } catch (e) {
         if (calcResultsBox) {
           calcResultsBox.classList.remove('hidden');
@@ -1683,23 +1963,31 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 
           <!-- Mode: photo (search by image) -->
           <div data-order-mode-pane="photo" class="hidden">
-            <label class="text-white/70 text-sm">Фото товара</label>
+            <label class="text-white/70 text-sm">Фото товара (можно до 5)</label>
             <div id="orderPhotoUploadZone" class="mt-1 mb-2 p-4 border-2 border-dashed border-white/30 rounded-xl text-center cursor-pointer hover:bg-white/5 transition">
               <div class="text-3xl mb-1">📸</div>
               <p class="text-white/80 text-sm font-semibold">Загрузите фото товара</p>
-              <p class="text-white/50 text-xs mt-1">Найдём похожие товары на 4 площадках одновременно</p>
-              <input type="file" id="orderPhotoInput" accept="image/*" class="hidden">
+              <p class="text-white/50 text-xs mt-1">Несколько фото = более точный поиск. Принимаем до 5 шт.</p>
+              <input type="file" id="orderPhotoInput" accept="image/*" multiple class="hidden">
             </div>
+            <div id="orderPhotoPreview" class="hidden mb-2 grid grid-cols-3 gap-2"></div>
+            <label class="text-white/70 text-xs mt-2 block">Описание товара (опц.) — улучшит поиск</label>
+            <input id="orderPhotoHint" type="text" placeholder="Напр. Calvin Klein zip hoodie серый M" class="w-full p-3 rounded-xl bg-white/20 border border-white/30 mb-2 text-sm">
             <button id="orderPhotoSearchBtn" class="hidden w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти этот товар</button>
-            <div id="orderPhotoPreview" class="hidden mb-2"></div>
           </div>
 
           <!-- Mode: text (search by description) -->
           <div data-order-mode-pane="text" class="hidden">
             <label class="text-white/70 text-sm">Описание товара</label>
             <input type="text" id="orderTextQuery" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-2" placeholder="Например: Nike Dunk Low Panda кроссовки">
-            <p class="text-white/40 text-xs mb-2">Чем точнее — тем лучше. Бренд + модель + цвет + категория.</p>
-            <button id="orderTextSearchBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти на 4 площадках</button>
+            <p class="text-white/40 text-xs mb-2">Бренд + модель + цвет + категория. ИИ улучшит формулировку — пиши как удобно.</p>
+            <label class="text-white/70 text-xs mt-1 block">Фото (опц.) — точнее результаты</label>
+            <div id="orderTextPhotoZone" class="mt-1 mb-2 p-2 border border-dashed border-white/30 rounded-xl text-center cursor-pointer hover:bg-white/5 transition text-xs text-white/60">
+              📷 Прикрепить фото (опц.)
+              <input type="file" id="orderTextPhotoInput" accept="image/*" class="hidden">
+            </div>
+            <div id="orderTextPhotoPreview" class="hidden mb-2"></div>
+            <button id="orderTextSearchBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти товар</button>
           </div>
 
           <!-- Search results (shared by photo/text modes) -->
@@ -1707,7 +1995,9 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 
           <div id="orderScreenshotWidget" class="hidden"></div>
           <label class="text-white/70 text-sm block mt-2">Название товара</label>
-          <input type="text" id="orderTitle" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Например: Nike Dunk Low Panda">
+          <input type="text" id="orderTitle" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-2" placeholder="Например: Nike Dunk Low Panda">
+          <button id="orderVerifyImage" type="button" class="w-full mb-3 bg-white/10 hover:bg-white/20 text-white/80 px-3 py-2 rounded-xl text-xs font-semibold transition">🔍 Проверить изображение товара</button>
+          <div id="orderVerifyResult" class="hidden mb-3"></div>
           <label class="text-white/70 text-sm block mt-2">Бренд <span class="text-white/40 text-xs">(если есть)</span></label>
           <input type="text" id="orderBrand" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Nike, Adidas, Stussy...">
           <label class="text-white/70 text-sm block mt-2">Площадка <span class="text-white/40 text-xs">(маркетплейс)</span></label>
@@ -2052,12 +2342,28 @@ try {
 if (createBtn) {
   createBtn.onclick = async () => {
     if (!window.tempOrder || !userId) { alert('Ошибка: заполните все поля'); return; }
+    // ── Обогащаем tempOrder свежими значениями полей формы (на случай ручного ввода) ──
+    const _val = (id) => (document.getElementById(id)?.value || '').trim();
+    const _num = (id) => parseFloat(document.getElementById(id)?.value || '0') || 0;
+    if (_val('orderTitle')) window.tempOrder.title = _val('orderTitle');
+    if (_val('orderBrand')) window.tempOrder.brand = _val('orderBrand');
+    if (_val('orderMarketplace')) window.tempOrder.marketplaceName = _val('orderMarketplace');
+    if (_val('orderDescription')) window.tempOrder.description = _val('orderDescription');
+    if (_num('orderPrice')) window.tempOrder.price = _num('orderPrice');
+    if (_val('orderCurrency')) window.tempOrder.currency = _val('orderCurrency');
+    if (_val('orderSize')) window.tempOrder.size = _val('orderSize');
+    if (_val('orderSourceCountry')) window.tempOrder.country = _val('orderSourceCountry');
+    if (_num('orderWeight')) window.tempOrder.weight = _num('orderWeight');
+
     // ── Сильная валидация (особенно важно для режима «Вручную») ──
     const validationErrors = validateOrderBeforeSubmit(window.tempOrder);
     if (validationErrors.length) {
       alert('Проверьте поля:\n• ' + validationErrors.join('\n• '));
       return;
     }
+    // ── Финальная модалка-превью с image confirmation + price comparison ──
+    const confirmed = await showOrderPreviewModal(window.tempOrder);
+    if (!confirmed) return;
     try {
       const bk = window.tempOrder.breakdown || {};
       const { data, error } = await supabaseClient.from('orders').insert({
@@ -2111,6 +2417,55 @@ if (createBtn) {
       } catch (err) { alert('Ошибка: ' + err.message); }
   };
 }
+
+      // ── Image confirmation в режиме «Вручную»: проверить картинку по названию ──
+      const verifyBtn = document.getElementById('orderVerifyImage');
+      const verifyResult = document.getElementById('orderVerifyResult');
+      if (verifyBtn && verifyResult) {
+        verifyBtn.addEventListener('click', async () => {
+          const title = (document.getElementById('orderTitle')?.value || '').trim();
+          const brand = (document.getElementById('orderBrand')?.value || '').trim();
+          if (title.length < 3) { alert('Сначала введите название товара (минимум 3 символа)'); return; }
+          if (!supabaseClient) { alert('База данных недоступна'); return; }
+          const original = verifyBtn.innerText;
+          verifyBtn.innerText = '⏳ Ищем изображение…';
+          verifyBtn.disabled = true;
+          verifyResult.classList.remove('hidden');
+          verifyResult.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ Проверяем как товар выглядит на маркетплейсах…</div>';
+          try {
+            const q = [brand, title].filter(Boolean).join(' ');
+            const { data, error } = await supabaseClient.functions.invoke('search-products', {
+              body: { query: q, topN: 3 },
+            });
+            if (error) throw new Error(error.message);
+            const results = (data?.results || []).filter(r => r.image_url || r.title);
+            if (!results.length) {
+              verifyResult.innerHTML = '<div class="bg-yellow-500/15 border border-yellow-400/30 rounded-xl p-3 text-sm text-yellow-100">⚠️ Изображение не найдено. Перепроверьте название или продолжайте без проверки.</div>';
+              return;
+            }
+            const r = results[0];
+            const _esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+            verifyResult.innerHTML = `
+              <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+                <p class="text-xs text-white/60 mb-2">🔍 Похоже на этот товар:</p>
+                <div class="flex gap-3 items-center mb-2">
+                  ${r.image_url ? `<img src="${_esc(r.image_url)}" class="w-16 h-16 rounded-lg object-cover bg-white/10">` : ''}
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm text-white font-medium truncate">${_esc(r.title || '')}</p>
+                    ${r.price && r.currency ? `<p class="text-xs text-cyan-400 mt-1">${r.price.toFixed(2)} ${_esc(r.currency)}</p>` : ''}
+                    <a href="${_esc(r.url || '#')}" target="_blank" class="text-xs text-blue-400 hover:underline">${_esc(r.platform_label || '')} →</a>
+                  </div>
+                </div>
+                <p class="text-xs text-white/60">Это ваш товар? Если нет — уточните название.</p>
+              </div>`;
+          } catch (e) {
+            verifyResult.innerHTML = `<div class="bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-sm text-white/80">❌ ${e.message}</div>`;
+          } finally {
+            verifyBtn.innerText = original;
+            verifyBtn.disabled = false;
+          }
+        });
+      }
 
       const analyzeOrderBtn = document.getElementById('analyzeOrderLinkBtn');
       if (analyzeOrderBtn) {
@@ -2406,13 +2761,36 @@ if (createBtn) {
         });
       }
 
-      // ---- Mode: photo (search-by-image) ----
+      // ---- Mode: photo (multi-photo search-by-image with optional hint) ----
       const photoZone = document.getElementById('orderPhotoUploadZone');
       const photoInput = document.getElementById('orderPhotoInput');
       const photoPreview = document.getElementById('orderPhotoPreview');
       const photoSearchBtn = document.getElementById('orderPhotoSearchBtn');
-      let photoFile = null;
-
+      const photoHint = document.getElementById('orderPhotoHint');
+      const photoFiles = [];
+      function renderOrderPhotoPreviews() {
+        if (!photoPreview) return;
+        if (photoFiles.length === 0) {
+          photoPreview.classList.add('hidden');
+          photoPreview.innerHTML = '';
+          if (photoSearchBtn) photoSearchBtn.classList.add('hidden');
+          return;
+        }
+        photoPreview.classList.remove('hidden');
+        photoPreview.innerHTML = photoFiles.map((f, i) =>
+          `<div class="relative">
+            <img src="${URL.createObjectURL(f)}" class="rounded-xl w-full h-24 object-cover">
+            <button type="button" data-rm-order-photo="${i}" class="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center shadow-lg">×</button>
+          </div>`).join('');
+        if (photoSearchBtn) photoSearchBtn.classList.remove('hidden');
+        photoPreview.querySelectorAll('[data-rm-order-photo]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const i = parseInt(btn.dataset.rmOrderPhoto, 10);
+            photoFiles.splice(i, 1);
+            renderOrderPhotoPreviews();
+          });
+        });
+      }
       if (photoZone && photoInput) {
         photoZone.addEventListener('click', () => photoInput.click());
         photoZone.addEventListener('dragover', (ev) => { ev.preventDefault(); photoZone.classList.add('bg-white/10'); });
@@ -2420,61 +2798,53 @@ if (createBtn) {
         photoZone.addEventListener('drop', (ev) => {
           ev.preventDefault();
           photoZone.classList.remove('bg-white/10');
-          const f = ev.dataTransfer?.files?.[0];
-          if (f) handlePhotoSelect(f);
+          handleOrderPhotoFiles(ev.dataTransfer?.files);
         });
-        photoInput.addEventListener('change', () => {
-          const f = photoInput.files?.[0];
-          if (f) handlePhotoSelect(f);
-        });
+        photoInput.addEventListener('change', () => handleOrderPhotoFiles(photoInput.files));
       }
-
-      function handlePhotoSelect(f) {
-        if (!f.type.startsWith('image/')) {
-          alert('Можно загружать только изображения');
-          return;
+      function handleOrderPhotoFiles(files) {
+        if (!files || !files.length) return;
+        for (const f of files) {
+          if (!f.type.startsWith('image/')) continue;
+          if (f.size > 10 * 1024 * 1024) { alert(`${f.name}: больше 10 МБ`); continue; }
+          if (photoFiles.length >= 5) { alert('Можно загрузить максимум 5 фото'); break; }
+          photoFiles.push(f);
         }
-        if (f.size > 10 * 1024 * 1024) {
-          alert('Файл больше 10 МБ — слишком большой');
-          return;
-        }
-        photoFile = f;
-        if (photoPreview) {
-          photoPreview.classList.remove('hidden');
-          photoPreview.innerHTML = `<img src="${URL.createObjectURL(f)}" class="rounded-xl max-h-40 object-contain mx-auto">`;
-        }
-        if (photoSearchBtn) photoSearchBtn.classList.remove('hidden');
+        renderOrderPhotoPreviews();
       }
-
       if (photoSearchBtn) {
         photoSearchBtn.addEventListener('click', async () => {
-          if (!photoFile) return;
+          if (photoFiles.length === 0) return;
           if (!supabaseClient) { alert('База данных недоступна'); return; }
           const original = photoSearchBtn.innerText;
           photoSearchBtn.innerText = '⏳ Загружаю фото…';
           photoSearchBtn.disabled = true;
           if (orderResultsBox) {
             orderResultsBox.classList.remove('hidden');
-            orderResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ Распознаём товар на фото и ищем на 4 площадках…</div>';
+            orderResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ Распознаём товар на фото и ищем на площадках…</div>';
           }
           try {
-            // 1. Загружаем в Storage
             let sessionId = localStorage.getItem('icelogix_session_id');
             if (!sessionId) {
               sessionId = crypto.randomUUID();
               localStorage.setItem('icelogix_session_id', sessionId);
             }
-            const safeName = photoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
-            const path = `${sessionId}/${Date.now()}_search_${safeName}`;
-            const { error: upErr } = await supabaseClient.storage
-              .from('product-screenshots')
-              .upload(path, photoFile, { contentType: photoFile.type, upsert: false });
-            if (upErr) throw new Error('Загрузка: ' + upErr.message);
-
-            // 2. Вызываем search-by-image
+            const paths = await Promise.all(photoFiles.map(async (f) => {
+              const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+              const path = `${sessionId}/${Date.now()}_search_${safeName}`;
+              const { error: upErr } = await supabaseClient.storage
+                .from('product-screenshots')
+                .upload(path, f, { contentType: f.type, upsert: false });
+              if (upErr) throw new Error('Загрузка: ' + upErr.message);
+              return path;
+            }));
             photoSearchBtn.innerText = '🔍 Ищем на площадках…';
             const { data, error } = await supabaseClient.functions.invoke('search-by-image', {
-              body: { screenshotPath: path },
+              body: {
+                screenshotPath: paths[0],
+                screenshotPaths: paths,
+                descriptionHint: (photoHint?.value || '').trim() || null,
+              },
             });
             if (error) throw new Error(error.message);
             if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
@@ -2491,28 +2861,76 @@ if (createBtn) {
         });
       }
 
-      // ---- Mode: text (search-products by description) ----
+      // ---- Mode: text (search-products by description, optional photo) ----
       const textInput = document.getElementById('orderTextQuery');
       const textSearchBtn = document.getElementById('orderTextSearchBtn');
+      const textPhotoZone = document.getElementById('orderTextPhotoZone');
+      const textPhotoInput = document.getElementById('orderTextPhotoInput');
+      const textPhotoPreview = document.getElementById('orderTextPhotoPreview');
+      let textPhotoFile = null;
+      if (textPhotoZone && textPhotoInput) {
+        textPhotoZone.addEventListener('click', () => textPhotoInput.click());
+        textPhotoInput.addEventListener('change', () => {
+          const f = textPhotoInput.files?.[0];
+          if (!f) return;
+          if (!f.type.startsWith('image/')) { alert('Только изображения'); return; }
+          if (f.size > 10 * 1024 * 1024) { alert('Файл больше 10 МБ'); return; }
+          textPhotoFile = f;
+          if (textPhotoPreview) {
+            textPhotoPreview.classList.remove('hidden');
+            textPhotoPreview.innerHTML =
+              `<div class="relative inline-block">
+                <img src="${URL.createObjectURL(f)}" class="rounded-xl max-h-32 object-contain">
+                <button type="button" id="orderTextPhotoRemove" class="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center shadow-lg">×</button>
+              </div>`;
+            document.getElementById('orderTextPhotoRemove')?.addEventListener('click', () => {
+              textPhotoFile = null;
+              textPhotoPreview.classList.add('hidden');
+              textPhotoPreview.innerHTML = '';
+              textPhotoInput.value = '';
+            });
+          }
+        });
+      }
       if (textSearchBtn && textInput) {
         const runTextSearch = async () => {
           const q = (textInput.value || '').trim();
           if (q.length < 3) { alert('Минимум 3 символа в описании'); return; }
           if (!supabaseClient) { alert('База данных недоступна'); return; }
           const original = textSearchBtn.innerText;
-          textSearchBtn.innerText = '⏳ Ищем на 4 площадках…';
+          textSearchBtn.innerText = '⏳ Ищем на площадках…';
           textSearchBtn.disabled = true;
           if (orderResultsBox) {
             orderResultsBox.classList.remove('hidden');
-            orderResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ Параллельно опрашиваем площадки…</div>';
+            orderResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ ИИ улучшает запрос и параллельно опрашивает площадки…</div>';
           }
           try {
-            const { data, error } = await supabaseClient.functions.invoke('search-products', {
-              body: { query: q },
-            });
-            if (error) throw new Error(error.message);
-            if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
-            renderOrderSearchResults(data);
+            if (textPhotoFile) {
+              let sessionId = localStorage.getItem('icelogix_session_id');
+              if (!sessionId) {
+                sessionId = crypto.randomUUID();
+                localStorage.setItem('icelogix_session_id', sessionId);
+              }
+              const safeName = textPhotoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+              const path = `${sessionId}/${Date.now()}_search_${safeName}`;
+              const { error: upErr } = await supabaseClient.storage
+                .from('product-screenshots')
+                .upload(path, textPhotoFile, { contentType: textPhotoFile.type, upsert: false });
+              if (upErr) throw new Error('Загрузка фото: ' + upErr.message);
+              const { data, error } = await supabaseClient.functions.invoke('search-by-image', {
+                body: { screenshotPath: path, descriptionHint: q },
+              });
+              if (error) throw new Error(error.message);
+              if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
+              renderOrderSearchResults(data);
+            } else {
+              const { data, error } = await supabaseClient.functions.invoke('search-products', {
+                body: { query: q },
+              });
+              if (error) throw new Error(error.message);
+              if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
+              renderOrderSearchResults(data);
+            }
           } catch (e) {
             if (orderResultsBox) {
               orderResultsBox.classList.remove('hidden');
