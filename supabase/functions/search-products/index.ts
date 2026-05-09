@@ -52,18 +52,25 @@ type PlatformConfig = {
 };
 
 const PLATFORMS: PlatformConfig[] = [
+  // Китай (основные рынки заказов)
   { id: "poizon", label: "Poizon / Dewu", flag: "🇨🇳", domain: "dewu.com", defaultCurrency: "CNY" },
   { id: "taobao", label: "Taobao", flag: "🇨🇳", domain: "taobao.com", defaultCurrency: "CNY" },
   { id: "tmall", label: "Tmall", flag: "🇨🇳", domain: "tmall.com", defaultCurrency: "CNY" },
   { id: "1688", label: "1688", flag: "🇨🇳", domain: "1688.com", defaultCurrency: "CNY" },
+  // Польша / ЕС (эквивалент «из Европы»)
   { id: "zalando", label: "Zalando", flag: "🇵🇱", domain: "zalando.pl", defaultCurrency: "EUR" },
+  { id: "aboutyou", label: "About You", flag: "🇪🇺", domain: "aboutyou.com", defaultCurrency: "EUR" },
   { id: "asos", label: "ASOS", flag: "🇪🇺", domain: "asos.com", defaultCurrency: "EUR" },
+  { id: "farfetch", label: "Farfetch", flag: "🇪🇺", domain: "farfetch.com", defaultCurrency: "EUR" },
+  { id: "endclothing", label: "END.", flag: "🇬🇧", domain: "endclothing.com", defaultCurrency: "GBP" },
+  // Россия (остаются в списке поддерживаемых, но НЕ входят в дефолт — работают в Беларуси)
   { id: "wildberries", label: "Wildberries", flag: "🇷🇺", domain: "wildberries.ru", qualifiers: "купить", defaultCurrency: "RUB" },
   { id: "lamoda", label: "Lamoda", flag: "🇷🇺", domain: "lamoda.ru", qualifiers: "купить", defaultCurrency: "RUB" },
   { id: "ozon", label: "Ozon", flag: "🇷🇺", domain: "ozon.ru", qualifiers: "купить", defaultCurrency: "RUB" },
 ];
 
-const DEFAULT_PLATFORMS = ["poizon", "zalando", "wildberries", "lamoda"];
+// Дефолт — только площадки недоступные в Беларуси (без WB/Lamoda/Ozon)
+const DEFAULT_PLATFORMS = ["poizon", "taobao", "zalando", "asos", "farfetch"];
 
 function getPlatform(id: string): PlatformConfig | null {
   return PLATFORMS.find((p) => p.id === id) ?? null;
@@ -241,7 +248,10 @@ async function searchOnePlatform(
   query: string,
   topN: number,
 ): Promise<SearchResult[]> {
-  const fullQuery = `${query} ${platform.qualifiers || ""} site:${platform.domain}`.trim();
+  // Оборачиваем оригинальный запрос в кавычки для non-fuzzy match (оператор Firecrawl).
+  // Это отфильтровывает каталожные страницы ("кроссовки Nike") и приют к товарным PDP-страницам.
+  const escaped = query.replace(/"/g, " ").trim();
+  const fullQuery = `"${escaped}" ${platform.qualifiers || ""} site:${platform.domain}`.trim();
   let hits: SearchHit[] = [];
   try {
     hits = await firecrawlSearch(fullQuery, topN);

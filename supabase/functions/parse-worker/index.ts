@@ -34,6 +34,34 @@ function marketplaceFromUrl(url: string): string | null {
   }
 }
 
+// Detect country code from URL hostname/TLD. This is more reliable than asking the LLM
+// for country, especially for marketplaces with country-specific TLDs (zalando.pl, zalando.de, asos.com).
+function countryFromUrl(url: string): string | null {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    // Известные мульти-доменные площадки
+    if (host.endsWith(".cn") || /(?:dewu|poizon|taobao|tmall|1688|jd|tmall|xianyu)/.test(host)) return "CN";
+    if (host.endsWith(".pl") || host.includes("zalando.pl") || host.includes("zalando-lounge.pl")) return "PL";
+    if (host.endsWith(".de") || host.endsWith(".at")) return "DE";
+    if (host.endsWith(".co.uk") || host.endsWith(".uk") || /(?:asos\.com|endclothing\.com|sneakerstudio|ssense)/.test(host)) return "UK";
+    if (host.endsWith(".ru") || /(?:wildberries|ozon|lamoda|yandex|avito)/.test(host)) return "RU";
+    if (host.endsWith(".by")) return "BY";
+    if (host.endsWith(".jp")) return "JP";
+    if (host.endsWith(".kr")) return "KR";
+    if (host.endsWith(".tr") || host.endsWith(".com.tr")) return "TR";
+    if (host.endsWith(".ae")) return "AE";
+    if (host.endsWith(".vn")) return "VN";
+    if (host.endsWith(".it")) return "EU"; // Italy ⇒ EU group
+    if (host.endsWith(".fr")) return "EU";
+    if (host.endsWith(".es")) return "EU";
+    if (host.endsWith(".nl")) return "EU";
+    if (host.endsWith(".com") && /(?:farfetch|aboutyou|asos)/.test(host)) return "EU";
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── JSON helper (strips ```json fences) ─────────────────────────────────────
 function parseAssistantJson(raw: string): Record<string, unknown> {
   let s = (raw || "").trim();
@@ -202,6 +230,7 @@ async function extractData(
   title: string | null;
   price: number | null;
   currency: string | null;
+  country: string | null;
   category: string | null;
   description: string | null;
   color: string | null;
@@ -219,14 +248,25 @@ async function extractData(
 
 Fields to extract:
 - title: The full product name/title.
-- price: The current selling price as a number (without currency symbols, commas, or spaces). Use '.' as decimal separator. Do not convert currencies. If multiple prices are shown, pick the main/default one.
-- currency: The ISO 4217 currency code (USD, EUR, CNY, GBP, BYN, RUB, etc.). Infer from symbol if needed: $→USD, €→EUR, ¥→CNY, £→GBP, ₽→RUB. If it cannot be determined, return null.
-- category: The product category in Russian, chosen from: "Обувь", "Одежда", "Аксессуары". Determine by analyzing the product name, description, and any breadcrumbs. If none matches, return null.
+- price: The CURRENT/FINAL price the buyer would actually pay. Rules of thumb:
+  * If the page shows a discounted price next to a crossed-out / "was" / "Cena pierwotna" / "Old price" / "RRP" / "UVP" / "Originalpreis" — use the DISCOUNTED price, NOT the original.
+  * If multiple sizes have different prices, take the lowest commonly-available variant.
+  * Do NOT pick shipping fees, loyalty bonuses, taxes, or installment payments.
+  * Output a number only (no currency symbols, no thousand separators, '.' as decimal separator).
+- currency: The ISO 4217 currency code. Infer from symbol or context: $→USD, €→EUR, ¥→CNY, £→GBP, ₽→RUB, "zł"/"PLN"→PLN, "руб"→RUB, "BYN"/"Br"→BYN, "kr"→SEK/NOK/DKK (use TLD: .se→SEK, .no→NOK, .dk→DKK). Return null only if you really cannot tell.
+- country: The ISO-3166 alpha-2 country code of the marketplace (CN, PL, DE, EU, UK, US, RU, BY, JP, KR, AE, TR, VN). Infer from domain TLD and currency: zalando.pl→PL, zalando.de→DE, asos.com→UK, .ru→RU, .cn→CN. Return null if unsure.
+- category: The product category in Russian. Pick the MOST SPECIFIC item from this list (in priority order):
+  Кроссовки, Кеды, Боты, Ботинки, Сандалии, Туфли,
+  Футболка, Поло, Худи, Свитшот, Толстовка, Джинсы, Брюки, Шорты, Куртка, Пуховик, Пальто, Платье, Юбка, Костюм, Купальник,
+  Рюкзак, Сумка, Кошелёк, Ремень, Часы, Очки, Шапка, Бижутерия, Парфюм, Косметика, Электроника.
+  If none of these fit precisely but it is shoes/clothing/accessories, return one of: "Обувь", "Одежда", "Аксессуары". If still nothing matches, return null.
 - description: A concise product description (1-2 sentences) in Russian, summarizing key features. If not available, return null.
 - color: The main color(s) in Russian, e.g., "Черный/Белый". If not found, return null.
 - brand: The manufacturer brand name, e.g., "Nike", "Adidas". If not found, return null.
 
-${isHtml ? `For HTML: prioritize structured data (JSON-LD <script type="application/ld+json">), meta tags (<meta property="product:price:amount">), and elements with class names like price, product-title, brand.` : `For Markdown: extract information from the structured text, focusing on headings and price patterns.`}
+URL of the page being analyzed: ${url}
+
+${isHtml ? `For HTML: prioritize structured data (JSON-LD <script type="application/ld+json"> with @type="Product" → offers.price), meta tags (<meta property="product:price:amount">, og:price:amount), and elements with class names like price, product-title, brand. Ignore prices inside "compare", "old", "regular", "strikethrough", "rrp" classes — these are crossed-out original prices.` : `For Markdown: extract information from the structured text, focusing on headings and price patterns. Watch for "~~price~~" or "was X now Y" patterns — pick the lower current price.`}
 
 ${contentType} content:
 ${content.substring(0, 8000)}`;
@@ -259,6 +299,7 @@ ${content.substring(0, 8000)}`;
       title: titleFb,
       price: priceFb,
       currency: currFinal,
+      country: countryFromUrl(url),
       category: null,
       description: null,
       color: null,
@@ -297,10 +338,15 @@ ${content.substring(0, 8000)}`;
     return null;
   };
 
+  // ── Country ── prefer URL-based detection, fallback to model output
+  const countryFromModel = strOrNull(parsed.country);
+  const countryFinal = countryFromUrl(url) || (countryFromModel ? countryFromModel.toUpperCase() : null);
+
   return {
     title,
     price: finalPrice,
     currency: finalCurrency,
+    country: countryFinal,
     category: strOrNull(parsed.category),
     description: strOrNull(parsed.description),
     color: strOrNull(parsed.color),
@@ -336,6 +382,7 @@ Deno.serve(async (req) => {
         price: extracted.price,
         title: extracted.title,
         currency: extracted.currency,
+        country: extracted.country,
         category: extracted.category,
         description: extracted.description,
         color: extracted.color,
