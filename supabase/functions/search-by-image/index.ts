@@ -49,32 +49,41 @@ type PlatformInfo = {
 };
 
 const PLATFORMS: PlatformInfo[] = [
+  // 🇨🇳 Китай
   { key: "poizon",      label: "Poizon",      flag: "🇨🇳", hosts: ["poizon.com", "dewu.com", "dewuapp.com"], country: "CN" },
   { key: "taobao",      label: "Taobao",      flag: "🇨🇳", hosts: ["taobao.com", "tmall.com", "world.taobao.com", "intl.taobao.com"], country: "CN" },
+  { key: "tmall",       label: "Tmall",       flag: "🇨🇳", hosts: ["tmall.com", "tmall.hk"], country: "CN" },
   { key: "1688",        label: "1688",        flag: "🇨🇳", hosts: ["1688.com"], country: "CN" },
+  { key: "jd",          label: "JD.com",      flag: "🇨🇳", hosts: ["jd.com", "global.jd.com"], country: "CN" },
+  // 🇪🇺 Европа
   { key: "zalando",     label: "Zalando",     flag: "🇵🇱", hosts: ["zalando.pl", "zalando.de", "zalando.com", "zalando-lounge.pl", "zalando-lounge.de"], country: "PL" },
   { key: "asos",        label: "ASOS",        flag: "🇬🇧", hosts: ["asos.com"], country: "UK" },
   { key: "farfetch",    label: "Farfetch",    flag: "🇪🇺", hosts: ["farfetch.com"], country: "EU" },
   { key: "aboutyou",    label: "About You",   flag: "🇩🇪", hosts: ["aboutyou.com", "aboutyou.de"], country: "DE" },
-  // Дополнительные люксовые / sneaker-маркетплейсы — часто в выдаче Google Lens
-  { key: "goat",        label: "GOAT",        flag: "🇺🇸", hosts: ["goat.com"], country: "US" },
-  { key: "stockx",      label: "StockX",      flag: "🇺🇸", hosts: ["stockx.com"], country: "US" },
-  { key: "ssense",      label: "SSENSE",      flag: "🇨🇦", hosts: ["ssense.com"], country: "EU" },
   { key: "endclothing", label: "End Clothing",flag: "🇬🇧", hosts: ["endclothing.com"], country: "UK" },
   { key: "mrporter",    label: "Mr Porter",   flag: "🇬🇧", hosts: ["mrporter.com", "net-a-porter.com"], country: "UK" },
   { key: "mytheresa",   label: "Mytheresa",   flag: "🇩🇪", hosts: ["mytheresa.com"], country: "DE" },
+  { key: "ssense",      label: "SSENSE",      flag: "🇨🇦", hosts: ["ssense.com"], country: "EU" },
+  { key: "vinted",      label: "Vinted",      flag: "🇪🇺", hosts: ["vinted.com", "vinted.de", "vinted.fr", "vinted.pl", "vinted.it", "vinted.es", "vinted.nl", "vinted.lt"], country: "EU" },
   { key: "sneakerstudio", label: "SneakerStudio", flag: "🇵🇱", hosts: ["sneakerstudio.com"], country: "PL" },
+  // 🇺🇸 США
+  { key: "goat",        label: "GOAT",        flag: "🇺🇸", hosts: ["goat.com"], country: "US" },
+  { key: "stockx",      label: "StockX",      flag: "🇺🇸", hosts: ["stockx.com"], country: "US" },
+  // 🇯🇵 Япония / Азия
+  { key: "mercari",     label: "Mercari",     flag: "🇯🇵", hosts: ["mercari.com", "jp.mercari.com"], country: "JP" },
+  // 🇷🇺 Россия (НЕ в дефолте — клиент закажет сам)
   { key: "wildberries", label: "Wildberries", flag: "🇷🇺", hosts: ["wildberries.ru", "wildberries.by"], country: "RU" },
   { key: "ozon",        label: "Ozon",        flag: "🇷🇺", hosts: ["ozon.ru"], country: "RU" },
   { key: "lamoda",      label: "Lamoda",      flag: "🇷🇺", hosts: ["lamoda.ru", "lamoda.by"], country: "RU" },
 ];
 
-// Дефолтный белый список (без РФ — клиент в Беларуси может купить там сам).
-// Включаем GOAT/StockX/SSENSE/etc — Google Lens часто находит товары именно там.
+// Дефолт = все площадки недоступные из Беларуси.
+// WB/Lamoda/Ozon исключены — клиент закажет сам без посредника.
 const DEFAULT_PLATFORMS = [
-  "poizon", "taobao", "zalando", "asos", "farfetch",
-  "goat", "stockx", "ssense", "endclothing", "mrporter", "mytheresa",
-  "sneakerstudio", "aboutyou",
+  "poizon", "taobao", "tmall", "1688", "jd",
+  "zalando", "asos", "farfetch", "aboutyou", "endclothing",
+  "mrporter", "mytheresa", "ssense", "vinted", "sneakerstudio",
+  "goat", "stockx", "mercari",
 ];
 
 function platformForUrl(rawUrl: string): PlatformInfo | null {
@@ -424,7 +433,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  let body: { screenshotPath?: string; platforms?: string[] } = {};
+  let body: {
+    screenshotPath?: string;
+    screenshotPaths?: string[];
+    descriptionHint?: string;
+    platforms?: string[];
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -441,6 +455,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+  const descriptionHint = (body.descriptionHint || "").trim();
 
   const requestedPlatforms = (Array.isArray(body.platforms) && body.platforms.length > 0)
     ? body.platforms
@@ -495,11 +510,13 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 3. SECONDARY: search-products с распознанным Lens-названием (для дополнения direct-matches)
+  // 3. SECONDARY: search-products с распознанным Lens-названием (+ descriptionHint от пользователя)
   let searchProductsResults: ApifyResultItem[] = [];
-  if (lensTitle) {
+  // Объединяем lensTitle с пользовательским описанием — даёт более точный запрос для search-products
+  const fusedQuery = [lensTitle, descriptionHint].filter(Boolean).join(" ").trim();
+  if (fusedQuery) {
     try {
-      const sp = await callSearchProducts(lensTitle, requestedPlatforms);
+      const sp = await callSearchProducts(fusedQuery, requestedPlatforms);
       const spData = sp as { ok?: boolean; results?: Array<Record<string, unknown>> };
       if (spData.ok && Array.isArray(spData.results)) {
         for (const r of spData.results) {
@@ -512,7 +529,7 @@ Deno.serve(async (req) => {
             platform: platform.key,
             platform_label: platform.label,
             flag: platform.flag,
-            title: String(r.title || lensTitle),
+            title: String(r.title || lensTitle || fusedQuery),
             url,
             price: typeof r.price === "number" ? r.price : null,
             currency: typeof r.currency === "string" ? r.currency : null,
@@ -576,9 +593,11 @@ Deno.serve(async (req) => {
     );
   }
 
+  // Объединяем Vision-распознанный запрос с пользовательским описанием (если есть)
+  const visionFusedQuery = [visionResult.query, descriptionHint].filter(Boolean).join(" ").trim();
   let searchResp;
   try {
-    searchResp = await callSearchProducts(visionResult.query, requestedPlatforms);
+    searchResp = await callSearchProducts(visionFusedQuery, requestedPlatforms);
   } catch (e) {
     return new Response(
       JSON.stringify({
