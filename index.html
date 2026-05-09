@@ -1474,8 +1474,12 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           </div>
         </div>`;
     }).join('');
-    const queryLine = payload.vision_query
-      ? `<div class="text-xs text-white/50 mb-2">🤖 Распознали как: <span class="text-cyan-300">"${escHtmlC(payload.vision_query)}"</span></div>`
+    const sourceLabel = payload.source === 'apify' || payload.source === 'apify+search-products'
+      ? '🔍 Google Lens'
+      : (payload.source === 'vision-fallback' ? '🤖 AI распознал' : null);
+    const queryText = payload.query || payload.vision_query;
+    const queryLine = (queryText && sourceLabel)
+      ? `<div class="text-xs text-white/50 mb-2">${sourceLabel}: <span class="text-cyan-300">"${escHtmlC(queryText)}"</span></div>`
       : '';
     const platformsCount = Array.isArray(payload.platforms) ? payload.platforms.length : 0;
     calcResultsBox.classList.remove('hidden');
@@ -2344,8 +2348,12 @@ if (createBtn) {
           `;
         }).join('');
 
-        const queryLine = payload.vision_query
-          ? `<div class="text-xs text-white/50 mb-2">🤖 Распознали как: <span class="text-cyan-300">"${escHtml(payload.vision_query)}"</span></div>`
+        const sourceLabel = payload.source === 'apify' || payload.source === 'apify+search-products'
+          ? '🔍 Google Lens'
+          : (payload.source === 'vision-fallback' ? '🤖 AI распознал' : null);
+        const queryText = payload.query || payload.vision_query;
+        const queryLine = (queryText && sourceLabel)
+          ? `<div class="text-xs text-white/50 mb-2">${sourceLabel}: <span class="text-cyan-300">"${escHtml(queryText)}"</span></div>`
           : '';
 
         const platformsCount = Array.isArray(payload.platforms) ? payload.platforms.length : 0;
