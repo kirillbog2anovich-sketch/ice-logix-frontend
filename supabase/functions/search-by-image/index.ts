@@ -36,19 +36,28 @@ const corsHeaders = {
 };
 
 // ─── Vision: получаем поисковый запрос ──────────────────────────────────────
-async function describeProductForSearch(imageUrl: string): Promise<{ query: string; brand: string | null; category: string | null }> {
+async function describeProductForSearch(imageUrl: string): Promise<{ query: string; brand: string | null; product_type: string | null; category: string | null; color: string | null }> {
   if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY not configured");
 
-  const prompt = `На изображении товар. Сгенерируй максимально точный КОРОТКИЙ поисковый запрос (1 строка, 5-10 слов) на РУССКОМ языке для поиска этого товара на маркетплейсах (Poizon, Wildberries, Lamoda, Zalando).
+  const prompt = `Ты эксперт по идентификации товаров (одежда / обувь / аксессуары / электроника).
+На фото — товар. Дай МАКСИМАЛЬНО ТОЧНЫЙ поисковый запрос (англ. + рус. для лучшего матчинга) для нахождения ИМЕННО ЭТОЙ модели на Poizon, Zalando, Farfetch, ASOS.
 
-Включи в запрос: бренд (если виден), модель/название, категорию (кроссовки/футболка/сумка/часы и т.д.), ключевые отличительные признаки (цвет, особенность дизайна).
+Стратегия:
+1. Найди ВИДИМЫЙ логотип/бренд и название модели (Nike Dunk Low, Adidas Samba, Stussy, Carhartt WIP, Stone Island, Travis Scott, Yeezy, и т.д.)
+2. Если видишь конкретную ЦВЕТОВУЮ ВЕРСИЮ (Panda, Triple White, Black, "белые на чёрной подошве") — ОБЯЗАТЕЛЬНО включи
+3. Категория-наименование: кроссовки / кеды / худи / футболка / джинсы / куртка / пуховик / рюкзак / часы и т.п.
+4. Если бренд НЕ виден — описывай по силуэту, материалу, цвету, типу (например: «черная пуховая куртка с капюшоном»)
 
-НЕ включай: размеры, цены, лишние слова. Только то что улучшит релевантность поиска.
+Запрос: 5-12 слов, без размеров/цен/локаций.
 
-Также верни поля brand (бренд если виден, иначе null) и category (одно из: "Обувь", "Одежда", "Аксессуары" или null).
+ТАКЖЕ верни:
+- brand: точное название бренда (Nike, Adidas, etc.) или null
+- product_type: конкретное наименование (кроссовки, худи, джинсы, рюкзак, часы) или null
+- category: одно из ["Обувь","Одежда","Аксессуары","Электроника","Другое"] или null
+- color: основной цвет на русском или null
 
-Верни ТОЛЬКО JSON:
-{"query": "Nike Dunk Low Panda кроссовки", "brand": "Nike", "category": "Обувь"}`;
+Только JSON:
+{"query":"Nike Dunk Low Panda black white","brand":"Nike","product_type":"Кроссовки","category":"Обувь","color":"чёрно-белые"}`;
 
   const body = {
     model: VISION_MODEL,
@@ -89,13 +98,21 @@ async function describeProductForSearch(imageUrl: string): Promise<{ query: stri
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    return { query: cleaned.split("\n")[0].slice(0, 100), brand: null, category: null };
+    return {
+      query: cleaned.split("\n")[0].slice(0, 100),
+      brand: null,
+      product_type: null,
+      category: null,
+      color: null,
+    };
   }
 
   return {
     query: typeof parsed.query === "string" ? parsed.query.trim() : "",
     brand: typeof parsed.brand === "string" ? parsed.brand.trim() : null,
+    product_type: typeof parsed.product_type === "string" ? parsed.product_type.trim() : null,
     category: typeof parsed.category === "string" ? parsed.category.trim() : null,
+    color: typeof parsed.color === "string" ? parsed.color.trim() : null,
   };
 }
 
@@ -196,7 +213,9 @@ Deno.serve(async (req) => {
       ...(searchResp as Record<string, unknown>),
       vision_query: visionResult.query,
       vision_brand: visionResult.brand,
+      vision_product_type: visionResult.product_type,
       vision_category: visionResult.category,
+      vision_color: visionResult.color,
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );

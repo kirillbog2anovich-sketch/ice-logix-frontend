@@ -142,6 +142,170 @@
     </div>
   </div>
   <script>
+    // ─── CATEGORY MAP (наименование товара) ──────────────────────────────────
+    // value = текст, который сохраняется в БД и показывается в карточке
+    // broad = широкая категория для weight_standards / отчётов / каталога площадок
+    // defaultWeight = подставится в поле «Вес» если weight_standards не нашёл точное совпадение
+    const CATEGORY_MAP = [
+      // Обувь
+      { value: 'Кроссовки',  icon: '👟', broad: 'Обувь',       defaultWeight: 1.2 },
+      { value: 'Кеды',       icon: '👟', broad: 'Обувь',       defaultWeight: 0.9 },
+      { value: 'Боты',       icon: '🥾', broad: 'Обувь',       defaultWeight: 1.5 },
+      { value: 'Ботинки',    icon: '🥾', broad: 'Обувь',       defaultWeight: 1.4 },
+      { value: 'Сандалии',   icon: '🩴', broad: 'Обувь',       defaultWeight: 0.6 },
+      { value: 'Туфли',      icon: '👞', broad: 'Обувь',       defaultWeight: 0.9 },
+      // Одежда
+      { value: 'Футболка',   icon: '👕', broad: 'Одежда',      defaultWeight: 0.3 },
+      { value: 'Поло',       icon: '👕', broad: 'Одежда',      defaultWeight: 0.35 },
+      { value: 'Худи',       icon: '🧥', broad: 'Одежда',      defaultWeight: 0.7 },
+      { value: 'Свитшот',    icon: '🧥', broad: 'Одежда',      defaultWeight: 0.6 },
+      { value: 'Толстовка',  icon: '🧥', broad: 'Одежда',      defaultWeight: 0.7 },
+      { value: 'Джинсы',     icon: '👖', broad: 'Одежда',      defaultWeight: 0.7 },
+      { value: 'Брюки',      icon: '👖', broad: 'Одежда',      defaultWeight: 0.6 },
+      { value: 'Шорты',      icon: '🩳', broad: 'Одежда',      defaultWeight: 0.4 },
+      { value: 'Куртка',     icon: '🧥', broad: 'Одежда',      defaultWeight: 1.0 },
+      { value: 'Пуховик',    icon: '🧥', broad: 'Одежда',      defaultWeight: 1.5 },
+      { value: 'Пальто',     icon: '🧥', broad: 'Одежда',      defaultWeight: 1.6 },
+      { value: 'Платье',     icon: '👗', broad: 'Одежда',      defaultWeight: 0.5 },
+      { value: 'Юбка',       icon: '👗', broad: 'Одежда',      defaultWeight: 0.4 },
+      { value: 'Костюм',     icon: '🤵', broad: 'Одежда',      defaultWeight: 1.5 },
+      { value: 'Купальник',  icon: '👙', broad: 'Одежда',      defaultWeight: 0.2 },
+      // Аксессуары
+      { value: 'Рюкзак',     icon: '🎒', broad: 'Аксессуары',  defaultWeight: 1.0 },
+      { value: 'Сумка',      icon: '👜', broad: 'Аксессуары',  defaultWeight: 0.7 },
+      { value: 'Кошелёк',    icon: '👛', broad: 'Аксессуары',  defaultWeight: 0.2 },
+      { value: 'Ремень',     icon: '🎽', broad: 'Аксессуары',  defaultWeight: 0.3 },
+      { value: 'Часы',       icon: '⌚', broad: 'Аксессуары',  defaultWeight: 0.4 },
+      { value: 'Очки',       icon: '🕶️', broad: 'Аксессуары',  defaultWeight: 0.2 },
+      { value: 'Шапка',      icon: '🧢', broad: 'Аксессуары',  defaultWeight: 0.2 },
+      { value: 'Бижутерия',  icon: '💍', broad: 'Аксессуары',  defaultWeight: 0.1 },
+      { value: 'Парфюм',     icon: '💐', broad: 'Аксессуары',  defaultWeight: 0.5 },
+      { value: 'Косметика',  icon: '💄', broad: 'Аксессуары',  defaultWeight: 0.5 },
+      { value: 'Электроника',icon: '📱', broad: 'Аксессуары',  defaultWeight: 1.0 },
+      { value: 'Другое',     icon: '📦', broad: 'Аксессуары',  defaultWeight: 0.5 },
+    ];
+    // Иерархическая выборка через optgroup: 3 группы (Обувь / Одежда / Аксессуары)
+    function renderCategoryOptions() {
+      const groups = ['Обувь', 'Одежда', 'Аксессуары'];
+      const groupIcons = { 'Обувь': '👟', 'Одежда': '👕', 'Аксессуары': '💼' };
+      let html = '<option value="">— наименование товара —</option>';
+      for (const g of groups) {
+        const items = CATEGORY_MAP.filter(c => c.broad === g);
+        if (!items.length) continue;
+        html += `<optgroup label="${groupIcons[g]} ${g}">`;
+        for (const c of items) {
+          html += `<option value="${c.value}" data-broad="${c.broad}" data-default-weight="${c.defaultWeight}">${c.icon} ${c.value}</option>`;
+        }
+        html += '</optgroup>';
+      }
+      return html;
+    }
+    function getCategoryBroad(specific) {
+      const it = CATEGORY_MAP.find(c => c.value === specific);
+      return it ? it.broad : (specific || null);
+    }
+
+    // ─── ВАЛИДАЦИЯ ЗАКАЗА перед отправкой ────────────────────────────────────
+    // Особенно важно для режима «Вручную» — там данные не проходят парсер.
+    // Возвращает массив ошибок (пустой = всё ок).
+    const ALLOWED_MARKETPLACE_HOSTS = [
+      'poizon.com', 'dewu.com', 'taobao.com', 'tmall.com', '1688.com', 'jd.com', 'xianyu.com',
+      'zalando.pl', 'zalando.de', 'zalando.com', 'zalando-lounge.pl', 'asos.com', 'farfetch.com',
+      'aboutyou.com', 'aboutyou.de', 'sneakerstudio.com', 'endclothing.com', 'ssense.com',
+      'wildberries.ru', 'wildberries.by', 'ozon.ru', 'lamoda.ru', 'lamoda.by',
+      'amazon.com', 'amazon.de', 'amazon.co.uk', 'ebay.com', 'aliexpress.com', 'aliexpress.ru',
+      'shein.com', 'temu.com', 'h-m.com', 'hm.com', 'uniqlo.com',
+    ];
+    // Разумные диапазоны цены по валюте (в исходной валюте)
+    const PRICE_RANGES = {
+      CNY: [10, 50000], USD: [3, 5000], EUR: [3, 5000], GBP: [3, 5000],
+      RUB: [100, 500000], BYN: [3, 15000], PLN: [10, 20000],
+      JPY: [300, 500000], KRW: [3000, 5000000],
+    };
+    function validateOrderBeforeSubmit(order) {
+      const errors = [];
+      if (!order) { errors.push('Нет данных заказа'); return errors; }
+
+      // 1. Цена
+      const price = parseFloat(order.price);
+      if (!isFinite(price) || price <= 0) {
+        errors.push('Укажите цену товара (число > 0)');
+      } else {
+        const range = PRICE_RANGES[order.currency];
+        if (range && (price < range[0] || price > range[1])) {
+          errors.push(`Цена ${price} ${order.currency} вне разумного диапазона (${range[0]}–${range[1]}). Уверены что цена в ${order.currency}?`);
+        }
+      }
+
+      // 2. Валюта
+      if (!order.currency) errors.push('Выберите валюту');
+
+      // 3. Вес
+      const weight = parseFloat(order.weight);
+      if (!isFinite(weight) || weight <= 0) {
+        errors.push('Укажите вес (> 0 кг)');
+      } else if (weight < 0.05) {
+        errors.push('Вес слишком маленький (минимум 0.05 кг)');
+      } else if (weight > 30) {
+        errors.push('Вес слишком большой (максимум 30 кг — мы не возим грузовые)');
+      }
+
+      // 4. Категория
+      if (!order.category) errors.push('Выберите наименование товара');
+
+      // 5. Страна
+      if (!order.country) errors.push('Выберите страну площадки');
+
+      // 6. URL — если введён, должен быть валидным http(s)://
+      const url = (order.url || '').trim();
+      if (url) {
+        try {
+          const u = new URL(url);
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+            errors.push('Ссылка должна начинаться с http:// или https://');
+          } else {
+            // Проверка домена (warning, не ошибка — мы не хотим блокировать неизвестные площадки)
+            const host = u.hostname.toLowerCase().replace(/^www\./, '');
+            const isKnown = ALLOWED_MARKETPLACE_HOSTS.some(h => host === h || host.endsWith('.' + h));
+            if (!isKnown && !window.confirm(`Площадка ${host} не из нашего списка. Продолжить?`)) {
+              errors.push('Подтверждение площадки отменено');
+            }
+          }
+        } catch {
+          errors.push('Ссылка не похожа на валидный URL');
+        }
+      }
+
+      // 7. Кросс-проверка валюта ⇄ страна (мягкая — warning, не блокируем)
+      const COUNTRY_DEFAULT_CURRENCY = { CN: 'CNY', PL: 'PLN', DE: 'EUR', UK: 'GBP', US: 'USD', RU: 'RUB', BY: 'BYN', JP: 'JPY', KR: 'KRW', EU: 'EUR' };
+      if (order.country && order.currency && COUNTRY_DEFAULT_CURRENCY[order.country] && COUNTRY_DEFAULT_CURRENCY[order.country] !== order.currency) {
+        const expected = COUNTRY_DEFAULT_CURRENCY[order.country];
+        const ok = window.confirm(`Странно: страна ${order.country} обычно использует ${expected}, а вы выбрали ${order.currency}. Продолжить?`);
+        if (!ok) errors.push('Несоответствие валюты и страны');
+      }
+
+      return errors;
+    }
+    function getCategoryDefaultWeight(specific) {
+      const it = CATEGORY_MAP.find(c => c.value === specific);
+      return it ? it.defaultWeight : null;
+    }
+    // Подбираем option в селекте по значению. Если LLM вернул широкую категорию ("Обувь"),
+    // подставляем первое наименование с тем же broad. Если ничего не найдено — возвращает null.
+    function findCategoryOption(selectEl, raw) {
+      if (!selectEl || !raw) return null;
+      const opts = Array.from(selectEl.options);
+      const exact = opts.find(o => o.value === raw);
+      if (exact) return exact;
+      // Сравним без регистра
+      const ci = opts.find(o => o.value.toLowerCase() === String(raw).toLowerCase());
+      if (ci) return ci;
+      // Если raw = широкая категория — берём первое наименование с таким broad
+      const broadMatch = opts.find(o => o.dataset && o.dataset.broad === raw);
+      if (broadMatch) return broadMatch;
+      return null;
+    }
+
     let tg = null, userId = null, userName = 'Гость', userAvatarUrl = null, isOwner = false, supabaseClient = null;
     let currentTab = 'home', previousTab = null, currentSubScreen = null;
     let adminOrdersMode = 'active'; // 'active' или 'archived'
@@ -279,12 +443,8 @@ const MAX_REQUESTS_TRUSTED = 100;
           const lbl = document.getElementById('calcPriceCurrency');
           if (lbl) lbl.innerText = currencySymbols[data.currency] || data.currency;
         }
-        const titleDiv = document.getElementById('parsedProductTitle');
-        if (titleDiv && data.title) {
-          titleDiv.style.color = '';
-          titleDiv.innerText = '📦 ' + data.title;
-          titleDiv.classList.remove('hidden');
-        }
+        const titleInp = document.getElementById('calcTitle');
+        if (titleInp && data.title && !titleInp.value) titleInp.value = data.title;
       } else {
         if (data.price != null && Number(data.price) > 0) {
           const el = document.getElementById('orderPrice');
@@ -296,12 +456,8 @@ const MAX_REQUESTS_TRUSTED = 100;
           const lbl = document.getElementById('orderPriceCurrency');
           if (lbl) lbl.innerText = currencySymbols[data.currency] || data.currency;
         }
-        const titleDiv = document.getElementById('parsedOrderTitle');
-        if (titleDiv && data.title) {
-          titleDiv.style.color = '';
-          titleDiv.innerText = '📦 ' + data.title;
-          titleDiv.classList.remove('hidden');
-        }
+        const titleInp = document.getElementById('orderTitle');
+        if (titleInp && data.title && !titleInp.value) titleInp.value = data.title;
         if (typeof update === 'function') update();
       }
     }
@@ -777,17 +933,58 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           <p class="text-white/70 text-sm" id="promoDesc"></p>
           <p class="text-green-400 text-sm mt-1" id="promoDiscount"></p>
           </div>
-                    <label class="text-white/70 text-sm">Ссылка на товар (необязательно)</label>
-          <div class="flex flex-wrap gap-2 mt-1 mb-1">
-            <input type="text" id="calcUrl" class="flex-1 min-w-[200px] p-3 rounded-xl bg-white/20 border border-white/30" placeholder="https://poizon.com/...">
-            <button id="analyzeLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
+          <!-- 4-режимный селектор ввода товара -->
+          <label class="text-white/70 text-xs mb-2 block">Как добавить товар?</label>
+          <div id="calcModeSelector" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            <button type="button" data-calc-mode="manual" class="calc-mode-btn bg-white/10 hover:bg-white/20 px-2 py-2 rounded-xl text-xs font-bold transition flex flex-col items-center gap-1"><span class="text-lg">✍️</span><span>Вручную</span></button>
+            <button type="button" data-calc-mode="link" class="calc-mode-btn bg-cyan-500 px-2 py-2 rounded-xl text-xs font-bold transition flex flex-col items-center gap-1"><span class="text-lg">🔗</span><span>По ссылке</span></button>
+            <button type="button" data-calc-mode="photo" class="calc-mode-btn bg-white/10 hover:bg-white/20 px-2 py-2 rounded-xl text-xs font-bold transition flex flex-col items-center gap-1"><span class="text-lg">📸</span><span>По фото</span></button>
+            <button type="button" data-calc-mode="text" class="calc-mode-btn bg-white/10 hover:bg-white/20 px-2 py-2 rounded-xl text-xs font-bold transition flex flex-col items-center gap-1"><span class="text-lg">🔍</span><span>По описанию</span></button>
           </div>
-          <div id="parsedProductTitle" class="text-cyan-400 text-xs mb-1 hidden"></div>
+
+          <!-- Mode: link & manual — общее URL-поле -->
+          <div data-calc-mode-pane="link manual">
+            <label class="text-white/70 text-sm">Ссылка на товар <span data-calc-mode-pane="manual" class="text-white/40 text-xs hidden">(необязательно)</span></label>
+            <div class="flex flex-wrap gap-2 mt-1 mb-1">
+              <input type="text" id="calcUrl" class="flex-1 min-w-[200px] p-3 rounded-xl bg-white/20 border border-white/30" placeholder="https://poizon.com/...">
+              <button id="analyzeLinkBtn" data-calc-mode-pane="link" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
+            </div>
+            <p data-calc-mode-pane="manual" class="text-white/40 text-xs mb-2 hidden">Если ссылки нет — заполните поля ниже вручную.</p>
+          </div>
+
+          <!-- Mode: photo (search by image) -->
+          <div data-calc-mode-pane="photo" class="hidden">
+            <label class="text-white/70 text-sm">Фото товара</label>
+            <div id="calcPhotoUploadZone" class="mt-1 mb-2 p-4 border-2 border-dashed border-white/30 rounded-xl text-center cursor-pointer hover:bg-white/5 transition">
+              <div class="text-3xl mb-1">📸</div>
+              <p class="text-white/80 text-sm font-semibold">Загрузите фото товара</p>
+              <p class="text-white/50 text-xs mt-1">Найдём похожие товары на 4 площадках одновременно</p>
+              <input type="file" id="calcPhotoInput" accept="image/*" class="hidden">
+            </div>
+            <button id="calcPhotoSearchBtn" class="hidden w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти этот товар</button>
+            <div id="calcPhotoPreview" class="hidden mb-2"></div>
+          </div>
+
+          <!-- Mode: text (search by description) -->
+          <div data-calc-mode-pane="text" class="hidden">
+            <label class="text-white/70 text-sm">Описание товара</label>
+            <input type="text" id="calcTextQuery" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-2" placeholder="Например: Nike Dunk Low Panda кроссовки">
+            <p class="text-white/40 text-xs mb-2">Чем точнее — тем лучше. Бренд + модель + цвет + категория.</p>
+            <button id="calcTextSearchBtn" class="w-full bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold transition mb-2">🔍 Найти на 5 площадках</button>
+          </div>
+
+          <!-- Search results (shared by photo/text modes) -->
+          <div id="calcSearchResults" class="hidden mb-3"></div>
+
           <div id="calcScreenshotWidget" class="hidden"></div>
-          <div id="parsedProductBrand" class="text-white/70 text-xs mb-1 hidden"></div>
-          <div id="parsedProductMarketplace" class="text-white/50 text-xs mb-1 hidden"></div>
-          <div id="parsedProductDesc" class="text-white/70 text-xs mb-2 hidden"></div>
-          <div id="parsedProductColor" class="text-white/50 text-sm mb-3 hidden"></div>
+          <label class="text-white/70 text-sm block mt-2">Название товара</label>
+          <input type="text" id="calcTitle" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Например: Nike Dunk Low Panda">
+          <label class="text-white/70 text-sm block mt-2">Бренд <span class="text-white/40 text-xs">(если есть)</span></label>
+          <input type="text" id="calcBrand" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Nike, Adidas, Stussy...">
+          <label class="text-white/70 text-sm block mt-2">Площадка <span class="text-white/40 text-xs">(маркетплейс)</span></label>
+          <input type="text" id="calcMarketplace" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Poizon, Zalando, Taobao...">
+          <label class="text-white/70 text-sm block mt-2">Описание <span class="text-white/40 text-xs">(необязательно)</span></label>
+          <textarea id="calcDescription" rows="2" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Цвет, размер, материал, особенности"></textarea>
           <label class="text-white/70 text-sm block mt-2">Цена (<span id="calcPriceCurrency">¥</span>)</label>
           <input type="number" id="calcPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="0">
           <label class="text-white/70 text-sm block mt-2">Валюта</label>
@@ -797,8 +994,11 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <option value="USD">USD ($)</option>
             <option value="EUR">EUR (€)</option>
             <option value="GBP">GBP (£)</option>
+            <option value="PLN">PLN (zł)</option>
             <option value="RUB">RUB (₽)</option>
             <option value="BYN">BYN (Br)</option>
+            <option value="JPY">JPY (¥)</option>
+            <option value="KRW">KRW (₩)</option>
           </select>
           <label class="text-white/70 text-sm block mt-2">Откуда заказываете</label>
           <select id="calcSourceCountry" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
@@ -813,13 +1013,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <option value="TR" disabled>🕒 🇹🇷 Турция — скоро</option>
             <option value="VN" disabled>🕒 🇻🇳 Вьетнам — скоро</option>
           </select>
-          <label class="text-white/70 text-sm block mt-2">Категория</label>
-          <select id="calcCategory" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
-            <option value="">— выберите для автоподбора веса —</option>
-            <option value="Обувь">Обувь</option>
-            <option value="Одежда">Одежда</option>
-            <option value="Аксессуары">Аксессуары</option>
-          </select>
+          <label class="text-white/70 text-sm block mt-2">Наименование (для автоподбора веса)</label>
+          <select id="calcCategory" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">${renderCategoryOptions()}</select>
           <label class="text-white/70 text-sm block">Размер</label>
           <input type="text" id="calcSize" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Размер (напр. 42, M, L)">
           <div class="flex items-center gap-2 mb-3">
@@ -873,21 +1068,38 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   if (slider) slider.oninput = () => valSpan.innerText = parseFloat(slider.value).toFixed(1) + ' кг';
 
   async function fetchWeightFromStandard(category, size) {
-    if (!category || !size) return;
-    try {
-      const { data } = await supabaseClient
-        .from('weight_standards')
-        .select('weight_kg, packaging_weight_kg')
-        .eq('category', category)
-        .eq('size_label', size)
-        .eq('is_active', true)
-        .maybeSingle();
-      if (data && slider) {
-        slider.value = data.weight_kg;
-        slider.dataset.packaging = data.packaging_weight_kg || 0.3;
-        if (valSpan) valSpan.innerText = parseFloat(data.weight_kg).toFixed(1) + ' кг';
+    if (!category) return;
+    // Сначала пробуем по конкретному наименованию + размеру (для будущих стандартов),
+    // потом по широкой категории + размеру, и наконец — fallback на defaultWeight из CATEGORY_MAP.
+    const broad = getCategoryBroad(category);
+    let applied = false;
+    if (size) {
+      try {
+        for (const cat of [category, broad].filter(Boolean)) {
+          const { data } = await supabaseClient
+            .from('weight_standards')
+            .select('weight_kg, packaging_weight_kg')
+            .eq('category', cat)
+            .eq('size_label', size)
+            .eq('is_active', true)
+            .maybeSingle();
+          if (data && slider) {
+            slider.value = data.weight_kg;
+            slider.dataset.packaging = data.packaging_weight_kg || 0.3;
+            if (valSpan) valSpan.innerText = parseFloat(data.weight_kg).toFixed(1) + ' кг';
+            applied = true;
+            break;
+          }
+        }
+      } catch(e) { console.log('weight_standards:', e.message); }
+    }
+    if (!applied && slider) {
+      const dw = getCategoryDefaultWeight(category);
+      if (dw && (!slider.value || parseFloat(slider.value) === 1)) {
+        slider.value = dw;
+        if (valSpan) valSpan.innerText = dw.toFixed(1) + ' кг';
       }
-    } catch(e) { console.log('weight_standards:', e.message); }
+    }
   }
 
   const calcCategory = document.getElementById('calcCategory');
@@ -946,11 +1158,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             slider.value = cached.weight_kg;
             if (valSpan) valSpan.innerText = parseFloat(cached.weight_kg).toFixed(1) + ' кг';
           }
-          const titleDiv = document.getElementById('parsedProductTitle');
-          if (titleDiv && cached.title) {
-            titleDiv.innerText = '📦 ' + cached.title;
-            titleDiv.classList.remove('hidden');
-          }
+          const titleInp = document.getElementById('calcTitle');
+          if (titleInp && cached.title && !titleInp.value) titleInp.value = cached.title;
         } else if (urlValue.startsWith('http')) {
           alert('Автоматический парсинг пока недоступен. Введите данные вручную.');
         }
@@ -1063,7 +1272,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           await new Promise(r => setTimeout(r, 2000));
           const { data: checkData } = await supabaseClient
             .from('parse_queue')
-            .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message, parse_method, screenshot_path, image_url')
+            .select('status, price, title, weight_kg, currency, country, category, description, color, brand, marketplace_name, error_message, parse_method, screenshot_path, image_url')
             .eq('id', taskId)
             .single();
 
@@ -1080,8 +1289,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             if (checkData.category) {
               const categorySelect = document.getElementById('calcCategory');
               if (categorySelect) {
-                const opt = Array.from(categorySelect.options).find(o => o.value === checkData.category);
-                if (opt) { categorySelect.value = checkData.category; categorySelect.dispatchEvent(new Event('change')); }
+                const opt = findCategoryOption(categorySelect, checkData.category);
+                if (opt) { categorySelect.value = opt.value; categorySelect.dispatchEvent(new Event('change')); }
               }
             }
             showScreenshotWidget(taskId, checkData, 'calc');
@@ -1119,11 +1328,18 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         if (result.category) {
           const categorySelect = document.getElementById('calcCategory');
           if (categorySelect) {
-            const option = Array.from(categorySelect.options).find(opt => opt.value === result.category);
+            const option = findCategoryOption(categorySelect, result.category);
             if (option) {
-              categorySelect.value = result.category;
+              categorySelect.value = option.value;
               categorySelect.dispatchEvent(new Event('change'));
             }
+          }
+        }
+        if (result.country) {
+          const countrySel = document.getElementById('calcSourceCountry');
+          if (countrySel) {
+            const opt = Array.from(countrySel.options).find(o => o.value === result.country);
+            if (opt) { countrySel.value = result.country; countrySel.dispatchEvent(new Event('change')); }
           }
         }
         const currencySymbols = { GBP: '£', USD: '$', EUR: '€', CNY: '¥', RUB: '₽', BYN: 'Br' };
@@ -1131,52 +1347,18 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         if (currLabel) {
           currLabel.innerText = (result.currency && currencySymbols[result.currency]) || result.currency || '¥';
         }
-        const titleDiv = document.getElementById('parsedProductTitle');
-        if (titleDiv) {
-          titleDiv.style.color = '';
-          if (result.title) {
-            titleDiv.innerText = '📦 ' + result.title;
-            titleDiv.classList.remove('hidden');
-          } else {
-            titleDiv.classList.add('hidden');
-          }
-        }
-        const brandDiv = document.getElementById('parsedProductBrand');
-        if (brandDiv) {
-          if (result.brand) {
-            brandDiv.innerText = '🏷️ ' + result.brand;
-            brandDiv.classList.remove('hidden');
-          } else {
-            brandDiv.classList.add('hidden');
-          }
-        }
-        const marketplaceDiv = document.getElementById('parsedProductMarketplace');
-        if (marketplaceDiv) {
-          if (result.marketplace_name) {
-            marketplaceDiv.innerText = '🛒 ' + result.marketplace_name;
-            marketplaceDiv.classList.remove('hidden');
-          } else {
-            marketplaceDiv.classList.add('hidden');
-          }
-        }
-        const descDiv = document.getElementById('parsedProductDesc');
-        if (descDiv) {
-          if (result.description) {
-            descDiv.innerText = result.description;
-            descDiv.classList.remove('hidden');
-          } else {
-            descDiv.classList.add('hidden');
-          }
-        }
-        const colorDiv = document.getElementById('parsedProductColor');
-        if (colorDiv) {
-          if (result.color) {
-            colorDiv.innerText = '🎨 ' + result.color;
-            colorDiv.classList.remove('hidden');
-          } else {
-            colorDiv.classList.add('hidden');
-          }
-        }
+        // Заполняем редактируемые поля калькулятора (без перезаписи введённого пользователем)
+        const setIfEmpty = (id, val) => {
+          const el = document.getElementById(id);
+          if (el && val && (!el.value || el.value.trim() === '')) el.value = val;
+        };
+        setIfEmpty('calcTitle', result.title);
+        setIfEmpty('calcBrand', result.brand);
+        setIfEmpty('calcMarketplace', result.marketplace_name);
+        const descParts = [];
+        if (result.description) descParts.push(result.description);
+        if (result.color) descParts.push('Цвет: ' + result.color);
+        if (descParts.length) setIfEmpty('calcDescription', descParts.join(' · '));
 
         // Лимиты
         if (userId) {
@@ -1191,20 +1373,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       } catch (err) {
         analyzeBtn.classList.add('bg-red-500');
         setTimeout(() => analyzeBtn.classList.remove('bg-red-500'), 2000);
-        const titleDiv = document.getElementById('parsedProductTitle');
-        if (titleDiv) {
-          titleDiv.style.color = '#f87171';
-          titleDiv.innerText = '❌ ' + err.message;
-          titleDiv.classList.remove('hidden');
-        }
-        const errDescDiv = document.getElementById('parsedProductDesc');
-        if (errDescDiv) errDescDiv.classList.add('hidden');
-        const errColorDiv = document.getElementById('parsedProductColor');
-        if (errColorDiv) errColorDiv.classList.add('hidden');
-        const errBrandDiv = document.getElementById('parsedProductBrand');
-        if (errBrandDiv) errBrandDiv.classList.add('hidden');
-        const errMpDiv = document.getElementById('parsedProductMarketplace');
-        if (errMpDiv) errMpDiv.classList.add('hidden');
+        alert('❌ ' + (err && err.message ? err.message : 'Не удалось проанализировать ссылку. Попробуйте ввести данные вручную.'));
       } finally {
         analyzeBtn.innerText = originalText;
         analyzeBtn.disabled = false;
@@ -1217,6 +1386,252 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     if (window.tempOrder) switchTab('neworder'); 
     else alert('Сначала рассчитайте стоимость'); 
   };
+
+  // ==================== РЕЖИМЫ ВВОДА В КАЛЬКУЛЯТОРЕ (link/manual/photo/text) ====================
+  const calcModeSelector = document.getElementById('calcModeSelector');
+  const calcPanes = document.querySelectorAll('[data-calc-mode-pane]');
+  const calcResultsBox = document.getElementById('calcSearchResults');
+
+  function setCalcMode(mode) {
+    document.querySelectorAll('.calc-mode-btn').forEach((btn) => {
+      if (btn.dataset.calcMode === mode) {
+        btn.classList.remove('bg-white/10', 'hover:bg-white/20');
+        btn.classList.add('bg-cyan-500');
+      } else {
+        btn.classList.add('bg-white/10', 'hover:bg-white/20');
+        btn.classList.remove('bg-cyan-500');
+      }
+    });
+    calcPanes.forEach((pane) => {
+      const allowed = (pane.dataset.calcModePane || '').split(/\s+/).filter(Boolean);
+      if (allowed.includes(mode)) pane.classList.remove('hidden');
+      else pane.classList.add('hidden');
+    });
+    if ((mode === 'manual' || mode === 'link') && calcResultsBox) {
+      calcResultsBox.classList.add('hidden');
+      calcResultsBox.innerHTML = '';
+    }
+  }
+  if (calcModeSelector) {
+    calcModeSelector.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.calc-mode-btn');
+      if (!btn) return;
+      setCalcMode(btn.dataset.calcMode);
+    });
+  }
+
+  // ---- Sanitization helpers (XSS) — те же что и в attachOrderForm ----
+  const _ESC_MAP_C = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;' };
+  function escHtmlC(s) { return String(s == null ? '' : s).replace(/[&<>"'\/]/g, (c) => _ESC_MAP_C[c]); }
+  function safeUrlC(u) {
+    const s = String(u || '').trim();
+    if (!s) return '';
+    try {
+      const parsed = new URL(s);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.href;
+    } catch { /* not a valid URL */ }
+    return '';
+  }
+
+  function renderCalcSearchResults(payload) {
+    if (!calcResultsBox) return;
+    const list = (payload && payload.results) || [];
+    if (list.length === 0) {
+      calcResultsBox.classList.remove('hidden');
+      const errPlatforms = (payload?.errors || []).map((e) => escHtmlC(e.platform)).join(', ');
+      calcResultsBox.innerHTML = `
+        <div class="bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-sm text-white/80">
+          ❌ Ничего не нашли. Попробуйте уточнить запрос или другой режим.
+          ${errPlatforms ? '<br><span class="text-xs text-white/50">Площадки с ошибками: ' + errPlatforms + '</span>' : ''}
+        </div>`;
+      return;
+    }
+    const cards = list.map((r, i) => {
+      const priceNum = (typeof r.price === 'number' && isFinite(r.price)) ? r.price : null;
+      const currency = typeof r.currency === 'string' ? escHtmlC(r.currency) : '';
+      const priceLine = (priceNum && currency)
+        ? `<div class="text-cyan-400 font-bold text-sm mt-1">${escHtmlC(priceNum)} ${currency}</div>`
+        : '<div class="text-white/40 text-xs mt-1">Цена не определена</div>';
+      const safeImg = safeUrlC(r.image_url);
+      const img = safeImg
+        ? `<img src="${escHtmlC(safeImg)}" class="w-16 h-16 object-cover rounded-lg flex-shrink-0" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`
+        : '<div class="w-16 h-16 bg-white/10 rounded-lg flex-shrink-0 flex items-center justify-center text-2xl">📦</div>';
+      const safeHref = safeUrlC(r.url);
+      const titleEsc = escHtmlC(r.title || '(без названия)');
+      const platformLabel = escHtmlC(r.platform_label || r.platform || '');
+      const flag = escHtmlC(r.flag || '');
+      return `
+        <div class="bg-white/5 border border-white/10 rounded-xl p-3 flex gap-3" data-calc-result-idx="${i}">
+          ${img}
+          <div class="flex-1 min-w-0">
+            <div class="text-xs text-white/60 mb-1">${flag} ${platformLabel}</div>
+            <div class="text-sm font-semibold text-white truncate" title="${titleEsc}">${titleEsc}</div>
+            ${priceLine}
+            <div class="flex gap-2 mt-2">
+              <button data-calc-result-pick="${i}" class="bg-cyan-500 hover:bg-cyan-600 px-3 py-1 rounded-lg text-xs font-bold">✓ Использовать</button>
+              ${safeHref ? `<a href="${escHtmlC(safeHref)}" target="_blank" rel="noopener noreferrer" class="bg-white/10 hover:bg-white/20 px-3 py-1 rounded-lg text-xs font-bold">↗ Открыть</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    const queryLine = payload.vision_query
+      ? `<div class="text-xs text-white/50 mb-2">🤖 Распознали как: <span class="text-cyan-300">"${escHtmlC(payload.vision_query)}"</span></div>`
+      : '';
+    const platformsCount = Array.isArray(payload.platforms) ? payload.platforms.length : 0;
+    calcResultsBox.classList.remove('hidden');
+    calcResultsBox.innerHTML = `
+      <div class="text-white/70 text-xs mb-2 mt-2">Найдено ${list.length} результатов на ${platformsCount} площадках:</div>
+      ${queryLine}
+      <div class="flex flex-col gap-2">${cards}</div>`;
+    calcResultsBox.querySelectorAll('[data-calc-result-pick]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.calcResultPick, 10);
+        const picked = list[idx];
+        if (!picked) return;
+        const cleanedUrl = safeUrlC(picked.url);
+        if (!cleanedUrl) return;
+        setCalcMode('link');
+        const urlEl = document.getElementById('calcUrl');
+        if (urlEl) urlEl.value = cleanedUrl;
+        if (picked.price) {
+          const priceEl = document.getElementById('calcPrice');
+          if (priceEl) priceEl.value = picked.price;
+        }
+        if (picked.currency) {
+          const sel = document.getElementById('calcCurrency');
+          if (sel) {
+            const opt = Array.from(sel.options).find((o) => o.value === picked.currency);
+            if (opt) sel.value = picked.currency;
+          }
+          const lbl = document.getElementById('calcPriceCurrency');
+          const curSym = { GBP: '£', USD: '$', EUR: '€', CNY: '¥', RUB: '₽', BYN: 'Br' };
+          if (lbl) lbl.innerText = curSym[picked.currency] || picked.currency;
+        }
+        if (picked.title) {
+          const titleInp = document.getElementById('calcTitle');
+          if (titleInp && !titleInp.value) titleInp.value = picked.title;
+        }
+        if (picked.platform_label) {
+          const mpInp = document.getElementById('calcMarketplace');
+          if (mpInp && !mpInp.value) mpInp.value = picked.platform_label;
+        }
+        // Запускаем существующий парсер для уточнения веса/категории/описания
+        const aBtn = document.getElementById('analyzeLinkBtn');
+        if (aBtn) aBtn.click();
+      });
+    });
+  }
+
+  // ---- Mode: photo (search-by-image) ----
+  const calcPhotoZone = document.getElementById('calcPhotoUploadZone');
+  const calcPhotoInput = document.getElementById('calcPhotoInput');
+  const calcPhotoPreview = document.getElementById('calcPhotoPreview');
+  const calcPhotoSearchBtn = document.getElementById('calcPhotoSearchBtn');
+  let calcPhotoFile = null;
+  if (calcPhotoZone && calcPhotoInput) {
+    calcPhotoZone.addEventListener('click', () => calcPhotoInput.click());
+    calcPhotoZone.addEventListener('dragover', (ev) => { ev.preventDefault(); calcPhotoZone.classList.add('bg-white/10'); });
+    calcPhotoZone.addEventListener('dragleave', () => calcPhotoZone.classList.remove('bg-white/10'));
+    calcPhotoZone.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      calcPhotoZone.classList.remove('bg-white/10');
+      const f = ev.dataTransfer?.files?.[0];
+      if (f) handleCalcPhotoSelect(f);
+    });
+    calcPhotoInput.addEventListener('change', () => {
+      const f = calcPhotoInput.files?.[0];
+      if (f) handleCalcPhotoSelect(f);
+    });
+  }
+  function handleCalcPhotoSelect(f) {
+    if (!f.type.startsWith('image/')) { alert('Можно загружать только изображения'); return; }
+    if (f.size > 10 * 1024 * 1024) { alert('Файл больше 10 МБ — слишком большой'); return; }
+    calcPhotoFile = f;
+    if (calcPhotoPreview) {
+      calcPhotoPreview.classList.remove('hidden');
+      calcPhotoPreview.innerHTML = `<img src="${URL.createObjectURL(f)}" class="rounded-xl max-h-40 object-contain mx-auto">`;
+    }
+    if (calcPhotoSearchBtn) calcPhotoSearchBtn.classList.remove('hidden');
+  }
+  if (calcPhotoSearchBtn) {
+    calcPhotoSearchBtn.addEventListener('click', async () => {
+      if (!calcPhotoFile) return;
+      if (!supabaseClient) { alert('База данных недоступна'); return; }
+      const original = calcPhotoSearchBtn.innerText;
+      calcPhotoSearchBtn.innerText = '⏳ Загружаю фото…';
+      calcPhotoSearchBtn.disabled = true;
+      if (calcResultsBox) {
+        calcResultsBox.classList.remove('hidden');
+        calcResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ Распознаём товар на фото и ищем на площадках…</div>';
+      }
+      try {
+        let sessionId = localStorage.getItem('icelogix_session_id');
+        if (!sessionId) {
+          sessionId = crypto.randomUUID();
+          localStorage.setItem('icelogix_session_id', sessionId);
+        }
+        const safeName = calcPhotoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+        const path = `${sessionId}/${Date.now()}_search_${safeName}`;
+        const { error: upErr } = await supabaseClient.storage
+          .from('product-screenshots')
+          .upload(path, calcPhotoFile, { contentType: calcPhotoFile.type, upsert: false });
+        if (upErr) throw new Error('Загрузка: ' + upErr.message);
+        calcPhotoSearchBtn.innerText = '🔍 Ищем на площадках…';
+        const { data, error } = await supabaseClient.functions.invoke('search-by-image', {
+          body: { screenshotPath: path },
+        });
+        if (error) throw new Error(error.message);
+        if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
+        renderCalcSearchResults(data);
+      } catch (e) {
+        if (calcResultsBox) {
+          calcResultsBox.classList.remove('hidden');
+          calcResultsBox.innerHTML = `<div class="bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-sm text-white/80">❌ ${escHtmlC(e.message)}</div>`;
+        }
+      } finally {
+        calcPhotoSearchBtn.innerText = original;
+        calcPhotoSearchBtn.disabled = false;
+      }
+    });
+  }
+
+  // ---- Mode: text (search-products by description) ----
+  const calcTextInput = document.getElementById('calcTextQuery');
+  const calcTextSearchBtn = document.getElementById('calcTextSearchBtn');
+  if (calcTextSearchBtn && calcTextInput) {
+    const runCalcTextSearch = async () => {
+      const q = (calcTextInput.value || '').trim();
+      if (q.length < 3) { alert('Минимум 3 символа в описании'); return; }
+      if (!supabaseClient) { alert('База данных недоступна'); return; }
+      const original = calcTextSearchBtn.innerText;
+      calcTextSearchBtn.innerText = '⏳ Ищем на площадках…';
+      calcTextSearchBtn.disabled = true;
+      if (calcResultsBox) {
+        calcResultsBox.classList.remove('hidden');
+        calcResultsBox.innerHTML = '<div class="text-white/60 text-sm py-2">⏳ Параллельно опрашиваем площадки…</div>';
+      }
+      try {
+        const { data, error } = await supabaseClient.functions.invoke('search-products', {
+          body: { query: q },
+        });
+        if (error) throw new Error(error.message);
+        if (!data?.ok) throw new Error(data?.error || 'Не удалось найти');
+        renderCalcSearchResults(data);
+      } catch (e) {
+        if (calcResultsBox) {
+          calcResultsBox.classList.remove('hidden');
+          calcResultsBox.innerHTML = `<div class="bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-sm text-white/80">❌ ${escHtmlC(e.message)}</div>`;
+        }
+      } finally {
+        calcTextSearchBtn.innerText = original;
+        calcTextSearchBtn.disabled = false;
+      }
+    };
+    calcTextSearchBtn.addEventListener('click', runCalcTextSearch);
+    calcTextInput.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); runCalcTextSearch(); }
+    });
+  }
 }
 
     // ==================== РЕНДЕР НОВОГО ЗАКАЗА (С ПРОМОКОДАМИ) ====================
@@ -1251,19 +1666,15 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <button type="button" data-order-mode="text" class="order-mode-btn bg-white/10 hover:bg-white/20 px-2 py-2 rounded-xl text-xs font-bold transition flex flex-col items-center gap-1"><span class="text-lg">🔍</span><span>По описанию</span></button>
           </div>
 
-          <!-- Mode: link (default) -->
-          <div data-order-mode-pane="link">
-            <label class="text-white/70 text-sm">Ссылка на товар</label>
+          <!-- Mode: link & manual — общее URL-поле -->
+          <div data-order-mode-pane="link manual">
+            <label class="text-white/70 text-sm">Ссылка на товар <span data-order-mode-pane="manual" class="text-white/40 text-xs hidden">(необязательно)</span></label>
             <div class="flex flex-wrap gap-2 mt-1 mb-1">
               <input type="text" id="orderUrl" class="flex-1 min-w-[200px] p-3 rounded-xl bg-white/20 border border-white/30" value="${d.url}" placeholder="https://...">
-              <button id="analyzeOrderLinkBtn" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
+              <button id="analyzeOrderLinkBtn" data-order-mode-pane="link" class="bg-cyan-500 hover:bg-cyan-600 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition flex-shrink-0">🔍 Анализировать</button>
             </div>
-            <p class="text-white/40 text-xs mb-2">Если не получится по ссылке — попросим скриншот.</p>
-          </div>
-
-          <!-- Mode: manual -->
-          <div data-order-mode-pane="manual" class="hidden">
-            <p class="text-white/60 text-xs mb-2">Заполните поля ниже вручную (название, цена, валюта, категория, вес).</p>
+            <p data-order-mode-pane="link" class="text-white/40 text-xs mb-2">Если не получится по ссылке — попросим скриншот.</p>
+            <p data-order-mode-pane="manual" class="text-white/40 text-xs mb-2 hidden">Если ссылки нет — заполните поля ниже вручную.</p>
           </div>
 
           <!-- Mode: photo (search by image) -->
@@ -1290,12 +1701,15 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           <!-- Search results (shared by photo/text modes) -->
           <div id="orderSearchResults" class="hidden mb-3"></div>
 
-          <div id="parsedOrderTitle" class="text-cyan-400 text-xs mb-1 hidden"></div>
           <div id="orderScreenshotWidget" class="hidden"></div>
-          <div id="parsedOrderBrand" class="text-white/70 text-xs mb-1 hidden"></div>
-          <div id="parsedOrderMarketplace" class="text-white/50 text-xs mb-1 hidden"></div>
-          <div id="parsedOrderDesc" class="text-white/70 text-xs mb-2 hidden"></div>
-          <div id="parsedOrderColor" class="text-white/50 text-sm mb-3 hidden"></div>
+          <label class="text-white/70 text-sm block mt-2">Название товара</label>
+          <input type="text" id="orderTitle" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Например: Nike Dunk Low Panda">
+          <label class="text-white/70 text-sm block mt-2">Бренд <span class="text-white/40 text-xs">(если есть)</span></label>
+          <input type="text" id="orderBrand" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Nike, Adidas, Stussy...">
+          <label class="text-white/70 text-sm block mt-2">Площадка <span class="text-white/40 text-xs">(маркетплейс)</span></label>
+          <input type="text" id="orderMarketplace" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Poizon, Zalando, Taobao...">
+          <label class="text-white/70 text-sm block mt-2">Описание <span class="text-white/40 text-xs">(необязательно)</span></label>
+          <textarea id="orderDescription" rows="2" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Цвет, размер, материал, особенности"></textarea>
           <label class="text-white/70 text-sm block mt-2">Цена (<span id="orderPriceCurrency">¥</span>)</label>
           <input type="number" id="orderPrice" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="0">
           <label class="text-white/70 text-sm block mt-2">Валюта</label>
@@ -1305,8 +1719,11 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <option value="USD">USD ($)</option>
             <option value="EUR">EUR (€)</option>
             <option value="GBP">GBP (£)</option>
+            <option value="PLN">PLN (zł)</option>
             <option value="RUB">RUB (₽)</option>
             <option value="BYN">BYN (Br)</option>
+            <option value="JPY">JPY (¥)</option>
+            <option value="KRW">KRW (₩)</option>
           </select>
           <label class="text-white/70 text-sm block mt-2">Откуда заказываете</label>
           <select id="orderSourceCountry" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
@@ -1321,13 +1738,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             <option value="TR" disabled>🕒 🇹🇷 Турция — скоро</option>
             <option value="VN" disabled>🕒 🇻🇳 Вьетнам — скоро</option>
           </select>
-          <label class="text-white/70 text-sm block mt-2">Категория</label>
-          <select id="orderCategory" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">
-            <option value="">— для автоподбора веса —</option>
-            <option value="Обувь">Обувь</option>
-            <option value="Одежда">Одежда</option>
-            <option value="Аксессуары">Аксессуары</option>
-          </select>
+          <label class="text-white/70 text-sm block mt-2">Наименование (для автоподбора веса)</label>
+          <select id="orderCategory" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3">${renderCategoryOptions()}</select>
           <label class="text-white/70 text-sm block">Размер</label>
           <input type="text" id="orderSize" class="w-full mt-1 p-3 rounded-xl bg-white/20 border border-white/30 mb-3" placeholder="Размер (напр. 42, M, L)">
           <div class="flex items-center gap-2 mb-3">
@@ -1444,6 +1856,10 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         window.tempOrder = {
           ...window.tempOrder,
           url: urlInp?.value || '',
+          title: document.getElementById('orderTitle')?.value || '',
+          brand: document.getElementById('orderBrand')?.value || '',
+          marketplace_name: document.getElementById('orderMarketplace')?.value || '',
+          description: document.getElementById('orderDescription')?.value || '',
           price, weight,
           currency, country, category,
           insurance, legitCheck,
@@ -1473,21 +1889,36 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       const orderKeepBox = document.getElementById('orderKeepBox');
 
       async function fetchOrderWeight(category, size) {
-        if (!category || !size) return;
-        try {
-          const { data } = await supabaseClient
-            .from('weight_standards')
-            .select('weight_kg, packaging_weight_kg')
-            .eq('category', category)
-            .eq('size_label', size)
-            .eq('is_active', true)
-            .maybeSingle();
-          if (data && weightInp) {
-            weightInp.value = data.weight_kg;
-            weightInp.dataset.packaging = data.packaging_weight_kg || 0.3;
+        if (!category) return;
+        const broad = getCategoryBroad(category);
+        let applied = false;
+        if (size) {
+          try {
+            for (const cat of [category, broad].filter(Boolean)) {
+              const { data } = await supabaseClient
+                .from('weight_standards')
+                .select('weight_kg, packaging_weight_kg')
+                .eq('category', cat)
+                .eq('size_label', size)
+                .eq('is_active', true)
+                .maybeSingle();
+              if (data && weightInp) {
+                weightInp.value = data.weight_kg;
+                weightInp.dataset.packaging = data.packaging_weight_kg || 0.3;
+                applied = true;
+                update();
+                break;
+              }
+            }
+          } catch(e) { console.log('weight_standards:', e.message); }
+        }
+        if (!applied && weightInp) {
+          const dw = getCategoryDefaultWeight(category);
+          if (dw && !parseFloat(weightInp.value)) {
+            weightInp.value = dw;
             update();
           }
-        } catch(e) { console.log('weight_standards:', e.message); }
+        }
       }
 
       if (orderCategory) orderCategory.onchange = () => fetchOrderWeight(orderCategory.value, orderSize?.value);
@@ -1518,8 +1949,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             if (cached) {
               if (cached.price && priceInp) { priceInp.value = cached.price; }
               if (cached.weight_kg && weightInp) { weightInp.value = cached.weight_kg; }
-              const titleDiv = document.getElementById('parsedOrderTitle');
-              if (titleDiv && cached.title) { titleDiv.innerText = '📦 ' + cached.title; titleDiv.classList.remove('hidden'); }
+              const titleInp2 = document.getElementById('orderTitle');
+              if (titleInp2 && cached.title && !titleInp2.value) titleInp2.value = cached.title;
               update();
             }
           } catch(e) { console.log('parsed_products:', e.message); }
@@ -1617,6 +2048,12 @@ try {
 if (createBtn) {
   createBtn.onclick = async () => {
     if (!window.tempOrder || !userId) { alert('Ошибка: заполните все поля'); return; }
+    // ── Сильная валидация (особенно важно для режима «Вручную») ──
+    const validationErrors = validateOrderBeforeSubmit(window.tempOrder);
+    if (validationErrors.length) {
+      alert('Проверьте поля:\n• ' + validationErrors.join('\n• '));
+      return;
+    }
     try {
       const bk = window.tempOrder.breakdown || {};
       const { data, error } = await supabaseClient.from('orders').insert({
@@ -1706,7 +2143,7 @@ if (createBtn) {
               await new Promise(r => setTimeout(r, 2000));
               const { data: checkData } = await supabaseClient
                 .from('parse_queue')
-                .select('status, price, title, weight_kg, currency, category, description, color, brand, marketplace_name, error_message, parse_method, screenshot_path, image_url')
+                .select('status, price, title, weight_kg, currency, country, category, description, color, brand, marketplace_name, error_message, parse_method, screenshot_path, image_url')
                 .eq('id', taskId)
                 .single();
 
@@ -1717,8 +2154,8 @@ if (createBtn) {
                 if (checkData.category) {
                   const categorySelect = document.getElementById('orderCategory');
                   if (categorySelect) {
-                    const opt = Array.from(categorySelect.options).find(o => o.value === checkData.category);
-                    if (opt) { categorySelect.value = checkData.category; categorySelect.dispatchEvent(new Event('change')); }
+                    const opt = findCategoryOption(categorySelect, checkData.category);
+                    if (opt) { categorySelect.value = opt.value; categorySelect.dispatchEvent(new Event('change')); }
                   }
                 }
                 showScreenshotWidget(taskId, checkData, 'order');
@@ -1754,11 +2191,18 @@ if (createBtn) {
             if (result.category) {
               const categorySelect = document.getElementById('orderCategory');
               if (categorySelect) {
-                const option = Array.from(categorySelect.options).find(opt => opt.value === result.category);
+                const option = findCategoryOption(categorySelect, result.category);
                 if (option) {
-                  categorySelect.value = result.category;
+                  categorySelect.value = option.value;
                   categorySelect.dispatchEvent(new Event('change'));
                 }
+              }
+            }
+            if (result.country) {
+              const countrySel = document.getElementById('orderSourceCountry');
+              if (countrySel) {
+                const opt = Array.from(countrySel.options).find(o => o.value === result.country);
+                if (opt) { countrySel.value = result.country; countrySel.dispatchEvent(new Event('change')); }
               }
             }
             const currencySymbols = { GBP: '£', USD: '$', EUR: '€', CNY: '¥', RUB: '₽', BYN: 'Br' };
@@ -1766,52 +2210,18 @@ if (createBtn) {
             if (currLabel) {
               currLabel.innerText = (result.currency && currencySymbols[result.currency]) || result.currency || '¥';
             }
-            const titleDiv = document.getElementById('parsedOrderTitle');
-            if (titleDiv) {
-              titleDiv.style.color = '';
-              if (result.title) {
-                titleDiv.innerText = '📦 ' + result.title;
-                titleDiv.classList.remove('hidden');
-              } else {
-                titleDiv.classList.add('hidden');
-              }
-            }
-            const orderBrandDiv = document.getElementById('parsedOrderBrand');
-            if (orderBrandDiv) {
-              if (result.brand) {
-                orderBrandDiv.innerText = '🏷️ ' + result.brand;
-                orderBrandDiv.classList.remove('hidden');
-              } else {
-                orderBrandDiv.classList.add('hidden');
-              }
-            }
-            const orderMarketplaceDiv = document.getElementById('parsedOrderMarketplace');
-            if (orderMarketplaceDiv) {
-              if (result.marketplace_name) {
-                orderMarketplaceDiv.innerText = '🛒 ' + result.marketplace_name;
-                orderMarketplaceDiv.classList.remove('hidden');
-              } else {
-                orderMarketplaceDiv.classList.add('hidden');
-              }
-            }
-            const orderDescDiv = document.getElementById('parsedOrderDesc');
-            if (orderDescDiv) {
-              if (result.description) {
-                orderDescDiv.innerText = result.description;
-                orderDescDiv.classList.remove('hidden');
-              } else {
-                orderDescDiv.classList.add('hidden');
-              }
-            }
-            const orderColorDiv = document.getElementById('parsedOrderColor');
-            if (orderColorDiv) {
-              if (result.color) {
-                orderColorDiv.innerText = '🎨 ' + result.color;
-                orderColorDiv.classList.remove('hidden');
-              } else {
-                orderColorDiv.classList.add('hidden');
-              }
-            }
+            // Заполняем редактируемые поля (если у юзера уже что-то введено — не перезаписываем)
+            const setIfEmpty = (id, val) => {
+              const el = document.getElementById(id);
+              if (el && val && (!el.value || el.value.trim() === '')) el.value = val;
+            };
+            setIfEmpty('orderTitle', result.title);
+            setIfEmpty('orderBrand', result.brand);
+            setIfEmpty('orderMarketplace', result.marketplace_name);
+            const descParts = [];
+            if (result.description) descParts.push(result.description);
+            if (result.color) descParts.push('Цвет: ' + result.color);
+            if (descParts.length) setIfEmpty('orderDescription', descParts.join(' · '));
 
             // Пересчитываем итоговую сумму
             if (typeof update === 'function') update();
@@ -1829,20 +2239,7 @@ if (createBtn) {
           } catch (err) {
             analyzeOrderBtn.classList.add('bg-red-500');
             setTimeout(() => analyzeOrderBtn.classList.remove('bg-red-500'), 2000);
-            const titleDiv = document.getElementById('parsedOrderTitle');
-            if (titleDiv) {
-              titleDiv.style.color = '#f87171';
-              titleDiv.innerText = '❌ ' + err.message;
-              titleDiv.classList.remove('hidden');
-            }
-            const errOrderDescDiv = document.getElementById('parsedOrderDesc');
-            if (errOrderDescDiv) errOrderDescDiv.classList.add('hidden');
-            const errOrderColorDiv = document.getElementById('parsedOrderColor');
-            if (errOrderColorDiv) errOrderColorDiv.classList.add('hidden');
-            const errOrderBrandDiv = document.getElementById('parsedOrderBrand');
-            if (errOrderBrandDiv) errOrderBrandDiv.classList.add('hidden');
-            const errOrderMpDiv = document.getElementById('parsedOrderMarketplace');
-            if (errOrderMpDiv) errOrderMpDiv.classList.add('hidden');
+            alert('❌ ' + (err && err.message ? err.message : 'Не удалось проанализировать ссылку. Попробуйте ввести данные вручную.'));
           } finally {
             analyzeOrderBtn.innerText = originalText;
             analyzeOrderBtn.disabled = false;
@@ -1866,9 +2263,11 @@ if (createBtn) {
             btn.classList.remove('bg-cyan-500');
           }
         });
-        // панели
+        // панели — поддерживаем space-separated список ("link manual"), чтобы один блок
+        // показывался в нескольких режимах (например URL-поле и в link, и в manual)
         panes.forEach((pane) => {
-          if (pane.dataset.orderModePane === mode) pane.classList.remove('hidden');
+          const allowed = (pane.dataset.orderModePane || '').split(/\s+/).filter(Boolean);
+          if (allowed.includes(mode)) pane.classList.remove('hidden');
           else pane.classList.add('hidden');
         });
         // прячем результаты при переключении на manual/link
@@ -1985,12 +2384,12 @@ if (createBtn) {
               if (lbl) lbl.innerText = curSym[picked.currency] || picked.currency;
             }
             if (picked.title) {
-              const titleDiv = document.getElementById('parsedOrderTitle');
-              if (titleDiv) {
-                titleDiv.style.color = '';
-                titleDiv.innerText = '📦 ' + picked.title;
-                titleDiv.classList.remove('hidden');
-              }
+              const titleInp = document.getElementById('orderTitle');
+              if (titleInp && !titleInp.value) titleInp.value = picked.title;
+            }
+            if (picked.platform_label) {
+              const mpInp = document.getElementById('orderMarketplace');
+              if (mpInp && !mpInp.value) mpInp.value = picked.platform_label;
             }
             // Запускаем существующий парсер для уточнения веса/категории/описания
             const aBtn = document.getElementById('analyzeOrderLinkBtn');
