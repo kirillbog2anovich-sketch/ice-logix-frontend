@@ -444,13 +444,21 @@ body.tg-native-back .global-back-btn { display: none !important; }
         });
       },
 
+      // Telegram's offClick(cb) removes a listener by reference (=== comparison).
+      // We must remember the exact handler we registered, otherwise the listener
+      // accumulates on each call and every back-button tap fires N times.
+      _bbHandler: null,
+      _mbHandler: null,
+
       // Wires Telegram's native BackButton in the header. Replaces in-page back UI.
       setBackButton(handler) {
         const bb = this._tg?.BackButton;
         if (!bb) return;
         try {
-          bb.offClick();
+          if (this._bbHandler) bb.offClick(this._bbHandler);
+          this._bbHandler = null;
           if (handler) {
+            this._bbHandler = handler;
             bb.onClick(handler);
             bb.show();
           } else {
@@ -464,12 +472,14 @@ body.tg-native-back .global-back-btn { display: none !important; }
         const mb = this._tg?.MainButton;
         if (!mb) return;
         try {
-          mb.offClick();
+          if (this._mbHandler) mb.offClick(this._mbHandler);
+          this._mbHandler = null;
           if (!text || !onClick) { mb.hide(); return; }
           mb.setText(text);
           if (color) mb.color = color;
           if (textColor) mb.textColor = textColor;
           if (isLoading) mb.showProgress(false); else mb.hideProgress();
+          this._mbHandler = onClick;
           mb.onClick(onClick);
           mb.enable();
           mb.show();
@@ -478,7 +488,11 @@ body.tg-native-back .global-back-btn { display: none !important; }
 
       hideMainButton() {
         const mb = this._tg?.MainButton;
-        try { mb?.hide(); mb?.offClick(); } catch {}
+        try {
+          mb?.hide();
+          if (this._mbHandler && mb) mb.offClick(this._mbHandler);
+          this._mbHandler = null;
+        } catch {}
       },
 
       // CloudStorage with localStorage fallback.
@@ -973,7 +987,7 @@ const MAX_REQUESTS_TRUSTED = 100;
       const activeTab = document.querySelector(`.tab-item[data-tab="${tabName}"]`);
       if (activeTab) activeTab.classList.add('active');
       tgUtil.haptic('selection');
-      syncTelegramBackButton();
+      // Note: renderCurrentScreen() also calls syncTelegramBackButton(), so we don't duplicate it here.
       renderCurrentScreen();
     }
 
