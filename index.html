@@ -76,6 +76,8 @@
   transition: 0.2s;
   margin-bottom: 16px;
 }
+/* When running inside Telegram, hide the in-page back buttons — the native BackButton in the header replaces them. */
+body.tg-native-back .global-back-btn { display: none !important; }
     .main-content { padding: 16px; padding-bottom: 80px; }
     .app-footer { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.1); padding: 20px 16px; margin-top: 30px; text-align: center; }
     .footer-links { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -387,6 +389,133 @@
 
     let tg = null, userId = null, userName = 'Гость', userAvatarUrl = null, isOwner = false, supabaseClient = null;
     let currentTab = 'home', previousTab = null, currentSubScreen = null;
+
+    // ==================== Telegram WebApp native helpers ====================
+    // Wraps Telegram.WebApp APIs with graceful fallback to browser primitives.
+    // Use tgUtil.alert / tgUtil.confirm / tgUtil.haptic / tgUtil.popup throughout the app.
+    const tgUtil = {
+      get _tg() { return window.Telegram?.WebApp || null; },
+
+      alert(message, callback) {
+        const w = this._tg;
+        if (w?.showAlert) {
+          try { w.showAlert(String(message ?? ''), callback); return; } catch {}
+        }
+        window.alert(String(message ?? ''));
+        if (typeof callback === 'function') callback();
+      },
+
+      confirm(message) {
+        const w = this._tg;
+        return new Promise((resolve) => {
+          if (w?.showConfirm) {
+            try { w.showConfirm(String(message ?? ''), (ok) => resolve(!!ok)); return; } catch {}
+          }
+          resolve(window.confirm(String(message ?? '')));
+        });
+      },
+
+      // type: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft'
+      //       | 'success' | 'warning' | 'error' (notification)
+      //       | 'selection' (selection change)
+      haptic(type) {
+        const hf = this._tg?.HapticFeedback;
+        if (!hf) return;
+        try {
+          if (type === 'success' || type === 'warning' || type === 'error') {
+            hf.notificationOccurred(type);
+          } else if (type === 'selection') {
+            hf.selectionChanged();
+          } else {
+            hf.impactOccurred(type || 'light');
+          }
+        } catch {}
+      },
+
+      // Rich popup with up to 3 buttons — see https://core.telegram.org/bots/webapps#popupparams
+      popup(opts) {
+        const w = this._tg;
+        return new Promise((resolve) => {
+          if (w?.showPopup) {
+            try { w.showPopup(opts, (id) => resolve(id ?? null)); return; } catch {}
+          }
+          window.alert(opts?.message || opts?.title || '');
+          resolve(null);
+        });
+      },
+
+      // Wires Telegram's native BackButton in the header. Replaces in-page back UI.
+      setBackButton(handler) {
+        const bb = this._tg?.BackButton;
+        if (!bb) return;
+        try {
+          bb.offClick();
+          if (handler) {
+            bb.onClick(handler);
+            bb.show();
+          } else {
+            bb.hide();
+          }
+        } catch {}
+      },
+
+      // Wires Telegram's native MainButton (sticky bottom button).
+      setMainButton({ text, onClick, color, textColor, isLoading } = {}) {
+        const mb = this._tg?.MainButton;
+        if (!mb) return;
+        try {
+          mb.offClick();
+          if (!text || !onClick) { mb.hide(); return; }
+          mb.setText(text);
+          if (color) mb.color = color;
+          if (textColor) mb.textColor = textColor;
+          if (isLoading) mb.showProgress(false); else mb.hideProgress();
+          mb.onClick(onClick);
+          mb.enable();
+          mb.show();
+        } catch {}
+      },
+
+      hideMainButton() {
+        const mb = this._tg?.MainButton;
+        try { mb?.hide(); mb?.offClick(); } catch {}
+      },
+
+      // CloudStorage with localStorage fallback.
+      async cloudGet(key) {
+        const cs = this._tg?.CloudStorage;
+        if (cs?.getItem) {
+          return new Promise((resolve) => {
+            try { cs.getItem(key, (err, value) => resolve(err ? null : (value ?? null))); }
+            catch { resolve(null); }
+          });
+        }
+        try { return localStorage.getItem(key); } catch { return null; }
+      },
+      async cloudSet(key, value) {
+        const cs = this._tg?.CloudStorage;
+        if (cs?.setItem) {
+          return new Promise((resolve) => {
+            try { cs.setItem(key, String(value ?? ''), (err) => resolve(!err)); }
+            catch { resolve(false); }
+          });
+        }
+        try { localStorage.setItem(key, String(value ?? '')); return true; } catch { return false; }
+      },
+      async cloudRemove(key) {
+        const cs = this._tg?.CloudStorage;
+        if (cs?.removeItem) {
+          return new Promise((resolve) => {
+            try { cs.removeItem(key, (err) => resolve(!err)); }
+            catch { resolve(false); }
+          });
+        }
+        try { localStorage.removeItem(key); return true; } catch { return false; }
+      },
+    };
+    window.tgUtil = tgUtil;
+    // ==================== /Telegram WebApp native helpers ====================
+
     let adminOrdersMode = 'active'; // 'active' или 'archived'
     let balance = 0;
     let adminOrdersPage = 1;
@@ -523,6 +652,13 @@ const MAX_REQUESTS_TRUSTED = 100;
       tg = window.Telegram.WebApp;
       tg.ready();
       tg.expand();
+      // Enable closing-confirmation so accidental swipes don't kill the WebApp mid-checkout.
+      try { tg.enableClosingConfirmation?.(); } catch {}
+      // Match the Telegram chrome (header + background) to our dark gradient so the WebApp blends in seamlessly.
+      try { tg.setHeaderColor?.('#0f172a'); } catch {}
+      try { tg.setBackgroundColor?.('#0f172a'); } catch {}
+      // Mark <body> so CSS hides duplicate in-page back buttons when native BackButton is available.
+      if (tg?.BackButton) document.body.classList.add('tg-native-back');
       const user = tg.initDataUnsafe?.user;
       userId = user ? user.id : null;
       userName = user ? (user.first_name || user.username) : 'Гость';
@@ -540,8 +676,8 @@ const MAX_REQUESTS_TRUSTED = 100;
       document.querySelector('#userNameHeader').innerText = userName;
       document.getElementById('logoImg').onclick = () => switchTab('home');
       document.getElementById('userCard').onclick = () => switchTab('profile');
-      document.getElementById('settingsBtn').onclick = () => alert('Настройки будут позже');
-      document.getElementById('notificationsBtn').onclick = () => alert('Уведомлений пока нет');
+      document.getElementById('settingsBtn').onclick = () => tgUtil.alert('Настройки будут позже');
+      document.getElementById('notificationsBtn').onclick = () => tgUtil.alert('Уведомлений пока нет');
       // Прогреваем кэш курсов НБРБ (1 час) — для quickEstimate в списках
       if (window.iceLogixPricing?.warmRates) window.iceLogixPricing.warmRates();
       // Автоматически открываем онбординг для новых пользователей
@@ -725,7 +861,7 @@ const MAX_REQUESTS_TRUSTED = 100;
       fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
 
       function handleFile(file) {
-        if (file.size > 10 * 1024 * 1024) { alert('Файл слишком большой. Максимум 10 МБ.'); return; }
+        if (file.size > 10 * 1024 * 1024) { tgUtil.alert('Файл слишком большой. Максимум 10 МБ.'); return; }
         selectedFile = file;
         const reader = new FileReader();
         reader.onload = ev => {
@@ -815,7 +951,7 @@ const MAX_REQUESTS_TRUSTED = 100;
     }
 
     function attachEventListeners() {
-      document.getElementById('addBalanceBtn').onclick = () => alert('Пополнение баланса будет позже');
+      document.getElementById('addBalanceBtn').onclick = () => tgUtil.alert('Пополнение баланса будет позже');
       document.querySelectorAll('.tab-item').forEach(tab => {
         tab.onclick = () => {
           const tabName = tab.getAttribute('data-tab');
@@ -832,10 +968,37 @@ const MAX_REQUESTS_TRUSTED = 100;
       }
       if (currentTab && currentTab !== tabName) previousTab = currentTab;
       currentTab = tabName;
+      currentSubScreen = null;
       document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
       const activeTab = document.querySelector(`.tab-item[data-tab="${tabName}"]`);
       if (activeTab) activeTab.classList.add('active');
+      tgUtil.haptic('selection');
+      syncTelegramBackButton();
       renderCurrentScreen();
+    }
+
+    // Wires Telegram's native BackButton based on current tab/subscreen.
+    // On 'home' — hides the BackButton. Anywhere else — shows it and on tap returns to home or previousTab.
+    function syncTelegramBackButton() {
+      const isRoot = currentTab === 'home' && !currentSubScreen;
+      if (isRoot) {
+        tgUtil.setBackButton(null);
+        return;
+      }
+      tgUtil.setBackButton(() => {
+        tgUtil.haptic('light');
+        if (currentSubScreen) {
+          currentSubScreen = null;
+          renderCurrentScreen();
+          syncTelegramBackButton();
+          return;
+        }
+        if (previousTab && previousTab !== currentTab) {
+          switchTab(previousTab);
+        } else {
+          switchTab('home');
+        }
+      });
     }
 
     function renderFooter() {
@@ -927,9 +1090,9 @@ function attachHomeHandlers() {
       });
       document.querySelector('[data-story="reports"]')?.addEventListener('click', () => switchTab('reports'));
       document.querySelector('[data-story="reviews"]')?.addEventListener('click', () => switchTab('reviews'));
-      document.querySelector('[data-story="promo"]')?.addEventListener('click', () => alert('Акции будут позже'));
+      document.querySelector('[data-story="promo"]')?.addEventListener('click', () => tgUtil.alert('Акции будут позже'));
       document.querySelector('[data-story="academy"]')?.addEventListener('click', () => switchTab('academy'));
-      document.querySelector('[data-story="drops"]')?.addEventListener('click', () => alert('Дропы будут позже'));
+      document.querySelector('[data-story="drops"]')?.addEventListener('click', () => tgUtil.alert('Дропы будут позже'));
       document.querySelector('[data-story="referral"]')?.addEventListener('click', () => switchTab('profile'));
       document.getElementById('moreMarketplacesBtn')?.addEventListener('click', () => {
         currentSubScreen = 'marketplaces';
@@ -943,17 +1106,17 @@ function attachHomeHandlers() {
         el.addEventListener('click', () => {
           const url = el.getAttribute('data-url');
           if (url) window.open(url, '_blank');
-          else alert('Ссылка на площадку будет добавлена позже');
+          else tgUtil.alert('Ссылка на площадку будет добавлена позже');
         });
       });
       document.querySelectorAll('.banner-slide').forEach(el => {
-        el.addEventListener('click', () => alert('Подробнее о акции будет позже'));
+        el.addEventListener('click', () => tgUtil.alert('Подробнее о акции будет позже'));
       });
       document.querySelectorAll('.social-icon').forEach(el => {
-        el.addEventListener('click', () => alert('Соцсети будут подключены позже'));
+        el.addEventListener('click', () => tgUtil.alert('Соцсети будут подключены позже'));
       });
       document.querySelectorAll('.footer-link').forEach(el => {
-        el.addEventListener('click', () => alert(el.innerText + ' будет доступно позже'));
+        el.addEventListener('click', () => tgUtil.alert(el.innerText + ' будет доступно позже'));
       });
       loadHomeProducts('popular');
       document.getElementById('tabPopular')?.addEventListener('click', () => {
@@ -972,7 +1135,7 @@ function attachHomeHandlers() {
     if (promoId) {
       // При клике на баннер активируем акцию в калькуляторе
       window.activePromotionId = promoId;
-      alert('Акция применена! Перейдите в калькулятор.');
+      tgUtil.alert('Акция применена! Перейдите в калькулятор.');
     }
   });
 });
@@ -1324,9 +1487,11 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 
   const calcBtn = document.getElementById('calcBtn');
   if (calcBtn) calcBtn.onclick = async () => {
+    tgUtil.haptic('medium');
     const limitCheck = await checkAndUpdateLimit();
     if (!limitCheck.allowed) {
-      alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
+      tgUtil.haptic('warning');
+      tgUtil.alert(`Вы исчерпали лимит бесплатных расчётов (${limitCheck.currentCount}/${limitCheck.maxRequests}). Оформите заказ, чтобы продолжить.`);
       return;
     }
 
@@ -1364,7 +1529,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
           const titleInp = document.getElementById('calcTitle');
           if (titleInp && cached.title && !titleInp.value) titleInp.value = cached.title;
         } else if (urlValue.startsWith('http')) {
-          alert('Автоматический парсинг пока недоступен. Введите данные вручную.');
+          tgUtil.alert('Автоматический парсинг пока недоступен. Введите данные вручную.');
         }
       } catch(e) { console.log('parsed_products cache:', e.message); }
     }
@@ -1414,12 +1579,14 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
       if (resultEl) resultEl.classList.remove('hidden');
       if (toOrderBtn) toOrderBtn.classList.add('hidden');
       window.tempOrder = null;
+      tgUtil.haptic('warning');
       return;
     }
 
     if (breakdownEl) breakdownEl.innerHTML = window.iceLogixPricing.formatBreakdownHTML(result);
     if (resultEl) resultEl.classList.remove('hidden');
     if (toOrderBtn) toOrderBtn.classList.remove('hidden');
+    tgUtil.haptic('success');
 
     const totalPriceEl = document.getElementById('totalPrice');
     if (totalPriceEl) totalPriceEl.innerText = result.total_byn.toFixed(2);
@@ -1443,13 +1610,15 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   const analyzeBtn = document.getElementById('analyzeLinkBtn');
   if (analyzeBtn) {
     analyzeBtn.addEventListener('click', async () => {
+      tgUtil.haptic('medium');
       const urlInput = document.getElementById('calcUrl');
       const url = urlInput?.value.trim();
-      if (!url) { alert('Вставьте ссылку'); return; }
+      if (!url) { tgUtil.haptic('warning'); tgUtil.alert('Вставьте ссылку'); return; }
 
       const limitCheck = await checkAndUpdateLimit();
       if (!limitCheck.allowed) {
-        alert(`Лимит исчерпан (${limitCheck.currentCount}/${limitCheck.maxRequests}).`);
+        tgUtil.haptic('warning');
+        tgUtil.alert(`Лимит исчерпан (${limitCheck.currentCount}/${limitCheck.maxRequests}).`);
         return;
       }
 
@@ -1572,11 +1741,13 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 
         analyzeBtn.classList.add('bg-green-500');
         setTimeout(() => analyzeBtn.classList.remove('bg-green-500'), 1000);
+        tgUtil.haptic('success');
 
       } catch (err) {
         analyzeBtn.classList.add('bg-red-500');
         setTimeout(() => analyzeBtn.classList.remove('bg-red-500'), 2000);
-        alert('❌ ' + (err && err.message ? err.message : 'Не удалось проанализировать ссылку. Попробуйте ввести данные вручную.'));
+        tgUtil.haptic('error');
+        tgUtil.alert('❌ ' + (err && err.message ? err.message : 'Не удалось проанализировать ссылку. Попробуйте ввести данные вручную.'));
       } finally {
         analyzeBtn.innerText = originalText;
         analyzeBtn.disabled = false;
@@ -1587,7 +1758,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   const toNewOrderBtn = document.getElementById('toNewOrderBtn');
   if (toNewOrderBtn) toNewOrderBtn.onclick = () => { 
     if (window.tempOrder) switchTab('neworder'); 
-    else alert('Сначала рассчитайте стоимость'); 
+    else tgUtil.alert('Сначала рассчитайте стоимость'); 
   };
 
   // ==================== РЕЖИМЫ ВВОДА В КАЛЬКУЛЯТОРЕ (link/manual/photo/text) ====================
@@ -1774,8 +1945,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     if (!files || !files.length) return;
     for (const f of files) {
       if (!f.type.startsWith('image/')) continue;
-      if (f.size > 10 * 1024 * 1024) { alert(`${f.name}: больше 10 МБ`); continue; }
-      if (calcPhotoFiles.length >= 5) { alert('Можно загрузить максимум 5 фото'); break; }
+      if (f.size > 10 * 1024 * 1024) { tgUtil.alert(`${f.name}: больше 10 МБ`); continue; }
+      if (calcPhotoFiles.length >= 5) { tgUtil.alert('Можно загрузить максимум 5 фото'); break; }
       calcPhotoFiles.push(f);
     }
     renderCalcPhotoPreviews();
@@ -1783,7 +1954,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   if (calcPhotoSearchBtn) {
     calcPhotoSearchBtn.addEventListener('click', async () => {
       if (calcPhotoFiles.length === 0) return;
-      if (!supabaseClient) { alert('База данных недоступна'); return; }
+      if (!supabaseClient) { tgUtil.alert('База данных недоступна'); return; }
       const original = calcPhotoSearchBtn.innerText;
       calcPhotoSearchBtn.innerText = '⏳ Загружаю фото…';
       calcPhotoSearchBtn.disabled = true;
@@ -1842,8 +2013,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     calcTextPhotoInput.addEventListener('change', () => {
       const f = calcTextPhotoInput.files?.[0];
       if (!f) return;
-      if (!f.type.startsWith('image/')) { alert('Только изображения'); return; }
-      if (f.size > 10 * 1024 * 1024) { alert('Файл больше 10 МБ'); return; }
+      if (!f.type.startsWith('image/')) { tgUtil.alert('Только изображения'); return; }
+      if (f.size > 10 * 1024 * 1024) { tgUtil.alert('Файл больше 10 МБ'); return; }
       calcTextPhotoFile = f;
       if (calcTextPhotoPreview) {
         calcTextPhotoPreview.classList.remove('hidden');
@@ -1864,8 +2035,8 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
   if (calcTextSearchBtn && calcTextInput) {
     const runCalcTextSearch = async () => {
       const q = (calcTextInput.value || '').trim();
-      if (q.length < 3) { alert('Минимум 3 символа в описании'); return; }
-      if (!supabaseClient) { alert('База данных недоступна'); return; }
+      if (q.length < 3) { tgUtil.alert('Минимум 3 символа в описании'); return; }
+      if (!supabaseClient) { tgUtil.alert('База данных недоступна'); return; }
       const original = calcTextSearchBtn.innerText;
       calcTextSearchBtn.innerText = '⏳ Ищем на площадках…';
       calcTextSearchBtn.disabled = true;
@@ -2341,7 +2512,7 @@ try {
       const createBtn = document.getElementById('createOrderFinal');
 if (createBtn) {
   createBtn.onclick = async () => {
-    if (!window.tempOrder || !userId) { alert('Ошибка: заполните все поля'); return; }
+    if (!window.tempOrder || !userId) { tgUtil.alert('Ошибка: заполните все поля'); return; }
     // ── Обогащаем tempOrder свежими значениями полей формы (на случай ручного ввода) ──
     const _val = (id) => (document.getElementById(id)?.value || '').trim();
     const _num = (id) => parseFloat(document.getElementById(id)?.value || '0') || 0;
@@ -2358,7 +2529,8 @@ if (createBtn) {
     // ── Сильная валидация (особенно важно для режима «Вручную») ──
     const validationErrors = validateOrderBeforeSubmit(window.tempOrder);
     if (validationErrors.length) {
-      alert('Проверьте поля:\n• ' + validationErrors.join('\n• '));
+      tgUtil.haptic('warning');
+      tgUtil.alert('Проверьте поля:\n• ' + validationErrors.join('\n• '));
       return;
     }
     // ── Финальная модалка-превью с image confirmation + price comparison ──
@@ -2392,7 +2564,8 @@ if (createBtn) {
       }).select();
       if (error) throw error;
 
-      alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${((window.tempOrder.total - window.tempOrder.discountAmount) * 0.75).toFixed(2)} ❄️`);
+      tgUtil.haptic('success');
+      tgUtil.alert(`Заказ создан! Номер: ${data[0].id}. Сумма предоплаты: ${((window.tempOrder.total - window.tempOrder.discountAmount) * 0.75).toFixed(2)} ❄️`);
 
       // ===== ВСТАВЬТЕ СЮДА =====
       // Удаляем выбранные товары из корзины (если заказ создан из корзины)
@@ -2409,12 +2582,15 @@ if (createBtn) {
       if (!userLimits.isTrusted) {
         await supabaseClient.from('users').update({ is_trusted: true }).eq('user_id', userId);
         userLimits.isTrusted = true;
-        alert('🎉 Поздравляем с первым заказом! Лимит на расчёты увеличен до 100 в день.');
+        tgUtil.alert('🎉 Поздравляем с первым заказом! Лимит на расчёты увеличен до 100 в день.');
       }
 
       window.tempOrder = null;
       switchTab('home');
-      } catch (err) { alert('Ошибка: ' + err.message); }
+      } catch (err) {
+        tgUtil.haptic('error');
+        tgUtil.alert('Ошибка: ' + err.message);
+      }
   };
 }
 
@@ -2425,8 +2601,8 @@ if (createBtn) {
         verifyBtn.addEventListener('click', async () => {
           const title = (document.getElementById('orderTitle')?.value || '').trim();
           const brand = (document.getElementById('orderBrand')?.value || '').trim();
-          if (title.length < 3) { alert('Сначала введите название товара (минимум 3 символа)'); return; }
-          if (!supabaseClient) { alert('База данных недоступна'); return; }
+          if (title.length < 3) { tgUtil.alert('Сначала введите название товара (минимум 3 символа)'); return; }
+          if (!supabaseClient) { tgUtil.alert('База данных недоступна'); return; }
           const original = verifyBtn.innerText;
           verifyBtn.innerText = '⏳ Ищем изображение…';
           verifyBtn.disabled = true;
@@ -2472,11 +2648,11 @@ if (createBtn) {
         analyzeOrderBtn.addEventListener('click', async () => {
           const urlInput = document.getElementById('orderUrl');
           const url = urlInput?.value.trim();
-          if (!url) { alert('Вставьте ссылку'); return; }
+          if (!url) { tgUtil.alert('Вставьте ссылку'); return; }
 
           const limitCheck = await checkAndUpdateLimit();
           if (!limitCheck.allowed) {
-            alert(`Лимит исчерпан (${limitCheck.currentCount}/${limitCheck.maxRequests}).`);
+            tgUtil.alert(`Лимит исчерпан (${limitCheck.currentCount}/${limitCheck.maxRequests}).`);
             return;
           }
 
@@ -2598,7 +2774,7 @@ if (createBtn) {
           } catch (err) {
             analyzeOrderBtn.classList.add('bg-red-500');
             setTimeout(() => analyzeOrderBtn.classList.remove('bg-red-500'), 2000);
-            alert('❌ ' + (err && err.message ? err.message : 'Не удалось проанализировать ссылку. Попробуйте ввести данные вручную.'));
+            tgUtil.alert('❌ ' + (err && err.message ? err.message : 'Не удалось проанализировать ссылку. Попробуйте ввести данные вручную.'));
           } finally {
             analyzeOrderBtn.innerText = originalText;
             analyzeOrderBtn.disabled = false;
@@ -2806,8 +2982,8 @@ if (createBtn) {
         if (!files || !files.length) return;
         for (const f of files) {
           if (!f.type.startsWith('image/')) continue;
-          if (f.size > 10 * 1024 * 1024) { alert(`${f.name}: больше 10 МБ`); continue; }
-          if (photoFiles.length >= 5) { alert('Можно загрузить максимум 5 фото'); break; }
+          if (f.size > 10 * 1024 * 1024) { tgUtil.alert(`${f.name}: больше 10 МБ`); continue; }
+          if (photoFiles.length >= 5) { tgUtil.alert('Можно загрузить максимум 5 фото'); break; }
           photoFiles.push(f);
         }
         renderOrderPhotoPreviews();
@@ -2815,7 +2991,7 @@ if (createBtn) {
       if (photoSearchBtn) {
         photoSearchBtn.addEventListener('click', async () => {
           if (photoFiles.length === 0) return;
-          if (!supabaseClient) { alert('База данных недоступна'); return; }
+          if (!supabaseClient) { tgUtil.alert('База данных недоступна'); return; }
           const original = photoSearchBtn.innerText;
           photoSearchBtn.innerText = '⏳ Загружаю фото…';
           photoSearchBtn.disabled = true;
@@ -2873,8 +3049,8 @@ if (createBtn) {
         textPhotoInput.addEventListener('change', () => {
           const f = textPhotoInput.files?.[0];
           if (!f) return;
-          if (!f.type.startsWith('image/')) { alert('Только изображения'); return; }
-          if (f.size > 10 * 1024 * 1024) { alert('Файл больше 10 МБ'); return; }
+          if (!f.type.startsWith('image/')) { tgUtil.alert('Только изображения'); return; }
+          if (f.size > 10 * 1024 * 1024) { tgUtil.alert('Файл больше 10 МБ'); return; }
           textPhotoFile = f;
           if (textPhotoPreview) {
             textPhotoPreview.classList.remove('hidden');
@@ -2895,8 +3071,8 @@ if (createBtn) {
       if (textSearchBtn && textInput) {
         const runTextSearch = async () => {
           const q = (textInput.value || '').trim();
-          if (q.length < 3) { alert('Минимум 3 символа в описании'); return; }
-          if (!supabaseClient) { alert('База данных недоступна'); return; }
+          if (q.length < 3) { tgUtil.alert('Минимум 3 символа в описании'); return; }
+          if (!supabaseClient) { tgUtil.alert('База данных недоступна'); return; }
           const original = textSearchBtn.innerText;
           textSearchBtn.innerText = '⏳ Ищем на площадках…';
           textSearchBtn.disabled = true;
@@ -3137,7 +3313,7 @@ async function renderMyOrders() {
       const link = userReferralCode ? `https://t.me/icelogix_bot?start=ref_${userReferralCode}` : '';
       if (link) {
         navigator.clipboard.writeText(link);
-        alert('Ссылка скопирована!');
+        tgUtil.alert('Ссылка скопирована!');
       }
     };
   }
@@ -3333,7 +3509,7 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
           const marginType = document.getElementById('marginType').value;
           const marginValue = parseFloat(document.getElementById('marginValue').value);
           const payoutThreshold = parseFloat(document.getElementById('payoutThreshold').value);
-          if (isNaN(marginValue) || isNaN(payoutThreshold)) { alert('Введите корректные значения'); return; }
+          if (isNaN(marginValue) || isNaN(payoutThreshold)) { tgUtil.alert('Введите корректные значения'); return; }
           try {
             const { error } = await supabaseClient.from('dropshipper_settings').upsert({
               user_id: userId, margin_type: marginType, margin_value: marginValue, payout_threshold: payoutThreshold, payout_method: 'card'
@@ -3348,16 +3524,17 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
               const encrypted = encryptData({ cardNumber: raw });
               await supabaseClient.from('users').update({ encrypted_card: encrypted }).eq('user_id', userId);
             }
-            alert('Настройки сохранены');
+            tgUtil.alert('Настройки сохранены');
             renderCurrentScreen();
-          } catch (err) { alert('Ошибка: ' + err.message); }
+          } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
         };
         // Card edit/delete handlers
         document.getElementById('editCardBtn')?.addEventListener('click', () => {
           document.getElementById('cardInputWrap')?.classList.remove('hidden');
         });
         document.getElementById('deleteCardBtn')?.addEventListener('click', async () => {
-          if (!confirm('Удалить сохранённую карту?')) return;
+          if (!(await tgUtil.confirm('Удалить сохранённую карту?'))) return;
+          tgUtil.haptic('warning');
           await supabaseClient.from('users').update({ encrypted_card: null }).eq('user_id', userId);
           renderCurrentScreen();
         });
@@ -3366,20 +3543,20 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
       if (payoutBtn) {
         payoutBtn.onclick = async () => {
           const amount = parseFloat(payoutBtn.innerText.match(/\d+/)?.[0] || 0);
-          if (amount <= 0) { alert('Недостаточно средств'); return; }
+          if (amount <= 0) { tgUtil.alert('Недостаточно средств'); return; }
           try {
             const { error } = await supabaseClient.from('payout_requests').insert({ user_id: userId, amount: amount, status: 'pending' });
             if (error) throw error;
-            alert('Заявка на вывод отправлена');
+            tgUtil.alert('Заявка на вывод отправлена');
             renderCurrentScreen();
-          } catch (err) { alert('Ошибка: ' + err.message); }
+          } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
         };
       }
 
       const copyRefBtn = document.getElementById('copyReferralLinkBtn');
       if (copyRefBtn) {
         copyRefBtn.onclick = () => {
-          navigator.clipboard.writeText(copyRefBtn.dataset.link).then(() => alert('Ссылка скопирована'));
+          navigator.clipboard.writeText(copyRefBtn.dataset.link).then(() => tgUtil.alert('Ссылка скопирована'));
         };
       }
 
@@ -3404,7 +3581,7 @@ if (cartBtn) cartBtn.onclick = () => switchTab('cart');
 
       document.querySelectorAll('.content-copy-btn').forEach(btn => {
         btn.onclick = () => {
-          navigator.clipboard.writeText(btn.dataset.text).then(() => alert('Текст скопирован'));
+          navigator.clipboard.writeText(btn.dataset.text).then(() => tgUtil.alert('Текст скопирован'));
         };
       });
       document.querySelectorAll('.content-download-btn').forEach(btn => {
@@ -3650,7 +3827,7 @@ async function renderAcademy() {
 
         // video ended → auto-complete
         const vid = modal.querySelector('#lessonVideo');
-        if (vid) vid.addEventListener('ended', async () => { await completeLesson(data.id, courseId); alert('✅ Урок пройден!'); });
+        if (vid) vid.addEventListener('ended', async () => { await completeLesson(data.id, courseId); tgUtil.alert('✅ Урок пройден!'); });
 
         // mark done
         modal.querySelectorAll('.markDoneBtn').forEach(btn => {
@@ -3663,7 +3840,7 @@ async function renderAcademy() {
 
         // file open
         const fileBtn = modal.querySelector('#openFileBtn');
-        if (fileBtn) fileBtn.onclick = () => { alert('Документ защищён водяным знаком. Не распространяйте.'); window.open(fileBtn.dataset.url, '_blank'); };
+        if (fileBtn) fileBtn.onclick = () => { tgUtil.alert('Документ защищён водяным знаком. Не распространяйте.'); window.open(fileBtn.dataset.url, '_blank'); };
 
         // quiz check
         const checkBtn = modal.querySelector('#checkQuizBtn');
@@ -3695,13 +3872,13 @@ async function renderAcademy() {
       // ── handleGetCert ───────────────────────────────────────────────
       async function handleGetCert(courseId, courseTitle) {
         try {
-          alert('🏆 Сертификат генерируется...');
+          tgUtil.alert('🏆 Сертификат генерируется...');
           await supabaseClient.from('certificates').upsert(
             { user_id: userId, course_id: courseId, certificate_url: 'https://example.com/cert.pdf', issued_at: new Date().toISOString() },
             { onConflict: 'user_id,course_id' }
           );
-          alert(`Сертификат по курсу "${courseTitle}" готов!\nСсылка: https://example.com/cert.pdf`);
-        } catch(e) { alert('Ошибка генерации: ' + e.message); }
+          tgUtil.alert(`Сертификат по курсу "${courseTitle}" готов!\nСсылка: https://example.com/cert.pdf`);
+        } catch(e) { tgUtil.alert('Ошибка генерации: ' + e.message); }
       }
 
       // ── addCourse (owner) ───────────────────────────────────────────
@@ -3713,17 +3890,17 @@ async function renderAcademy() {
         btn.onclick = async () => {
           const courseId = btn.dataset.courseId;
           const price = parseInt(btn.dataset.price);
-          if (!userId) { alert('Авторизуйтесь'); return; }
-          if (balance < price) { alert('Недостаточно средств'); return; }
+          if (!userId) { tgUtil.alert('Авторизуйтесь'); return; }
+          if (balance < price) { tgUtil.alert('Недостаточно средств'); return; }
           try {
             const { error: e1 } = await supabaseClient.from('users').update({ ices_balance: balance - price }).eq('user_id', userId);
             if (e1) throw e1;
             await supabaseClient.from('user_courses').upsert({ user_id: userId, course_id: courseId }, { onConflict: 'user_id,course_id' });
             balance -= price;
             document.getElementById('headerBalance').innerText = balance + ' ❄️';
-            alert('🎉 Курс куплен! Приятного обучения!');
+            tgUtil.alert('🎉 Курс куплен! Приятного обучения!');
             renderCurrentScreen();
-          } catch (err) { alert('Ошибка: ' + err.message); }
+          } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
         };
       });
 
@@ -3761,7 +3938,7 @@ async function renderAcademy() {
               const { data, error } = await supabaseClient.from('lessons').select('*').eq('id', item.dataset.lessonId).single();
               if (error) throw error;
               showLessonModal(data, item.dataset.courseId);
-            } catch(e) { alert('Ошибка загрузки урока: ' + e.message); }
+            } catch(e) { tgUtil.alert('Ошибка загрузки урока: ' + e.message); }
           };
         });
       };
@@ -3844,7 +4021,7 @@ async function renderAcademy() {
         const price_ice = parseInt(modal.querySelector('#mCoursePrice').value) || 0;
         const role_access = modal.querySelector('#mCourseAccess').value;
         const is_active = modal.querySelector('#mCourseActive').checked;
-        if (!title) { alert('Введите название'); return; }
+        if (!title) { tgUtil.alert('Введите название'); return; }
         try {
           if (course) {
             await supabaseClient.from('courses').update({ title, description, price_ice, role_access, is_active }).eq('id', course.id);
@@ -3853,7 +4030,7 @@ async function renderAcademy() {
           }
           modal.remove();
           renderCurrentScreen();
-        } catch(e) { alert('Ошибка: ' + e.message); }
+        } catch(e) { tgUtil.alert('Ошибка: ' + e.message); }
       };
     }
 
@@ -3917,9 +4094,10 @@ async function renderAcademy() {
         });
         listEl.querySelectorAll('.deleteLessonBtn').forEach(btn => {
           btn.onclick = async () => {
-            if (!confirm('Удалить урок? Прогресс пользователей тоже будет удалён.')) return;
+            if (!(await tgUtil.confirm('Удалить урок? Прогресс пользователей тоже будет удалён.'))) return;
+            tgUtil.haptic('warning');
             const { error } = await supabaseClient.from('lessons').delete().eq('id', btn.dataset.lid);
-            if (error) { alert('Ошибка удаления: ' + error.message); return; }
+            if (error) { tgUtil.alert('Ошибка удаления: ' + error.message); return; }
             await refreshList();
           };
         });
@@ -4033,8 +4211,8 @@ async function renderAcademy() {
         const order_index = parseInt(modal.querySelector('#mLessonOrder').value) || 0;
         const unlock_delay_hours = lockedCheck.checked ? (parseInt(modal.querySelector('#mLessonDelay').value) || 0) : 0;
         const is_locked = lockedCheck.checked;
-        if (!title) { alert('Введите название урока'); return; }
-        if (!content) { alert('Заполните поле «Контент»'); return; }
+        if (!title) { tgUtil.alert('Введите название урока'); return; }
+        if (!content) { tgUtil.alert('Заполните поле «Контент»'); return; }
         const saveBtn = modal.querySelector('#mLessonSave');
         saveBtn.disabled = true;
         saveBtn.textContent = '⏳ Сохранение...';
@@ -4055,11 +4233,11 @@ async function renderAcademy() {
             ({ error } = await supabaseClient.from('lessons').insert(payload));
           }
           if (error) throw new Error(error.message);
-          alert('✅ Урок сохранён');
+          tgUtil.alert('✅ Урок сохранён');
           modal.remove();
           if (onSave) await onSave(); else renderCurrentScreen();
         } catch(e) {
-          alert('❌ Ошибка сохранения: ' + e.message);
+          tgUtil.alert('❌ Ошибка сохранения: ' + e.message);
           saveBtn.disabled = false;
           saveBtn.textContent = 'Сохранить';
         }
@@ -4187,7 +4365,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
 });
 
   async function addToCart(productId, quantity = 1) {
-  if (!userId) { alert('Авторизуйтесь'); return; }
+  if (!userId) { tgUtil.alert('Авторизуйтесь'); return; }
   // Проверяем, есть ли уже такой товар
   const { data: existing } = await supabaseClient.from('cart').select('id, quantity').eq('user_id', userId).eq('product_id', productId).maybeSingle();
   if (existing) {
@@ -4196,7 +4374,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     await supabaseClient.from('cart').insert({ user_id: userId, product_id: productId, quantity });
   }
   updateCartBadge();
-  alert('Товар добавлен в корзину');
+  tgUtil.alert('Товар добавлен в корзину');
 }
 
 }
@@ -4262,11 +4440,11 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             const type = modal.querySelector('#reportType').value;
             const image_url = modal.querySelector('#reportUrl').value.trim();
             const product_url = modal.querySelector('#reportProductUrl').value.trim();
-            if (!title || !image_url) { alert('Заполните заголовок и ссылку на фото/видео'); return; }
+            if (!title || !image_url) { tgUtil.alert('Заполните заголовок и ссылку на фото/видео'); return; }
             try {
               await supabaseClient.from('public_reports').insert({ title, description, type, image_url, product_url, is_active: true, created_at: new Date().toISOString() });
-              alert('Отчёт добавлен'); modal.remove(); renderCurrentScreen();
-            } catch (err) { alert('Ошибка: ' + err.message); }
+              tgUtil.alert('Отчёт добавлен'); modal.remove(); renderCurrentScreen();
+            } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
           };
         };
       }
@@ -4343,12 +4521,12 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
             const orderId = modal.querySelector('#reviewOrder').value;
             const rating = parseInt(modal.querySelector('#reviewRating').value);
             const text = modal.querySelector('#reviewText').value.trim();
-            if (!orderId || !text) { alert('Выберите заказ и введите текст отзыва'); return; }
+            if (!orderId || !text) { tgUtil.alert('Выберите заказ и введите текст отзыва'); return; }
             try {
               await supabaseClient.from('reviews').insert({ user_id: userId, order_id: orderId, rating: rating, text: text, user_name: userName, is_verified: true });
-              alert('Спасибо за отзыв! Он появится после модерации.');
+              tgUtil.alert('Спасибо за отзыв! Он появится после модерации.');
               modal.remove();
-            } catch (err) { alert('Ошибка: ' + err.message); }
+            } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
           };
         };
       }
@@ -4779,13 +4957,13 @@ function attachAdminHandlers() {
       const code = document.getElementById('newPromoCode')?.value.trim().toUpperCase();
       const type = document.getElementById('promoType')?.value;
       const value = parseFloat(document.getElementById('promoValue')?.value);
-      if (!code || !value) { alert('Заполните все поля'); return; }
+      if (!code || !value) { tgUtil.alert('Заполните все поля'); return; }
       try {
         await supabaseClient.from('promocodes').insert({ code, discount_type: type, discount_value: value, is_active: true });
         logAdminAction('create_promo', { code, type, value });
-        alert('Промокод создан');
+        tgUtil.alert('Промокод создан');
         renderCurrentScreen();
-      } catch (err) { alert('Ошибка: ' + err.message); }
+      } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
     };
   }
 
@@ -4796,9 +4974,9 @@ function attachAdminHandlers() {
       try {
         await supabaseClient.from('promocodes').update({ is_active: !currentActive }).eq('id', id);
         logAdminAction('toggle_promo', { id, active: !currentActive });
-        alert('Статус обновлён');
+        tgUtil.alert('Статус обновлён');
         renderCurrentScreen();
-      } catch (err) { alert('Ошибка: ' + err.message); }
+      } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
     };
   });
 
@@ -4809,9 +4987,9 @@ function attachAdminHandlers() {
       try {
         await supabaseClient.from('reviews').update({ is_published: true }).eq('id', id);
         logAdminAction('review_approved', { id });
-        alert('Отзыв опубликован');
+        tgUtil.alert('Отзыв опубликован');
         renderCurrentScreen();
-      } catch (err) { alert('Ошибка: ' + err.message); }
+      } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
     };
   });
 
@@ -4821,9 +4999,9 @@ function attachAdminHandlers() {
       try {
         await supabaseClient.from('reviews').delete().eq('id', id);
         logAdminAction('review_rejected', { id });
-        alert('Отзыв отклонён');
+        tgUtil.alert('Отзыв отклонён');
         renderCurrentScreen();
-      } catch (err) { alert('Ошибка: ' + err.message); }
+      } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
     };
   });
 
@@ -4869,14 +5047,14 @@ function attachAdminHandlers() {
         const brand = modal.querySelector('#productBrand').value.trim();
         const image_url = modal.querySelector('#productImage').value.trim();
         const url = modal.querySelector('#productUrl').value.trim();
-        if (!title || !price) { alert('Заполните название и цену'); return; }
+        if (!title || !price) { tgUtil.alert('Заполните название и цену'); return; }
         try {
           await supabaseClient.from('products').insert({ title, description, price, category, brand, image_url, url, currency: 'CNY', is_active: true });
           logAdminAction('create_product', { title, category, price });
-          alert('Товар добавлен');
+          tgUtil.alert('Товар добавлен');
           modal.remove();
           renderCurrentScreen();
-        } catch (err) { alert('Ошибка: ' + err.message); }
+        } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
       };
     };
   }
@@ -4884,7 +5062,8 @@ function attachAdminHandlers() {
   document.querySelectorAll('.deleteProductBtn').forEach(btn => {
     btn.onclick = async () => {
       const id = btn.getAttribute('data-id');
-      if (confirm('Удалить товар?')) {
+      if (await tgUtil.confirm('Удалить товар?')) {
+        tgUtil.haptic('warning');
         await supabaseClient.from('products').delete().eq('id', id);
         logAdminAction('delete_product', { id });
         renderCurrentScreen();
@@ -4899,9 +5078,9 @@ function attachAdminHandlers() {
       try {
         await supabaseClient.from('payout_requests').update({ status: 'approved', processed_at: new Date() }).eq('id', id);
         logAdminAction('payout_approved', { id });
-        alert('Заявка одобрена');
+        tgUtil.alert('Заявка одобрена');
         renderCurrentScreen();
-      } catch (err) { alert('Ошибка: ' + err.message); }
+      } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
     };
   });
 
@@ -4911,9 +5090,9 @@ function attachAdminHandlers() {
       try {
         await supabaseClient.from('payout_requests').update({ status: 'rejected', processed_at: new Date() }).eq('id', id);
         logAdminAction('payout_rejected', { id });
-        alert('Заявка отклонена');
+        tgUtil.alert('Заявка отклонена');
         renderCurrentScreen();
-      } catch (err) { alert('Ошибка: ' + err.message); }
+      } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
     };
   });
 
@@ -4984,7 +5163,7 @@ function attachAdminHandlers() {
       const name = modal.querySelector('#mpName').value.trim();
       const url = modal.querySelector('#mpUrl').value.trim();
       const country = modal.querySelector('#mpCountry').value.trim();
-      if (!name || !url || !country) { alert('Заполните обязательные поля'); return; }
+      if (!name || !url || !country) { tgUtil.alert('Заполните обязательные поля'); return; }
       const categories = Array.from(modal.querySelectorAll('#mpCategories input:checked')).map(cb => cb.value);
       const gender = Array.from(modal.querySelectorAll('#mpGender input:checked')).map(cb => cb.value);
       const description = modal.querySelector('#mpDescription').value.trim();
@@ -4997,7 +5176,7 @@ function attachAdminHandlers() {
       if (logoFile) {
         const fileName = `logos/${Date.now()}_${logoFile.name}`;
         const { error: uploadError } = await supabaseClient.storage.from('marketplace-logos').upload(fileName, logoFile);
-        if (uploadError) { alert('Ошибка загрузки лого: ' + uploadError.message); return; }
+        if (uploadError) { tgUtil.alert('Ошибка загрузки лого: ' + uploadError.message); return; }
         const { data: publicUrl } = supabaseClient.storage.from('marketplace-logos').getPublicUrl(fileName);
         logo_url = publicUrl.publicUrl;
       }
@@ -5008,10 +5187,10 @@ function attachAdminHandlers() {
         } else {
           await supabaseClient.from('marketplaces').insert(payload);
         }
-        alert(isEdit ? 'Площадка обновлена' : 'Площадка добавлена');
+        tgUtil.alert(isEdit ? 'Площадка обновлена' : 'Площадка добавлена');
         modal.remove();
         renderCurrentScreen();
-      } catch (err) { alert('Ошибка: ' + err.message); }
+      } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
     };
   }
       // ================== РЕДАКТИРОВАНИЕ / УДАЛЕНИЕ ПЛОЩАДОК (ДЕЛЕГИРОВАНИЕ) ==================
@@ -5031,9 +5210,10 @@ function attachAdminHandlers() {
       const deleteBtn = e.target.closest('.deleteMarketplaceBtn');
       if (deleteBtn) {
         const id = deleteBtn.dataset.id;
-        if (!confirm('Удалить площадку?')) return;
+        if (!(await tgUtil.confirm('Удалить площадку?'))) return;
+        tgUtil.haptic('warning');
         await supabaseClient.from('marketplaces').delete().eq('id', id);
-        alert('Удалено');
+        tgUtil.alert('Удалено');
         renderCurrentScreen();
         return;
       }
@@ -5051,16 +5231,17 @@ function attachAdminHandlers() {
       e.stopPropagation();
       
       const orderId = archiveBtn.dataset.orderId;
-      if (!confirm('Переместить заказ в архив? Он будет скрыт из основного списка.')) return;
+      if (!(await tgUtil.confirm('Переместить заказ в архив? Он будет скрыт из основного списка.'))) return;
+      tgUtil.haptic('medium');
       
       try {
         const { error } = await supabaseClient.from('orders').update({ archived_at: new Date().toISOString() }).eq('id', orderId);
         if (error) throw error;
         logAdminAction('archive_order', { orderId });
-        alert('Заказ перемещён в архив');
+        tgUtil.alert('Заказ перемещён в архив');
         renderCurrentScreen();
       } catch (err) {
-        alert('Ошибка: ' + err.message);
+        tgUtil.alert('Ошибка: ' + err.message);
       }
     };
     document.addEventListener('click', window._globalArchiveHandler);
@@ -5105,10 +5286,11 @@ function attachAdminHandlers() {
         const orderId = select.dataset.orderId;
         const userId = select.dataset.userId;
         const previousStatus = select.dataset.previousStatus;
-        if (!confirm(`Изменить статус заказа на "${getStatusText(newStatus)}"?`)) {
+        if (!(await tgUtil.confirm(`Изменить статус заказа на "${getStatusText(newStatus)}"?`))) {
           select.value = previousStatus || '';
           return;
         }
+        tgUtil.haptic('medium');
         try {
           const { error } = await supabaseClient.from('orders').update({ status: newStatus }).eq('id', orderId);
           if (error) throw error;
@@ -5127,7 +5309,7 @@ function attachAdminHandlers() {
           }
           renderCurrentScreen();
         } catch (err) {
-          alert('Ошибка: ' + err.message);
+          tgUtil.alert('Ошибка: ' + err.message);
           select.value = previousStatus || '';
         }
       }
@@ -5161,16 +5343,17 @@ if (archiveBtn) archiveBtn.addEventListener('click', () => {
       e.stopPropagation();
       
       const orderId = restoreBtn.dataset.orderId;
-      if (!confirm('Восстановить заказ из архива?')) return;
+      if (!(await tgUtil.confirm('Восстановить заказ из архива?'))) return;
+      tgUtil.haptic('medium');
       
       try {
         const { error } = await supabaseClient.from('orders').update({ archived_at: null }).eq('id', orderId);
         if (error) throw error;
         logAdminAction('restore_order', { orderId });
-        alert('Заказ восстановлен');
+        tgUtil.alert('Заказ восстановлен');
         renderCurrentScreen();
       } catch (err) {
-        alert('Ошибка: ' + err.message);
+        tgUtil.alert('Ошибка: ' + err.message);
       }
     };
     document.addEventListener('click', window._globalRestoreHandler);
@@ -5192,12 +5375,13 @@ if (archiveBtn) archiveBtn.addEventListener('click', () => {
 
   document.querySelectorAll('.adminDeleteCourseBtn').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm('Удалить курс? Все уроки и прогресс будут удалены.')) return;
+      if (!(await tgUtil.confirm('Удалить курс? Все уроки и прогресс будут удалены.'))) return;
+      tgUtil.haptic('warning');
       try {
         await supabaseClient.from('courses').delete().eq('id', btn.dataset.courseId);
         logAdminAction('delete_course', { courseId: btn.dataset.courseId });
         renderCurrentScreen();
-      } catch(e) { alert('Ошибка: ' + e.message); }
+      } catch(e) { tgUtil.alert('Ошибка: ' + e.message); }
     };
   });
 
@@ -5286,7 +5470,7 @@ function attachAnalyticsHandlers() {
   };
   document.getElementById('txLoadBtn')?.addEventListener('click', loadTransactions);
   document.getElementById('txExportBtn')?.addEventListener('click', () => {
-    if (!_txData.length) { alert('Сначала загрузите транзакции'); return; }
+    if (!_txData.length) { tgUtil.alert('Сначала загрузите транзакции'); return; }
     const rows = [['Дата','User ID','Тип','Сумма','Статус','Описание'],
       ..._txData.map(t => [new Date(t.created_at).toLocaleString('ru-RU'), t.user_id||'', t.type||'', t.amount||0, t.status||'', t.description||''])];
     downloadCSV(rows.map(r => r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n'), 'transactions.csv');
@@ -5394,7 +5578,7 @@ function attachAnalyticsHandlers() {
   };
   document.getElementById('loadAnalyticsBtn')?.addEventListener('click', loadAnalytics);
   document.getElementById('exportTopProductsBtn')?.addEventListener('click', () => {
-    if (!_topData.length) { alert('Сначала загрузите аналитику'); return; }
+    if (!_topData.length) { tgUtil.alert('Сначала загрузите аналитику'); return; }
     const rows = [['Товар','Продано шт.','Выручка BYN'], ..._topData.map(p=>[p.title, p.count, p.rev.toFixed(2)])];
     downloadCSV(rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n'), 'top_products.csv');
     logAdminAction('export_csv', { type: 'top_products' });
@@ -5471,7 +5655,7 @@ async function openPromotionForm(promotion = null) {
   saveBtn.onclick = async () => {
     const title = modal.querySelector('#promoTitle').value.trim();
     const discount_value = parseFloat(modal.querySelector('#promoDiscountValue').value);
-    if (!title || isNaN(discount_value)) { alert('Заполните название и значение скидки'); return; }
+    if (!title || isNaN(discount_value)) { tgUtil.alert('Заполните название и значение скидки'); return; }
     
     const payload = {
       title,
@@ -5492,10 +5676,10 @@ async function openPromotionForm(promotion = null) {
       } else {
         await supabaseClient.from('promotions').insert(payload);
       }
-      alert(isEdit ? 'Акция обновлена' : 'Акция создана');
+      tgUtil.alert(isEdit ? 'Акция обновлена' : 'Акция создана');
       modal.remove();
       renderCurrentScreen();
-    } catch (err) { alert('Ошибка: ' + err.message); }
+    } catch (err) { tgUtil.alert('Ошибка: ' + err.message); }
   };
 }
 
@@ -5508,9 +5692,10 @@ document.addEventListener('click', async (e) => {
   }
   if (e.target.classList.contains('deletePromotionBtn')) {
     const id = e.target.dataset.id;
-    if (!confirm('Удалить акцию?')) return;
+    if (!(await tgUtil.confirm('Удалить акцию?'))) return;
+    tgUtil.haptic('warning');
     await supabaseClient.from('promotions').delete().eq('id', id);
-    alert('Удалено');
+    tgUtil.alert('Удалено');
     renderCurrentScreen();
   }
 });
@@ -5582,9 +5767,12 @@ async function sendNotification(userId, message, orderId = null) {
     }
 
     // ==================== КНОПКА НАЗАД ====================
+    // When running inside Telegram, we use the native BackButton (see syncTelegramBackButton).
+    // The in-page button is rendered only as a fallback for browsers without the Telegram WebApp SDK.
     function ensureBackButton() {
       const oldBtn = document.getElementById('globalBackBtn');
       if (oldBtn) oldBtn.remove();
+      if (window.Telegram?.WebApp?.BackButton) return;
       if (currentTab !== 'home' && currentTab !== 'catalogs' && currentTab !== 'reports' && currentTab !== 'reviews' && currentTab !== 'academy' && currentTab !== 'dropshipper' && currentTab !== 'products' && currentTab !== 'wishlist') {
         const contentDiv = document.getElementById('content');
         const btn = document.createElement('button');
@@ -5592,6 +5780,7 @@ async function sendNotification(userId, message, orderId = null) {
         btn.className = 'global-back-btn';
         btn.innerHTML = '← Назад';
         btn.onclick = () => {
+          tgUtil.haptic('light');
           if (previousTab && previousTab !== currentTab) switchTab(previousTab);
           else if (currentTab !== 'home') switchTab('home');
           else tg.close();
@@ -5770,7 +5959,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     e.stopPropagation();
     const url = btn.dataset.url;
     const price = parseFloat(btn.dataset.price);
-    if (!url || isNaN(price)) { alert('Ошибка: не удалось получить данные товара'); return; }
+    if (!url || isNaN(price)) { tgUtil.alert('Ошибка: не удалось получить данные товара'); return; }
     window.tempOrder = { url, price, weight: 1, total: window.iceLogixPricing.quickEstimate(price, 1), discountAmount: 0, appliedPromo: null };
     currentTab = 'neworder'; currentSubScreen = null; appliedPromo = null; renderCurrentScreen();
   };
@@ -5891,7 +6080,8 @@ async function addToCart(productId, quantity = 1, skipAlert = false) {
       guestCart.push({ productId, quantity });
     }
     localStorage.setItem('guest_cart', JSON.stringify(guestCart));
-    if (!skipAlert) alert('✅ Товар добавлен (войдите, чтобы сохранить корзину)');
+    tgUtil.haptic('success');
+    if (!skipAlert) tgUtil.alert('✅ Товар добавлен (войдите, чтобы сохранить корзину)');
     return;
   }
   try {
@@ -5913,9 +6103,11 @@ async function addToCart(productId, quantity = 1, skipAlert = false) {
         .insert({ user_id: userId, product_id: productId, quantity });
     }
     await updateCartBadge();
-    if (!skipAlert) alert('✅ Товар добавлен в корзину');
+    tgUtil.haptic('success');
+    if (!skipAlert) tgUtil.alert('✅ Товар добавлен в корзину');
   } catch (err) {
-    alert('❌ Ошибка: ' + err.message);
+    tgUtil.haptic('error');
+    tgUtil.alert('❌ Ошибка: ' + err.message);
   }
 }
 
@@ -5927,7 +6119,8 @@ function ensureBackButtonForSubscreen() {
     // ==================== RENDER CURRENT SCREEN ====================
     async function renderCurrentScreen() {
       const contentDiv = document.getElementById('content');
-      
+      syncTelegramBackButton();
+
       if (currentSubScreen === 'myOrders') {
   contentDiv.innerHTML = await renderMyOrders();
   const backBtn = document.getElementById('backToProfileBtn');
@@ -6316,14 +6509,14 @@ function showPassportForm() {
     const address = document.getElementById('passportAddress').value.trim();
     
     if (!seriesNumber || !issueDate || !issuedBy) {
-      alert('Заполните обязательные поля: серия/номер, дата выдачи, кем выдан');
+      tgUtil.alert('Заполните обязательные поля: серия/номер, дата выдачи, кем выдан');
       return;
     }
     
     const passportObj = { seriesNumber, issueDate, issuedBy, idNumber, address };
     const encrypted = encryptData(passportObj);
     const { error } = await supabaseClient.from('users').update({ encrypted_passport: encrypted, passport_data: null }).eq('user_id', userId);
-    if (error) { alert('Ошибка: ' + error.message); } else { alert('✅ Данные зашифрованы и сохранены'); modal.remove(); }
+    if (error) { tgUtil.alert('Ошибка: ' + error.message); } else { tgUtil.alert('✅ Данные зашифрованы и сохранены'); modal.remove(); }
   };
 }
 
@@ -6333,7 +6526,7 @@ async function signAgreement() {
   try {
     // Проверяем, есть ли уже подписанный договор
     const { data: existing } = await supabaseClient.from('users').select('agreement_signed').eq('user_id', userId).single();
-    if (existing?.agreement_signed) { alert('Договор уже подписан'); return; }
+    if (existing?.agreement_signed) { tgUtil.alert('Договор уже подписан'); return; }
     
     // Генерируем PDF (заглушка – в будущем можно использовать Edge Function)
     const agreementText = `ДОГОВОР ОКАЗАНИЯ УСЛУГ\n\nКлиент: ${userName}\nID: ${userId}\nДата: ${new Date().toLocaleString('ru-RU')}\n\nУсловия: ...`;
@@ -6360,9 +6553,9 @@ async function signAgreement() {
       agreement_url: publicUrl.publicUrl
     });
     
-    alert('Договор подписан!');
+    tgUtil.alert('Договор подписан!');
   } catch (err) {
-    alert('Ошибка: ' + err.message);
+    tgUtil.alert('Ошибка: ' + err.message);
   }
 }
 
@@ -6378,7 +6571,7 @@ async function downloadAgreement() {
   if (data?.agreement_url) {
     window.open(data.agreement_url, '_blank');
   } else {
-    alert('Договор не найден. Сначала подпишите его.');
+    tgUtil.alert('Договор не найден. Сначала подпишите его.');
   }
 }
 
@@ -6428,7 +6621,7 @@ function showAvatarUploader() {
     if (!file) return;
     const fileName = `avatars/${userId}_${Date.now()}.jpg`;
     const { error: uploadError } = await supabaseClient.storage.from('avatars').upload(fileName, file);
-    if (uploadError) { alert('Ошибка загрузки: ' + uploadError.message); return; }
+    if (uploadError) { tgUtil.alert('Ошибка загрузки: ' + uploadError.message); return; }
     const { data: publicUrl } = supabaseClient.storage.from('avatars').getPublicUrl(fileName);
     await supabaseClient.from('users').update({ avatar_url: publicUrl.publicUrl }).eq('user_id', userId);
     document.getElementById('profileAvatar').innerHTML = `<img src="${publicUrl.publicUrl}" class="w-full h-full object-cover">`;
@@ -6444,7 +6637,7 @@ function showEditNameForm() {
   const newName = prompt('Введите новое имя:', userName);
   if (newName && newName.trim()) {
     supabaseClient.from('users').update({ full_name: newName.trim() }).eq('user_id', userId).then(({ error }) => {
-      if (error) alert('Ошибка: ' + error.message);
+      if (error) tgUtil.alert('Ошибка: ' + error.message);
       else {
         userName = newName.trim();
         document.getElementById('profileNameDisplay').innerText = userName;
@@ -6457,7 +6650,7 @@ function showEditNameForm() {
 // Все транзакции (модальное окно)
 async function showAllTransactions() {
   const { data, error } = await supabaseClient.from('transaction_history').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-  if (error) { alert('Ошибка загрузки'); return; }
+  if (error) { tgUtil.alert('Ошибка загрузки'); return; }
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 overflow-y-auto pt-16 pb-20';
   modal.innerHTML = `
@@ -6567,7 +6760,7 @@ async function showAccountRecovery() {
     try {
       await supabaseClient.functions.invoke('send-notification', { body: { user_id: userRow.user_id, message: `🔑 Ваш код восстановления доступа ICE LOGIX: ${code}\nДействует 10 минут.` } });
     } catch {
-      alert(`Код восстановления (тест): ${code}`); // fallback если бот недоступен
+      tgUtil.alert(`Код восстановления (тест): ${code}`); // fallback если бот недоступен
     }
     modal.querySelector('#recoveryPhasePhone').classList.add('hidden');
     modal.querySelector('#recoveryPhaseCode').classList.remove('hidden');
@@ -6696,7 +6889,7 @@ async function showAppSettings(initialTab = 'notifications') {
     const newApp = { theme: selectedTheme };
     await supabaseClient.from('users').update({ notification_settings: newNotif, app_settings: newApp }).eq('user_id', userId);
     applyTheme(selectedTheme);
-    alert('✅ Настройки сохранены');
+    tgUtil.alert('✅ Настройки сохранены');
     modal.remove();
   };
 }
@@ -6739,7 +6932,7 @@ async function showPhoneBinding() {
   
   document.getElementById('sendCodeBtn').onclick = async () => {
     const phone = phoneInput.value.trim();
-    if (!phone) { alert('Введите номер'); return; }
+    if (!phone) { tgUtil.alert('Введите номер'); return; }
     // Генерируем код
     currentCode = Math.floor(100000 + Math.random() * 900000).toString();
     // Отправляем код через бота (сохраняем в базе временно)
@@ -6750,13 +6943,13 @@ async function showPhoneBinding() {
       expires_at: expiresAt
     });
     // В будущем здесь будет вызов бота для отправки SMS, пока просто показываем код в alert для теста
-    alert(`Ваш код подтверждения: ${currentCode}`);
+    tgUtil.alert(`Ваш код подтверждения: ${currentCode}`);
     codeSection.classList.remove('hidden');
   };
   
   document.getElementById('verifyCodeBtn').onclick = async () => {
     const enteredCode = document.getElementById('codeInput').value.trim();
-    if (!enteredCode) { alert('Введите код'); return; }
+    if (!enteredCode) { tgUtil.alert('Введите код'); return; }
     const { data, error } = await supabaseClient.from('recovery_codes')
       .select('*')
       .eq('user_id', userId)
@@ -6764,13 +6957,13 @@ async function showPhoneBinding() {
       .eq('used', false)
       .gte('expires_at', new Date().toISOString())
       .single();
-    if (error || !data) { alert('Неверный или просроченный код'); return; }
+    if (error || !data) { tgUtil.alert('Неверный или просроченный код'); return; }
     
     // Помечаем код использованным
     await supabaseClient.from('recovery_codes').update({ used: true }).eq('id', data.id);
     // Сохраняем номер
     await supabaseClient.from('users').update({ phone: phoneInput.value.trim() }).eq('user_id', userId);
-    alert('Номер успешно привязан!');
+    tgUtil.alert('Номер успешно привязан!');
     modal.remove();
   };
 }
@@ -6956,7 +7149,8 @@ function attachCartHandlers() {
   const clearCartBtn = document.getElementById('clearCartBtn');
   if (clearCartBtn) {
     clearCartBtn.onclick = async () => {
-      if (!confirm('Удалить все товары из корзины?')) return;
+      if (!(await tgUtil.confirm('Удалить все товары из корзины?'))) return;
+      tgUtil.haptic('warning');
       await supabaseClient.from('cart').delete().eq('user_id', userId);
       if (typeof updateCartBadge === 'function') updateCartBadge();
       renderCurrentScreen();
@@ -6992,7 +7186,7 @@ function attachCartHandlers() {
       });
 
       if (selectedItems.length === 0) {
-        alert('Выберите хотя бы один товар');
+        tgUtil.alert('Выберите хотя бы один товар');
         return;
       }
 
@@ -7005,7 +7199,7 @@ function attachCartHandlers() {
       const itemsList = selectedItems.map(item =>
         `${item.title}: ${item.price} × ${item.quantity} = ${(window.iceLogixPricing.quickEstimate(item.price, 1) * item.quantity).toFixed(2)} BYN`
       ).join('\n');
-      alert(`Выбрано товаров: ${selectedItems.length}\n${itemsList}\nОбщая сумма: ${total.toFixed(2)} BYN`);
+      tgUtil.alert(`Выбрано товаров: ${selectedItems.length}\n${itemsList}\nОбщая сумма: ${total.toFixed(2)} BYN`);
 
       // Сохранение в глобальную переменную
       window.tempOrder = {
