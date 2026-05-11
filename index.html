@@ -144,6 +144,24 @@ body.tg-native-back .global-back-btn { display: none !important; }
     </div>
   </div>
   <script>
+    // ─── BLOB URL TRACKING (prevent memory leaks from photo previews) ───
+    const _photoBlobUrls = new Map();
+    function trackBlobUrl(key, file) {
+      const old = _photoBlobUrls.get(key);
+      if (old) URL.revokeObjectURL(old);
+      const url = URL.createObjectURL(file);
+      _photoBlobUrls.set(key, url);
+      return url;
+    }
+    function clearBlobUrls(prefix) {
+      for (const [key, url] of _photoBlobUrls.entries()) {
+        if (!prefix || key.startsWith(prefix)) {
+          URL.revokeObjectURL(url);
+          _photoBlobUrls.delete(key);
+        }
+      }
+    }
+
     // ─── CATEGORY MAP (наименование товара) ──────────────────────────────────
     // value = текст, который сохраняется в БД и показывается в карточке
     // broad = широкая категория для weight_standards / отчётов / каталога площадок
@@ -983,6 +1001,8 @@ const MAX_REQUESTS_TRUSTED = 100;
       if (currentTab && currentTab !== tabName) previousTab = currentTab;
       currentTab = tabName;
       currentSubScreen = null;
+      if (tabName !== 'calculator') clearBlobUrls('calc:');
+      if (tabName !== 'neworder') clearBlobUrls('order:');
       document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
       const activeTab = document.querySelector(`.tab-item[data-tab="${tabName}"]`);
       if (activeTab) activeTab.classList.add('active');
@@ -1932,7 +1952,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
     calcPhotoPreview.classList.remove('hidden');
     calcPhotoPreview.innerHTML = calcPhotoFiles.map((f, i) =>
       `<div class="relative">
-        <img src="${URL.createObjectURL(f)}" class="rounded-xl w-full h-24 object-cover">
+        <img src="${trackBlobUrl('calc:photo:' + i, f)}" class="rounded-xl w-full h-24 object-cover">
         <button type="button" data-rm-calc-photo="${i}" class="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center shadow-lg">×</button>
       </div>`).join('');
     if (calcPhotoSearchBtn) calcPhotoSearchBtn.classList.remove('hidden');
@@ -2034,7 +2054,7 @@ document.querySelectorAll('.buyNowBtn').forEach(btn => {
         calcTextPhotoPreview.classList.remove('hidden');
         calcTextPhotoPreview.innerHTML =
           `<div class="relative inline-block">
-            <img src="${URL.createObjectURL(f)}" class="rounded-xl max-h-32 object-contain">
+            <img src="${trackBlobUrl('calc:textphoto', f)}" class="rounded-xl max-h-32 object-contain">
             <button type="button" id="calcTextPhotoRemove" class="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center shadow-lg">×</button>
           </div>`;
         document.getElementById('calcTextPhotoRemove')?.addEventListener('click', () => {
@@ -2969,7 +2989,7 @@ if (createBtn) {
         photoPreview.classList.remove('hidden');
         photoPreview.innerHTML = photoFiles.map((f, i) =>
           `<div class="relative">
-            <img src="${URL.createObjectURL(f)}" class="rounded-xl w-full h-24 object-cover">
+            <img src="${trackBlobUrl('order:photo:' + i, f)}" class="rounded-xl w-full h-24 object-cover">
             <button type="button" data-rm-order-photo="${i}" class="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center shadow-lg">×</button>
           </div>`).join('');
         if (photoSearchBtn) photoSearchBtn.classList.remove('hidden');
@@ -3070,7 +3090,7 @@ if (createBtn) {
             textPhotoPreview.classList.remove('hidden');
             textPhotoPreview.innerHTML =
               `<div class="relative inline-block">
-                <img src="${URL.createObjectURL(f)}" class="rounded-xl max-h-32 object-contain">
+                <img src="${trackBlobUrl('order:textphoto', f)}" class="rounded-xl max-h-32 object-contain">
                 <button type="button" id="orderTextPhotoRemove" class="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center shadow-lg">×</button>
               </div>`;
             document.getElementById('orderTextPhotoRemove')?.addEventListener('click', () => {
