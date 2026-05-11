@@ -256,9 +256,10 @@ async function enhanceQuery(raw: string): Promise<{
   enhanced_ru: string;
   brand: string | null;
   category: string | null;
+  authenticity_tier: "original" | "replica";
   ok: boolean;
 }> {
-  const fallback = { enhanced_en: raw, enhanced_ru: raw, brand: null, category: null, ok: false };
+  const fallback = { enhanced_en: raw, enhanced_ru: raw, brand: null, category: null, authenticity_tier: "original" as const, ok: false };
   if (!OPENROUTER_KEY) return fallback;
 
   const prompt = `Ты помогаешь искать товары в международных интернет-магазинах.
@@ -267,7 +268,11 @@ async function enhanceQuery(raw: string): Promise<{
 Твоя задача — нормализовать запрос для поиска в Google по сайтам типа zalando.com, asos.com, poizon.com, goat.com и т.д.
 
 Правила:
-- "копия", "реплика", "1:1" → удалить (магазины такое не индексируют)
+- Определи authenticity_tier:
+  * "replica" если в запросе есть "копия", "реплика", "1:1", "fake", "replica", "копия 1:1", "ААА", "AAA"
+  * "original" во всех остальных случаях (по умолчанию)
+- Если authenticity_tier="replica": ОСТАВЬ в enhanced_en слово "replica" — оно нужно для поиска по DHGate/AliExpress/1688
+- Если authenticity_tier="original": НЕ добавляй слово "replica" / "копия" в результат
 - сокращения брендов раскрыть: "кляйн"→"Calvin Klein", "тнф"→"The North Face", "стасси"→"Stussy"
 - категории по-английски: "худи"→"hoodie", "кроссовки"→"sneakers", "джинсы"→"jeans", "ремень"→"belt"
 - gender: "мужской"→"men", "женский"→"women"
@@ -277,9 +282,11 @@ async function enhanceQuery(raw: string): Promise<{
 Запрос пользователя: """${raw}"""
 
 Верни ТОЛЬКО валидный JSON (никаких markdown-оборок), пример формата:
-{"enhanced_en":"Calvin Klein zip hoodie men gray","enhanced_ru":"Calvin Klein худи на молнии мужское серое","brand":"Calvin Klein","category":"hoodie"}
+{"enhanced_en":"Calvin Klein zip hoodie men gray","enhanced_ru":"Calvin Klein худи на молнии мужское серое","brand":"Calvin Klein","category":"hoodie","authenticity_tier":"original"}
 
-Если запрос непонятен или это не товар — верни {"enhanced_en":"${raw}","enhanced_ru":"${raw}","brand":null,"category":null}.`;
+Пример с репликой: {"enhanced_en":"Nike Air Max replica men","enhanced_ru":"Nike Air Max реплика мужские","brand":"Nike","category":"sneakers","authenticity_tier":"replica"}
+
+Если запрос непонятен или это не товар — верни {"enhanced_en":"${raw}","enhanced_ru":"${raw}","brand":null,"category":null,"authenticity_tier":"original"}.`;
 
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -300,11 +307,14 @@ async function enhanceQuery(raw: string): Promise<{
     const parsed = parseAssistantJson(String(data.choices?.[0]?.message?.content ?? ""));
     const en = typeof parsed.enhanced_en === "string" && parsed.enhanced_en.trim() ? parsed.enhanced_en.trim() : raw;
     const ru = typeof parsed.enhanced_ru === "string" && parsed.enhanced_ru.trim() ? parsed.enhanced_ru.trim() : raw;
+    const tier: "original" | "replica" =
+      parsed.authenticity_tier === "replica" ? "replica" : "original";
     return {
       enhanced_en: en,
       enhanced_ru: ru,
       brand: typeof parsed.brand === "string" && parsed.brand.trim() ? parsed.brand.trim() : null,
       category: typeof parsed.category === "string" && parsed.category.trim() ? parsed.category.trim() : null,
+      authenticity_tier: tier,
       ok: true,
     };
   } catch {
@@ -463,6 +473,7 @@ Deno.serve(async (req) => {
       enhanced_query: enh.ok ? enh.enhanced_en : null,
       brand: enh.brand,
       category: enh.category,
+      authenticity_tier: enh.authenticity_tier,
       platforms: platforms.map((p) => p.id),
       total: successful.length,
       results: successful,
