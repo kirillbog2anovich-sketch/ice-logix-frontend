@@ -1,5 +1,7 @@
 # AGENTS.md — guidance for AI coding agents working in icelogix-frontend
 
+> Last review: 2026-05-04 (OpenHands Cloud smoke test)
+
 This file is auto-loaded by Devin (and other AI coding tools) at the start of every session in this repo. It captures project-specific context, conventions, and workflows so the agent doesn't waste tokens re-discovering them.
 
 ## What this project is
