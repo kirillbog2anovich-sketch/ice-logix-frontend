@@ -19,13 +19,15 @@ triggers:
 
 The frontend wraps the Telegram WebApp SDK via the `tgUtil` object in `index.html` (around lines 414-547). All BackButton / MainButton interactions MUST go through this wrapper — direct calls to `tg.BackButton.onClick(...)` or `tg.MainButton.onClick(...)` cause handler stacking and visible UI bugs.
 
-Note: `tgUtil._tg` is the cached `window.Telegram.WebApp` reference set up during `tgUtil.init()`. Every method that touches the SDK reads it via `this._tg?.<API>` and wraps the call in `try/catch` so that running outside Telegram (web preview, dev tools) never throws.
+Note: `tgUtil._tg` is a **getter** that returns `window.Telegram?.WebApp || null` on every access — there is no cached property and no `init()` method. Every method that touches the SDK reads it via `this._tg?.<API>` and wraps the call in `try/catch` so that running outside Telegram (web preview, dev tools) never throws.
 
 ## The pattern (already implemented, do not break)
 
 ```js
 const tgUtil = {
-  _tg: null,         // cached window.Telegram.WebApp
+  // Getter — evaluates `window.Telegram?.WebApp` lazily on each access.
+  // Do NOT replace with `_tg: null` + an init() method.
+  get _tg() { return window.Telegram?.WebApp || null; },
   _bbHandler: null,  // reference to currently-attached BackButton handler
   _mbHandler: null,  // reference to currently-attached MainButton handler
 
