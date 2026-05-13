@@ -108,7 +108,7 @@ done
 ## Code conventions
 
 - Frontend: vanilla JS, `const`/`let` not `var`, async/await over `.then()`
-- Use Telegram WebApp SDK directly (`window.Telegram.WebApp`) for haptics, BackButton, MainButton, etc.
+- Telegram WebApp SDK: ALWAYS go through the `tgUtil` wrapper in `index.html` (`tgUtil.haptic`, `tgUtil.setBackButton`, `tgUtil.setMainButton`, `tgUtil.hideMainButton`, `tgUtil.alert`, `tgUtil.confirm`, `tgUtil.popup`, `tgUtil.cloudGet/Set/Remove`). Do NOT call `window.Telegram.WebApp.*` directly — bypassing the wrapper causes BackButton/MainButton handler stacking (the exact bug PR #8 fixed). See `.agents/skills/tg-handlers/SKILL.md` for the full pattern.
 - Edge Functions: Deno style, ES modules, fetch URLs from `deno.land` (not npm)
 - Always wrap external API calls in try/catch with graceful fallbacks
 - LLM responses sometimes have markdown code fences — strip ```json``` before `JSON.parse`
