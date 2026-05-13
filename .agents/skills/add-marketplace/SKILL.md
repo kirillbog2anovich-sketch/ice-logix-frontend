@@ -24,23 +24,27 @@ Near the top of the file:
 
 ```ts
 type PlatformConfig = {
-  id: string;          // lowercase slug, e.g. "dhgate"
-  label: string;       // display name, e.g. "DHGate"
-  flag: string;        // emoji flag, e.g. "🇨🇳"
-  domain: string;      // root domain used in `site:` Google operator, e.g. "dhgate.com"
-  qualifiers?: string; // optional extra Google query qualifiers (e.g. "купить" for RU platforms)
+  id: string;              // lowercase slug, e.g. "dhgate"
+  label: string;           // display name, e.g. "DHGate"
+  flag: string;            // emoji flag, e.g. "🇨🇳"
+  domain: string;          // root domain used in `site:` Google operator, e.g. "dhgate.com"
+  qualifiers?: string;     // optional extra Google query qualifiers (e.g. "купить" for RU platforms)
+  defaultCurrency?: string; // ISO code: "CNY" / "EUR" / "GBP" / "USD" / "RUB" — used by price normalization
 };
 
 const PLATFORMS: PlatformConfig[] = [ /* full catalog */ ];
 const DEFAULT_PLATFORMS: string[] = [ /* ids enabled by default for new users */ ];
 ```
 
+**Every existing platform sets `defaultCurrency`.** Always provide it for new entries — pick the seller's home currency (e.g. CNY for Chinese sites, EUR for EU sites, USD for US sites).
+
 ## Adding a new platform
 
-1. Append a new entry to `PLATFORMS` (keep alphabetical within geographic group: China → EU → US/JP).
-2. If the platform should be **enabled by default**, add its `id` to `DEFAULT_PLATFORMS`.
-3. If the platform needs **Russian queries** (e.g. WB-style), add its id to `queryLangForPlatform`'s RU branch.
-4. If the platform sells **replicas** (DHGate, 1688, Taobao), tag it mentally — replica routing is a separate roadmap item, but the platform should be ready.
+1. Append a new entry to `PLATFORMS` (keep alphabetical within geographic group: China → EU → US/JP → RU).
+2. ALWAYS include `defaultCurrency` (skipping it leaves prices unconverted downstream).
+3. If the platform should be **enabled by default**, add its `id` to `DEFAULT_PLATFORMS`.
+4. If the platform needs **Russian queries** (e.g. WB-style), add its id to `queryLangForPlatform`'s RU branch (and add a `qualifiers: "купить"` style hint to the entry if it helps Google narrow results).
+5. If the platform sells **replicas** (DHGate, 1688, Taobao), tag it mentally — replica routing is a separate roadmap item, but the platform should be ready.
 
 ## Removing or disabling a platform
 

@@ -48,7 +48,7 @@ It uses Claude Sonnet 4.6 via OpenRouter (`OPENROUTER_API_KEY`, `OPENROUTER_TEXT
 
 ## Platform routing
 
-`DEFAULT_PLATFORMS` (17 entries, all Belarus-friendly) is at the top of `search-products/index.ts`. Lookup helper: `getPlatform(id)`. To add a new platform, see the `add-marketplace` skill.
+`DEFAULT_PLATFORMS` (18 entries: 5 China + 10 EU + 2 US + 1 JP, all Belarus-friendly) is at the top of `search-products/index.ts`. Lookup helper: `getPlatform(id)`. To add a new platform, see the `add-marketplace` skill.
 
 Platform language rule (function `queryLangForPlatform`):
 - `wildberries`, `lamoda`, `ozon` → use `enhanced_ru`

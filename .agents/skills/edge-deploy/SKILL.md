@@ -12,7 +12,6 @@ triggers:
   - search-products
   - search-by-image
   - parse-screenshot
-  - pdf-generator
 ---
 
 # Skill: Supabase Edge Function workflow
@@ -24,11 +23,12 @@ supabase/functions/parse-worker/        URL → product metadata (LLM-powered)
 supabase/functions/search-products/     Multi-marketplace text search
 supabase/functions/search-by-image/     Reverse image search (Apify Google Lens)
 supabase/functions/parse-screenshot/    OCR for chat screenshots
-supabase/functions/pdf-generator/       Order PDFs (oferta + receipts)
 supabase/functions/DEPLOY-PARSING.md    Long-form deployment notes
 ```
 
 Each function is a single `index.ts` (no submodules, no shared `_shared/` folder yet).
+
+A `pdf-generator` function for oferta + receipts is on the roadmap but is NOT in the repo yet — do not reference or invoke it.
 
 ## Validate types
 
@@ -64,7 +64,7 @@ Set via `supabase secrets set`, never commit:
 
 | Secret | Used by | Notes |
 |---|---|---|
-| `OPENROUTER_API_KEY` | parse-worker, search-products, search-by-image | Claude routing |
+| `OPENROUTER_API_KEY` | parse-worker, search-products, search-by-image, parse-screenshot | LLM routing |
 | `OPENROUTER_TEXT_MODEL` | same | Currently `anthropic/claude-sonnet-4.6` |
 | `APIFY_API_TOKEN` | search-by-image | For `borderline/google-lens` actor |
 | `FIRECRAWL_API_KEY` | parse-worker, search-products | Web scraping |

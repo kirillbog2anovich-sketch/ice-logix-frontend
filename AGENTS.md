@@ -43,7 +43,7 @@ supabase/migrations/*.sql                   Schema migrations (ordered by timest
 
 ## Marketplace platforms
 
-`DEFAULT_PLATFORMS` (17 entries — all NOT-blocked-in-Belarus, default for new users):
+`DEFAULT_PLATFORMS` (18 entries — all NOT-blocked-in-Belarus, default for new users):
 ```
 poizon taobao tmall 1688 jd                  (China)
 zalando asos farfetch aboutyou endclothing   (EU)
