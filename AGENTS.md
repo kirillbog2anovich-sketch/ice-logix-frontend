@@ -1,6 +1,10 @@
 # AGENTS.md — guidance for AI coding agents working in icelogix-frontend
 
-This file is auto-loaded by Devin (and other AI coding tools) at the start of every session in this repo. It captures project-specific context, conventions, and workflows so the agent doesn't waste tokens re-discovering them.
+This file is auto-loaded by AI coding agents (Antigravity, Devin, Cursor, Claude Code, etc.) at the start of every session in this repo. It captures project-specific context, conventions, and workflows so the agent doesn't waste tokens re-discovering them.
+
+> **For Antigravity agents:** treat this file as your primary onboarding doc. Skip re-reading the codebase to discover basics — they are here.
+> **Project owner is a non-developer.** Communicate in Russian. Be autonomous. Use the silent mode (no preambles, just do).
+> **Full handoff package** (for migration scenarios): `/home/ubuntu/icelogix-work/handoff/` on the Devin VM (also attached to the relevant session).
 
 ## What this project is
 
@@ -11,7 +15,8 @@ A Telegram Mini App + bot for Belarusian customers to buy goods from internation
 - **Frontend:** Vanilla JS SPA in a single `index.html` (~6700+ lines), Tailwind via CDN, served from Vercel
 - **Backend:** Supabase Edge Functions (Deno runtime)
 - **Database:** Supabase Postgres (project ref: `vrvwdagjpttvfvjanbwq`)
-- **LLM:** Claude Sonnet 4.6 via OpenRouter (`OPENROUTER_API_KEY`, `OPENROUTER_TEXT_MODEL=anthropic/claude-sonnet-4.6`)
+- **LLM (text):** Gemini 2.5 Flash via OpenRouter (`OPENROUTER_API_KEY`, `OPENROUTER_TEXT_MODEL=google/gemini-2.5-flash` — switched from Claude Sonnet 4.6 on 2026-05-04 for 40× cost reduction)
+- **LLM (vision):** Gemini 2.0 Flash via OpenRouter (`OPENROUTER_VISION_MODEL=google/gemini-2.0-flash-001`)
 - **Reverse image search:** Apify Google Lens actor `borderline/google-lens` (`APIFY_API_TOKEN`)
 - **Web scraping:** Firecrawl (`FIRECRAWL_API_KEY`)
 - **Frontend hosting:** Vercel (auto preview per PR)
@@ -157,8 +162,9 @@ done
 
 Stored via `supabase secrets set` — never committed to repo:
 
-- `OPENROUTER_API_KEY` — Claude/GPT routing
-- `OPENROUTER_TEXT_MODEL` — currently `anthropic/claude-sonnet-4.6`
+- `OPENROUTER_API_KEY` — Gemini/Claude routing
+- `OPENROUTER_TEXT_MODEL` — currently `google/gemini-2.5-flash`
+- `OPENROUTER_VISION_MODEL` — currently `google/gemini-2.0-flash-001`
 - `APIFY_API_TOKEN` — for Google Lens actor
 - `FIRECRAWL_API_KEY` — for web scraping
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — auto-provided by Supabase
@@ -170,8 +176,21 @@ Stored via `supabase secrets set` — never committed to repo:
 
 ## When in doubt
 
-1. Check the Knowledge Note "icelogix project context" (auto-loaded into every session)
-2. Use Serena to navigate code semantically
-3. Use Context7 for library questions
-4. Run a smoke-test curl before assuming the deployed function works
-5. Ask the user (in Russian) — better than guessing on critical decisions
+1. Check the Knowledge Note "icelogix project context" (auto-loaded into every session for Devin)
+2. For Antigravity: also check `/home/ubuntu/icelogix-work/handoff/01-PROJECT-CHEATSHEET.md` if available, or use Supabase MCP to inspect live DB state
+3. Use Serena MCP to navigate code semantically — never read full `index.html` (7200+ lines)
+4. Use Context7 MCP for library questions instead of web-search
+5. Use Supabase MCP for DB queries instead of curl
+6. Use GitHub MCP for PR operations
+7. Run a smoke-test curl before assuming the deployed function works
+8. Ask the user (in Russian) — better than guessing on critical decisions
+
+## Current legit-check feature status (as of 2026-05-04)
+
+- ✅ PR #15 open: reference DB with 5 brands × 10 models seeded + 4 fix-migrations applied to prod
+- ⏳ PR-A.5 pending: collect ~100 reference photos, upload to Supabase Storage `legit-references` bucket
+- ⏳ PR-B pending: Edge Function `legit-check` (Gemini Vision pipeline)
+- ⏳ PR-C pending: UI «AI Проверка» button + disclaimer
+- 🐛 Known bugs: navigation lag (#1), search-by-image ignores authenticity_tier (#2b), «Проверить изображение» missing in Calculator + garbage results (#3+#4)
+
+Tier-1 MVP pricing model: 5 BYN/check, cost ~$0.10-0.30, target accuracy 70-80% on common counterfeits.
