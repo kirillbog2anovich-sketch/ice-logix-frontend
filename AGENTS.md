@@ -120,7 +120,7 @@ done
 
 ## LLM prompt patterns (used in this codebase)
 
-- `enhanceQuery()` in `search-products` — normalizes raw user input, returns `{enhanced_en, enhanced_ru, brand, category, authenticity_tier}` where `authenticity_tier` is `'replica' | 'original' | null` (added in PR #11). Returns fallback object if `OPENROUTER_KEY` missing.
+- `enhanceQuery()` in `search-products` — normalizes raw user input, returns `{enhanced_en, enhanced_ru, brand, category, authenticity_tier}` where `authenticity_tier` is `'replica' | 'original'` (defaults to `'original'`; added in PR #11). Returns fallback object if `OPENROUTER_KEY` missing.
 - `parse-worker` extraction prompt — extracts `{title, brand, price, currency, image_url, category}` from raw HTML.
 - All LLM calls use `temperature: 0.1` for deterministic output and explicit JSON-mode response.
 
