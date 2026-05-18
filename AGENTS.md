@@ -12,7 +12,7 @@ A Telegram Mini App + bot for Belarusian customers to buy goods from internation
 
 ## Tech stack
 
-- **Frontend:** Vanilla JS SPA in a single `index.html` (~6700+ lines), Tailwind via CDN, served from Vercel
+- **Frontend:** Vanilla JS SPA in a single `index.html` (~7200+ lines), Tailwind via CDN, served from Vercel
 - **Backend:** Supabase Edge Functions (Deno runtime)
 - **Database:** Supabase Postgres (project ref: `vrvwdagjpttvfvjanbwq`)
 - **LLM (text):** Gemini 2.5 Flash via OpenRouter (`OPENROUTER_API_KEY`, `OPENROUTER_TEXT_MODEL=google/gemini-2.5-flash` — switched from Claude Sonnet 4.6 on 2026-05-04 for 40× cost reduction)
@@ -120,7 +120,7 @@ done
 
 ## LLM prompt patterns (used in this codebase)
 
-- `enhanceQuery()` in `search-products` — normalizes raw user input, returns `{enhanced_en, enhanced_ru, brand, category}`. Returns fallback object if `OPENROUTER_KEY` missing.
+- `enhanceQuery()` in `search-products` — normalizes raw user input, returns `{enhanced_en, enhanced_ru, brand, category, authenticity_tier}` where `authenticity_tier` is `'replica' | 'original' | null` (added in PR #11). Returns fallback object if `OPENROUTER_KEY` missing.
 - `parse-worker` extraction prompt — extracts `{title, brand, price, currency, image_url, category}` from raw HTML.
 - All LLM calls use `temperature: 0.1` for deterministic output and explicit JSON-mode response.
 
@@ -134,7 +134,7 @@ done
 
 ## Token economy rules for AI agents
 
-1. Prefer Serena MCP (`find_symbol`, `find_references`) over reading whole `index.html` — it's 6700+ lines.
+1. Prefer Serena MCP (`find_symbol`, `find_references`) over reading whole `index.html` — it's 7200+ lines.
 2. Prefer Context7 MCP for library documentation lookups instead of web search.
 3. Use Supabase MCP for SQL/migrations/log queries instead of curl.
 4. Use Sentry MCP for production error investigation.
