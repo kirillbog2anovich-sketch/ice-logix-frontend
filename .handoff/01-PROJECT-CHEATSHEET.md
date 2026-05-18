@@ -133,8 +133,12 @@ supabase/functions/parse-worker/              URL → product extractor (LLM-pow
 supabase/functions/search-products/           Multi-marketplace text search
 supabase/functions/search-by-image/           Reverse image search (Apify Lens)
 supabase/functions/parse-screenshot/          Chat-screenshot OCR
-supabase/functions/pdf-generator/             Contracts / invoices (planned)
 supabase/migrations/*.sql                     Schema migrations (timestamp prefix, append-only)
+
+# Planned (not yet in repo):
+#   supabase/functions/pdf-generator/         Contracts / invoices (DocuGenerate or pdfkit)
+#   supabase/functions/legit-check/           Gemini Vision authenticity pipeline (PR-B)
+#   supabase/functions/shopbyshop-webhook/    Logistics-status webhook receiver
 ```
 
 ## 7. Marketplaces (`DEFAULT_PLATFORMS`)
@@ -167,7 +171,7 @@ To add a new marketplace: see `.agents/skills/add-marketplace/SKILL.md`.
 | Firecrawl | ✅ Works |
 | Telegram Bot API / Stars / TON | ✅ Native, free |
 | Cryptomus / NOWPayments | ✅ |
-| Brave Search API | ⚠️ Free tier removed (Nov 2026) — requires paid sub |
+| Brave Search API | ⚠️ Free tier deprecation announced — will require paid sub once it takes effect; verify before integrating |
 
 **Rule of thumb:** never propose Google Cloud, AWS, or Stripe-direct integrations. Always check Belarus accessibility first.
 
